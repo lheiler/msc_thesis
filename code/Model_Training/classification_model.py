@@ -93,6 +93,9 @@ def train(model,
           λ_gender=1.0,
           λ_age=0.1,
           λ_abn=1.0):
+    
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
 
     bce = nn.BCELoss()
     mse = nn.MSELoss()

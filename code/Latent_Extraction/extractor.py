@@ -2,6 +2,7 @@ from Latent_Extraction.cortico_thalamic import fit_ctm_from_raw
 from torch.utils.data import DataLoader
 from Latent_Extraction.c22 import extract_c22
 from Latent_Extraction.c22 import extract_c22_psd
+import json
 
 def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
     """
@@ -28,8 +29,17 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         if method == "c22_psd": latent_feature = extract_c22_psd(x)
         # save intermediate results to pipeline/Results/tuh-eeg-ctm-parameters/temp_latent_features.txt
         
+        # Convert all to serializable types
+        record = (
+            latent_feature.tolist() if hasattr(latent_feature, 'tolist') else latent_feature,
+            int(g.item()) if hasattr(g, 'item') else int(g),
+            int(a.item()) if hasattr(a, 'item') else int(a),
+            int(ab.item()) if hasattr(ab, 'item') else int(ab)
+        )
+
+        # Write to JSONL file
         with open(save_path, "a") as f:
-            f.write(f"{(latent_feature,g,a,ab)}\n")
+            f.write(json.dumps(record) + "\n")
         
         latent_features.append((latent_feature, g, a, ab))
 
