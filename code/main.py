@@ -1,3 +1,6 @@
+import faulthandler
+faulthandler.enable()
+
 from Data_Preprocessing import data_loading as dl
 import Model_Training.classification_model as cm
 from Model_Training.classification_model import ClassificationModel
@@ -8,6 +11,7 @@ import os
 import ast
 from torch.utils.data import DataLoader, TensorDataset
 import re
+import json
 from Visualization import tsne # Assuming you have a tsne visualization function
 
 _FLOAT64_RE = re.compile(r'np\.float64\(([^)]+)\)')  # capture inner number
@@ -44,7 +48,28 @@ def load_latent_parameters_array(file_path, batch_size: int = 32):
             latent_params.append((param_values, label, age, abn))
     return DataLoader(latent_params, batch_size=batch_size, shuffle=False)
 
-
+def load_latent_c22_parameters_array(file_path, batch_size: int = 32):
+    
+    #reading json file with latent parameters
+    
+    latent_params = []
+    with open(file_path, "r") as f:
+        for line in f:
+            if line.strip():  # skip empty lines
+                try:
+                    entry = json.loads(line)
+                    # Convert first element (list of floats) to numpy array
+                    entry[0] = np.array(entry[0], dtype=np.float32)
+                    latent_params.append(entry)
+                except json.JSONDecodeError as e:
+                    print(f"Skipping invalid JSON line: {e}")
+    
+    print(f"Loaded {len(latent_params)} latent parameters from {file_path}")
+    
+    return DataLoader(latent_params, batch_size=batch_size, shuffle=False)
+            
+            
+            
 def main():
     """
     Main function to run the entire pipeline.
@@ -64,7 +89,7 @@ def main():
     hidden_layer_size = 128  # Specify the size of the hidden layer in the model
     hidden_layers = 2  # Specify the number of hidden layers in the model
     
-    extracted = False  # Set to True if latent features are already extracted, otherwise False
+    extracted = True  # Set to True if latent features are already extracted, otherwise False
     
     
     # ------------------------    # 1. Load and preprocess data.  ------------------------
@@ -79,8 +104,8 @@ def main():
         
         # Extract latent features
         print("Extracting latent features...")
-        t_latent_features = extractor.extract_latent_features(t_data, batch_size=batch_size, save_path=os.path.join(results_path,"temp_latent_features_train.txt"), method=method)
-        e_latent_features = extractor.extract_latent_features(e_data, batch_size=batch_size, save_path=os.path.join(results_path,"temp_latent_features_eval.txt"), method=method)
+        t_latent_features = extractor.extract_latent_features(t_data, batch_size=batch_size, save_path=os.path.join(results_path,"temp_latent_features_train.json"), method=method)
+        e_latent_features = extractor.extract_latent_features(e_data, batch_size=batch_size, save_path=os.path.join(results_path,"temp_latent_features_eval.json"), method=method)
         
         #np.save("Results/tuh-eeg-ctm-parameters/t_latent_features.npy", t_latent_features.dataset.tensors[0].numpy())
         #np.save("Results/tuh-eeg-ctm-parameters/e_latent_features.npy", e_latent_features.dataset.tensors[0].numpy())
@@ -89,8 +114,8 @@ def main():
     else:
         # Load latent features from saved files
         print("Loading latent features from saved files...")
-        t_latent_features = load_latent_parameters_array(os.path.join(results_path, "temp_latent_features_train.txt"), batch_size=batch_size)
-        e_latent_features = load_latent_parameters_array(os.path.join(results_path, "temp_latent_features_eval.txt"), batch_size=batch_size)
+        t_latent_features = load_latent_c22_parameters_array(os.path.join(results_path, "temp_latent_features_train.json"), batch_size=batch_size)
+        e_latent_features = load_latent_c22_parameters_array(os.path.join(results_path, "temp_latent_features_eval.json"), batch_size=batch_size)
         
         print("Latent features loaded successfully.")
     
