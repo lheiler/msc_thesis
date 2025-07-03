@@ -12,6 +12,7 @@ import ast
 from torch.utils.data import DataLoader, TensorDataset
 import re
 import json
+import torch
 from Visualization import tsne # Assuming you have a tsne visualization function
 
 _FLOAT64_RE = re.compile(r'np\.float64\(([^)]+)\)')  # capture inner number
@@ -24,7 +25,7 @@ def load_latent_parameters_array(file_path, batch_size: int = 32):
         (np.ndarray[float32], label, age, abn)
     """
     latent_params = []
-
+    file_path = file_path + ".txt" if not file_path.endswith(".txt") else file_path
     with open(file_path, "r") as f:
         for raw_line in f:
             line = raw_line.strip()
@@ -49,32 +50,58 @@ def load_latent_parameters_array(file_path, batch_size: int = 32):
     return DataLoader(latent_params, batch_size=batch_size, shuffle=False)
 
 def load_latent_c22_parameters_array(file_path, batch_size: int = 32):
-    
-    #reading json file with latent parameters
-    
     latent_params = []
+    file_path = file_path + ".json" if not file_path.endswith(".json") else file_path
     with open(file_path, "r") as f:
         for line in f:
-            if line.strip():  # skip empty lines
+            if line.strip():
                 try:
                     entry = json.loads(line)
-                    # Convert first element (list of floats) to numpy array
-                    entry[0] = np.array(entry[0], dtype=np.float32)
-                    latent_params.append(entry)
+                    latent_vec = torch.tensor(entry[0], dtype=torch.float32)
+                    g = torch.tensor(entry[1], dtype=torch.float32)
+                    a = torch.tensor(entry[2], dtype=torch.float32)
+                    ab = torch.tensor(entry[3], dtype=torch.float32)
+
+                    latent_params.append((latent_vec, g, a, ab))
                 except json.JSONDecodeError as e:
                     print(f"Skipping invalid JSON line: {e}")
-    
+
     print(f"Loaded {len(latent_params)} latent parameters from {file_path}")
-    
     return DataLoader(latent_params, batch_size=batch_size, shuffle=False)
             
-            
+
+def load_latent_ae_parameters_array(file_path, batch_size: int = 32):
+    """
+    Read a text file where each line is:
+        [np.ndarray[float32], label, age, abn]
+    and return a DataLoader that yields tuples:
+        (np.ndarray[float32], label, age, abn)
+    """
+    latent_params = []
+    file_path = file_path + ".json" if not file_path.endswith(".json") else file_path
+    with open(file_path, "r") as f:
+        for line in f:
+            if line.strip():
+                try:
+                    entry = json.loads(line)
+                    latent_vec = torch.tensor(entry[0], dtype=torch.float32)
+                    g = torch.tensor(entry[1], dtype=torch.float32)
+                    a = torch.tensor(entry[2], dtype=torch.float32)
+                    ab = torch.tensor(entry[3], dtype=torch.float32)
+
+                    latent_params.append((latent_vec, g, a, ab))
+                except json.JSONDecodeError as e:
+                    print(f"Skipping invalid JSON line: {e}")
+
+    print(f"Loaded {len(latent_params)} latent parameters from {file_path}")
+    return DataLoader(latent_params, batch_size=batch_size, shuffle=False)
+        
             
 def main():
     """
     Main function to run the entire pipeline.
     """
-    method = "c22"  # Specify the method for latent feature extraction, e.g., "ctm" or "c22"
+    method = "AE"  # Specify the method for latent feature extraction, e.g., "ctm" or "c22"
 
     # path parameters:
     data_path_train = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train"  # Specify the path to your data
@@ -84,8 +111,8 @@ def main():
     
     
     # model parameters:
-    batch_size = 32  # Specify the batch size for data loading
-    num_epochs = 20  # Specify the number of epochs for training
+    batch_size = 64  # Specify the batch size for data loading
+    num_epochs = 500  # Specify the number of epochs for training
     hidden_layer_size = 128  # Specify the size of the hidden layer in the model
     hidden_layers = 2  # Specify the number of hidden layers in the model
     
@@ -114,8 +141,8 @@ def main():
     else:
         # Load latent features from saved files
         print("Loading latent features from saved files...")
-        t_latent_features = load_latent_c22_parameters_array(os.path.join(results_path, "temp_latent_features_train.json"), batch_size=batch_size)
-        e_latent_features = load_latent_c22_parameters_array(os.path.join(results_path, "temp_latent_features_eval.json"), batch_size=batch_size)
+        t_latent_features = load_latent_ae_parameters_array(os.path.join(results_path, "temp_latent_features_train"), batch_size=batch_size)
+        e_latent_features = load_latent_ae_parameters_array(os.path.join(results_path, "temp_latent_features_eval"), batch_size=batch_size)
         
         print("Latent features loaded successfully.")
     

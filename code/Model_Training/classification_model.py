@@ -10,31 +10,33 @@ from torch import nn
 # ------------------------------------------------------------------
 # 1.  Dataset helper
 # ------------------------------------------------------------------
-class ParamDataset(torch.utils.data.Dataset):
-    """
-    Generic (X, y_gender, y_age, y_abn) container.
+# class ParamDataset(torch.utils.data.Dataset):
+#     """
+#     Generic (X, y_gender, y_age, y_abn) container.
 
-    Parameters
-    ----------
-    X         : (N, D)   float32   – parameter vectors
-    gender    : (N,)     int32/uint8  – 0 or 1
-    age       : (N,)     float32      – years
-    abnormal  : (N,)     int32/uint8  – 0 or 1
-    """
-    def __init__(self, X, gender, age, abnormal):
-        self.X         = torch.as_tensor(X,        dtype=torch.float32)
-        self.gender    = torch.as_tensor(gender,   dtype=torch.float32)
-        self.age       = torch.as_tensor(age,      dtype=torch.float32)
-        self.abnormal  = torch.as_tensor(abnormal, dtype=torch.float32)
+#     Parameters
+#     ----------
+#     X         : (N, D)   float32   – parameter vectors
+#     gender    : (N,)     int32/uint8  – 0 or 1
+#     age       : (N,)     float32      – years
+#     abnormal  : (N,)     int32/uint8  – 0 or 1
+#     """
+#     def __init__(self, X, gender, age, abnormal):
+#         self.X         = torch.as_tensor(X,        dtype=torch.float32)
+#         self.gender    = torch.as_tensor(gender,   dtype=torch.float32)
+#         self.age       = torch.as_tensor(age,      dtype=torch.float32)
+#         self.abnormal  = torch.as_tensor(abnormal, dtype=torch.float32)
+        
+#         self.gender = (self.gender == 2).float()
 
-    def __len__(self):
-        return len(self.X)
+#     def __len__(self):
+#         return len(self.X)
 
-    def __getitem__(self, idx):
-        return ( self.X[idx],
-                 self.gender[idx],
-                 self.age[idx],
-                 self.abnormal[idx] )
+#     def __getitem__(self, idx):
+#         return ( self.X[idx],
+#                  self.gender[idx],
+#                  self.age[idx],
+#                  self.abnormal[idx] )
 
 
 # ------------------------------------------------------------------
@@ -49,7 +51,7 @@ class ClassificationModel(nn.Module):
     """
     def __init__(self,
                  input_dim: int,
-                 hidden_dims=(64, 32),
+                 hidden_dims=(256, 128, 32),
                  dropout: float = 0.1):
         super().__init__()
 
@@ -65,6 +67,9 @@ class ClassificationModel(nn.Module):
         self.gender_head   = nn.Linear(last_dim, 1)
         self.age_head      = nn.Linear(last_dim, 1)
         self.abn_head      = nn.Linear(last_dim, 1)
+        
+        self.bce = nn.BCELoss()
+        self.mse = nn.MSELoss()
 
     def forward(self, x):
         h = self.trunk(x)
@@ -77,9 +82,9 @@ class ClassificationModel(nn.Module):
 
         return gender, age_pred, abnormal
     
-    def g_loss(self, ĝ, g): return nn.BCELoss()(ĝ, g)
-    def a_loss(self, â, a): return nn.MSELoss()(â, a)
-    def abn_loss(self, âbn, ab): return nn.BCELoss()(âbn, ab)
+    def g_loss(self, ĝ, g): return self.bce(ĝ, g)
+    def a_loss(self, â, a): return self.mse(â, a)
+    def abn_loss(self, âbn, ab): return self.bce(âbn, ab)
 
 
 # ------------------------------------------------------------------
@@ -88,17 +93,14 @@ class ClassificationModel(nn.Module):
 def train(model,
           dataloader,
           n_epochs=50,
-          lr=1e-3,
+          lr=1e-5,
           device='cpu',
           λ_gender=1.0,
-          λ_age=0.1,
+          λ_age=0.0,
           λ_abn=1.0):
     
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-
-    bce = nn.BCELoss()
-    mse = nn.MSELoss()
+    
+    device = torch.device(device)
 
     model.to(device)
     optim = torch.optim.Adam(model.parameters(), lr=lr)
@@ -109,19 +111,22 @@ def train(model,
 
         for x, g, a, ab in dataloader:
             x, g, a, ab = x.to(device), g.to(device), a.to(device), ab.to(device)
-            
+
             x = x.float()
-            g  = (g == 2).float()   # map to 0/1
-            a  = a.float()
-            ab = ab.float()
-            
+            g = (g.long() == 2).float().detach()  # Safe runtime conversion
+            a = a.float().detach()
+            ab = ab.float().detach()
+
             optim.zero_grad()
+
             ĝ, â, âbn = model(x)
 
-            loss = (λ_gender * bce(ĝ, g) +
-                    λ_abn   * bce(âbn, ab)
-                    + λ_age   * mse(â, a)
-                    )
+            # Split losses
+            loss_gender = model.g_loss(ĝ, g)
+            loss_abn    = model.abn_loss(âbn, ab)
+            loss_age    = model.a_loss(â, a)
+
+            loss = λ_gender * loss_gender + λ_abn * loss_abn + λ_age * loss_age
 
             loss.backward()
             optim.step()
