@@ -88,6 +88,9 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
     total_loss_abn = 0.0
     total_loss = 0.0
     total_samples = 0
+    
+    total_correct_g = 0
+    total_correct_abn = 0
 
     with torch.no_grad():
         for x, g, a, ab in data:
@@ -104,6 +107,16 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
             # print(f"Evaluating batch size: {batch_size}, x shape: {x}, g shape: {g}, a shape: {a}, ab shape: {ab}")
             
             ĝ, â, abn = model(x)
+            
+            # Compute accuracy for gender and abnormality
+            g_pred = (ĝ > 0.5).float()
+            abn_pred = (abn > 0.5).float()
+
+            correct_g = (g_pred == g).sum().item()
+            correct_abn = (abn_pred == ab).sum().item()
+
+            total_correct_g += correct_g
+            total_correct_abn += correct_abn
 
             loss_g = model.g_loss(ĝ, g)
             loss_a = model.a_loss(â, a)
@@ -113,12 +126,16 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
             total_loss_a += loss_a.item() * batch_size
             total_loss_abn += loss_abn.item() * batch_size
             total_loss += (loss_g + loss_a + loss_abn).item() * batch_size
+            
+            
 
     return {
         'loss_g': total_loss_g / total_samples,
         'loss_a': total_loss_a / total_samples,
         'loss_abn': total_loss_abn / total_samples,
-        'total_loss': total_loss / total_samples
+        'total_loss': total_loss / total_samples,
+        'accuracy_g': total_correct_g / total_samples,
+        'accuracy_abn': total_correct_abn / total_samples
     }
     
     
