@@ -12,10 +12,10 @@ def extract_z(model, x, device="cpu"):
                     'Cz', 'Pz', 'Fz']    
     
     x = x.copy().pick_channels(eeg_channels)
-    
     x = x.get_data()
     x = torch.tensor(x, dtype=torch.float32).unsqueeze(0).to(device)  # shape: [1, 19, time]
     s3 = model._encode(x)[2]
     z = s3.flatten(1)     # Shape: [B, 128 * 960] = [B, 122880]
     z = model.fc_enc(z)[0]
-    return z
+    # get a copy of z on CPU
+    return z.cpu().detach().numpy()  # Shape: [B, 128

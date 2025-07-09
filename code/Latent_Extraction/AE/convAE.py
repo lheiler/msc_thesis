@@ -9,7 +9,9 @@ from tqdm import tqdm
 import numpy as np
 import mne
 from torch.utils.data import random_split
+
 import torch.nn.functional as F
+from math import ceil
 
 
 
@@ -39,7 +41,9 @@ class EEGSegmentDataset(Dataset):
 
                     raw = read_raw_bids(bids_path, verbose=False)
                     raw.load_data()
-
+                    sfreq = raw.info['sfreq']
+                    raw.crop(0, 60.0 - 1/sfreq)  # Crop to segment length
+                    
                     # ✅ Expect exactly 7680 samples after preprocessing
                     if raw.n_times != self.segment_len:
                         print(f"⚠️ Skipping {vhdr_file.name}: got {raw.n_times} samples, expected {self.segment_len}")
@@ -83,17 +87,20 @@ class Conv1DAutoencoder(nn.Module):
         self.e1 = nn.Sequential(          # L → L/2
             nn.Conv1d(n_channels, chs[0], 5, stride=2, padding=2, bias=False),
             nn.BatchNorm1d(chs[0]),
-            nn.LeakyReLU(0.1)
+            nn.LeakyReLU(0.1),
+            nn.Dropout(0.2)
         )
         self.e2 = nn.Sequential(          # L/2 → L/4
             nn.Conv1d(chs[0], chs[1], 5, stride=2, padding=2, bias=False),
             nn.BatchNorm1d(chs[1]),
-            nn.LeakyReLU(0.1)
+            nn.LeakyReLU(0.1),
+            nn.Dropout(0.2)
         )
         self.e3 = nn.Sequential(          # L/4 → L/8
             nn.Conv1d(chs[1], chs[2], 5, stride=2, padding=2, bias=False),
             nn.BatchNorm1d(chs[2]),
-            nn.LeakyReLU(0.1)
+            nn.LeakyReLU(0.1),
+            nn.Dropout(0.2)
         )
 
         # If the input length is fixed we can pre-compute the flattened size
@@ -117,13 +124,15 @@ class Conv1DAutoencoder(nn.Module):
             nn.ConvTranspose1d(chs[2], chs[1], 5, stride=2,
                                padding=2, output_padding=1, bias=False),
             nn.BatchNorm1d(chs[1]),
-            nn.LeakyReLU(0.1)
+            nn.LeakyReLU(0.1),
+            nn.Dropout(0.2)
         )
         self.d2 = nn.Sequential(
             nn.ConvTranspose1d(chs[1]*2, chs[0], 5, stride=2,
                                padding=2, output_padding=1, bias=False),
             nn.BatchNorm1d(chs[0]),
-            nn.LeakyReLU(0.1)
+            nn.LeakyReLU(0.1),
+            nn.Dropout(0.2)
         )
         self.d1 = nn.Sequential(
             nn.ConvTranspose1d(chs[0]*2, n_channels, 5, stride=2,
@@ -158,8 +167,160 @@ class Conv1DAutoencoder(nn.Module):
         y = self.d1(torch.cat([y, skips[0]], dim=1))
         return y
 
+ # === Advanced EEG Auto‑Encoder Components ==================================
+class DepthwiseSpatialStem(nn.Module):
+    """
+    Depthwise‑separable 1‑D convolution that first learns per‑channel filters
+    and then mixes them across channels. Operates on tensors shaped
+    (batch, channels, time).
+    """
+    def __init__(self, in_chans: int, out_chans: int = 32):
+        super().__init__()
+        self.depthwise = nn.Conv1d(in_chans, in_chans, kernel_size=1,
+                                   groups=in_chans, bias=False)
+        self.pointwise = nn.Conv1d(in_chans, out_chans, kernel_size=1, bias=False)
+        self.bn = nn.BatchNorm1d(out_chans)
+        self.act = nn.LeakyReLU(0.1)
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return self.act(self.bn(x))
+
+
+class ResidualDilatedBlock(nn.Module):
+    """
+    Multi‑branch residual block with dilated convolutions for multi‑scale
+    temporal context.  Each branch uses a different (kernel size, dilation)
+    pair, the outputs are concatenated, reduced, and added to a shortcut path.
+    """
+    def __init__(self,
+                 in_chans: int,
+                 out_chans: int,
+                 kernel_sizes=(3, 5, 9),
+                 dilations=(1, 2, 4),
+                 stride: int = 1,
+                 dropout: float = 0.2):
+        super().__init__()
+        assert len(kernel_sizes) == len(dilations), \
+            "kernel_sizes and dilations must be the same length"
+        branches = []
+        for k, d in zip(kernel_sizes, dilations):
+            pad = (k // 2) * d
+            branches.append(
+                nn.Conv1d(
+                    in_chans,
+                    out_chans,
+                    kernel_size=k,
+                    stride=stride,
+                    padding=pad,
+                    dilation=d,
+                    bias=False,
+                )
+            )
+        self.branches = nn.ModuleList(branches)
+        self.bn = nn.BatchNorm1d(out_chans * len(branches))
+        self.act = nn.LeakyReLU(0.1)
+        self.drop = nn.Dropout(dropout)
+        self.reduce = nn.Conv1d(out_chans * len(branches), out_chans, 1, bias=False)
+        self.bn2 = nn.BatchNorm1d(out_chans)
+
+        if stride != 1 or in_chans != out_chans:
+            self.shortcut = nn.Sequential(
+                nn.Conv1d(in_chans, out_chans, 1, stride=stride, bias=False),
+                nn.BatchNorm1d(out_chans),
+            )
+        else:
+            self.shortcut = nn.Identity()
+
+    def forward(self, x):
+        out = torch.cat([branch(x) for branch in self.branches], dim=1)
+        out = self.act(self.bn(out))
+        out = self.drop(out)
+        out = self.bn2(self.reduce(out))
+        return self.act(out + self.shortcut(x))
+
+
+class EEGAutoEncoder(nn.Module):
+    """
+    Advanced multi‑scale auto‑encoder for 19‑channel EEG.
+    Encoder: spatial stem → three residual‑dilated blocks (stride‑2 each)
+    Bottleneck: 2‑layer Transformer encoder + linear projection to latent dim
+    Decoder: symmetric up‑sampling with skip connections.
+    Assumes fixed_len samples so shapes can be inferred.
+    """
+    def __init__(self, chans: int = 19, latent_dim: int = 64, fixed_len: int = 7680):
+        super().__init__()
+        self.fixed_len = fixed_len
+
+        # ----- Encoder -----------------------------------------------------
+        self.stem = DepthwiseSpatialStem(chans, 32)            # (B, 32, L)
+        self.enc1 = ResidualDilatedBlock(32,  64, stride=2)    # L/2
+        self.enc2 = ResidualDilatedBlock(64, 128, stride=2)    # L/4
+        self.enc3 = ResidualDilatedBlock(128, 256, stride=2)   # L/8
+
+        # ----- Transformer Bottleneck -------------------------------------
+        self.transformer = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=256,
+                nhead=8,
+                dim_feedforward=512,
+                batch_first=True,
+            ),
+            num_layers=2,
+        )
+
+        self.T_reduced = ceil(fixed_len / 8)      # after three stride‑2 downsamples
+        self.flat_dim = 256 * self.T_reduced
+
+        self.fc_enc = nn.Linear(self.flat_dim, latent_dim)
+        self.fc_dec = nn.Linear(latent_dim, self.flat_dim)
+
+        # ----- Decoder -----------------------------------------------------
+        self.up3  = nn.ConvTranspose1d(256, 128, kernel_size=4, stride=2, padding=1)
+        self.dec3 = ResidualDilatedBlock(256, 128, kernel_sizes=(3,), dilations=(1,), dropout=0.1)
+
+        self.up2  = nn.ConvTranspose1d(128,  64, kernel_size=4, stride=2, padding=1)
+        self.dec2 = ResidualDilatedBlock(128,  64, kernel_sizes=(3,), dilations=(1,), dropout=0.1)
+
+        self.up1  = nn.ConvTranspose1d( 64,  32, kernel_size=4, stride=2, padding=1)
+        self.dec1 = ResidualDilatedBlock( 64,  32, kernel_sizes=(3,), dilations=(1,), dropout=0.1)
+
+        self.final_conv = nn.Conv1d(32, chans, kernel_size=1)
+        self.out_act    = nn.Tanh()
+
+    def forward(self, x):
+        # ---------------- Encoder ----------------
+        s1 = self.stem(x)      # (B, 32, L)
+        s2 = self.enc1(s1)     # (B, 64, L/2)
+        s3 = self.enc2(s2)     # (B,128, L/4)
+        s4 = self.enc3(s3)     # (B,256, L/8)
+
+        # Transformer expects (B, T, C)
+        t = self.transformer(s4.permute(0, 2, 1)).permute(0, 2, 1)  # (B,256,T/8)
+
+        # Latent projection
+        z = self.fc_enc(t.flatten(1))                               # (B, latent_dim)
+        y = self.fc_dec(z).view_as(t)                               # (B,256,T/8)
+
+        # ---------------- Decoder ----------------
+        y = self.up3(y)
+        y = self.dec3(torch.cat([y, s3], dim=1))
+
+        y = self.up2(y)
+        y = self.dec2(torch.cat([y, s2], dim=1))
+
+        y = self.up1(y)
+        y = self.dec1(torch.cat([y, s1], dim=1))
+
+        return self.out_act(self.final_conv(y))
+
+
 def train_autoencoder(model, train_loader, val_loader, optimizer, criterion, n_epochs=20, device='cpu'):
     model.to(device)
+
+    # Add ReduceLROnPlateau scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
 
     for epoch in range(n_epochs):
         model.train()
@@ -188,8 +349,9 @@ def train_autoencoder(model, train_loader, val_loader, optimizer, criterion, n_e
         avg_val_loss = total_val_loss / len(val_loader)
 
         print(f"Epoch {epoch+1}/{n_epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
-        
-        
+
+        # Step the scheduler with validation loss
+        scheduler.step(avg_val_loss)
 
 def autoencoder_main(name_dataset="harvard"):
     """ Main function to train the Conv1D autoencoder on EEG data. """
@@ -202,9 +364,9 @@ def autoencoder_main(name_dataset="harvard"):
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        model = Conv1DAutoencoder(n_channels=19, fixed_len=segment_len_samples, latent_dim=16)
+        model = EEGAutoEncoder(chans=19, latent_dim=64, fixed_len=segment_len_samples)
         model = model.to(device)
-
+ 
         criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
@@ -223,11 +385,6 @@ def autoencoder_main(name_dataset="harvard"):
         train_autoencoder(model, train_loader, val_loader, optimizer, criterion, n_epochs=20, device=device)
         torch.save(model.state_dict(), "conv1d_autoencoder.pth")
         
-    else if name_dataset == "tuh":
-        #tuh dataset is set of fif files, so we need to load them differently
-        fif_folder = Path("/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean")
-        
-        
         
         
     
@@ -236,5 +393,6 @@ def autoencoder_main(name_dataset="harvard"):
     
     
 if __name__ == "__main__":
-    # autoencoder_main(name_dataset="harvard-eeg")  # Change to "tuh" if needed
-    autoencoder_main(name_dataset="tuh")  # Uncomment to run on TUH
+    autoencoder_main(name_dataset="harvard")  # Change to "tuh" if needed
+    # autoencoder_main(name_dataset="tuh")  # Uncomment to run on TUH
+    
