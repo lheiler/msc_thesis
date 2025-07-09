@@ -59,7 +59,7 @@ def independence_of_features(xs: torch.Tensor, save_path, device: str = "cpu") -
     mask = hsic != 0
     global_score = hsic[mask].mean().item() if mask.any() else 0.0
     
- 
+    
     sns.heatmap(hsic, vmin=0, vmax=0.05, square=True, cmap="mako")
     plt.savefig(os.path.join(save_path, "hsic_matrix.png"))
     plt.close()
@@ -82,12 +82,16 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
     dict
         Dictionary with mean loss metrics.
     """
+    assert hasattr(model, "age_mean") and hasattr(model, "age_std"), "Model must have age_mean and age_std set for denormalization."
     model.eval()
     total_loss_g = 0.0
     total_loss_a = 0.0
     total_loss_abn = 0.0
     total_loss = 0.0
     total_samples = 0
+    total_mae_a = 0.0
+    age_true = []
+    age_pred = []
     
     total_correct_g = 0
     total_correct_abn = 0
@@ -104,9 +108,12 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
             g = (g == 2).float()
             ab = ab.float()
             a = a.float()
+            age_true.append(a.cpu())
             # print(f"Evaluating batch size: {batch_size}, x shape: {x}, g shape: {g}, a shape: {a}, ab shape: {ab}")
             
             ĝ, â, abn = model(x)
+            â_denorm = model.denormalize_age(â)
+            age_pred.append(â_denorm.cpu())
             
             # Compute accuracy for gender and abnormality
             g_pred = (ĝ > 0.5).float()
@@ -122,12 +129,28 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
             loss_a = model.a_loss(â, a)
             loss_abn = model.abn_loss(abn, ab)
 
+            a_denorm = model.denormalize_age(a)
+            mae_a = torch.abs(â_denorm - a_denorm).sum().item()
+            total_mae_a += mae_a
+
             total_loss_g += loss_g.item() * batch_size
             total_loss_a += loss_a.item() * batch_size
             total_loss_abn += loss_abn.item() * batch_size
             total_loss += (loss_g + loss_a + loss_abn).item() * batch_size
             
-            
+    # Age bin performance
+    import numpy as np
+    age_true_all = torch.cat(age_true).numpy()
+    age_pred_all = torch.cat(age_pred).numpy()
+
+    age_bins = [0, 20, 40, 60, 80, 100]
+    bin_mae = {}
+    for i in range(len(age_bins) - 1):
+        mask = (age_true_all >= age_bins[i]) & (age_true_all < age_bins[i + 1])
+        if np.any(mask):
+            bin_mae[f"{age_bins[i]}–{age_bins[i+1]}"] = np.mean(np.abs(age_true_all[mask] - age_pred_all[mask]))
+        else:
+            bin_mae[f"{age_bins[i]}–{age_bins[i+1]}"] = None
 
     return {
         'loss_g': total_loss_g / total_samples,
@@ -135,7 +158,9 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
         'loss_abn': total_loss_abn / total_samples,
         'total_loss': total_loss / total_samples,
         'accuracy_g': total_correct_g / total_samples,
-        'accuracy_abn': total_correct_abn / total_samples
+        'accuracy_abn': total_correct_abn / total_samples,
+        'mae_a': total_mae_a / total_samples,
+        'age_bin_mae': bin_mae,
     }
     
     

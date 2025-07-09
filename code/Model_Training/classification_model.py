@@ -8,39 +8,7 @@ from torch import nn
 
 
 # ------------------------------------------------------------------
-# 1.  Dataset helper
-# ------------------------------------------------------------------
-# class ParamDataset(torch.utils.data.Dataset):
-#     """
-#     Generic (X, y_gender, y_age, y_abn) container.
-
-#     Parameters
-#     ----------
-#     X         : (N, D)   float32   – parameter vectors
-#     gender    : (N,)     int32/uint8  – 0 or 1
-#     age       : (N,)     float32      – years
-#     abnormal  : (N,)     int32/uint8  – 0 or 1
-#     """
-#     def __init__(self, X, gender, age, abnormal):
-#         self.X         = torch.as_tensor(X,        dtype=torch.float32)
-#         self.gender    = torch.as_tensor(gender,   dtype=torch.float32)
-#         self.age       = torch.as_tensor(age,      dtype=torch.float32)
-#         self.abnormal  = torch.as_tensor(abnormal, dtype=torch.float32)
-        
-#         self.gender = (self.gender == 2).float()
-
-#     def __len__(self):
-#         return len(self.X)
-
-#     def __getitem__(self, idx):
-#         return ( self.X[idx],
-#                  self.gender[idx],
-#                  self.age[idx],
-#                  self.abnormal[idx] )
-
-
-# ------------------------------------------------------------------
-# 2.  Multi-task network
+# 1.  Multi-task network
 # ------------------------------------------------------------------
 class ClassificationModel(nn.Module):
     """
@@ -52,7 +20,7 @@ class ClassificationModel(nn.Module):
     def __init__(self,
                  input_dim: int,
                  hidden_dims=(256, 128, 32),
-                 dropout: float = 0.1):
+                 dropout: float = 0.2):
         super().__init__()
 
         layers = []
@@ -71,6 +39,9 @@ class ClassificationModel(nn.Module):
         self.bce = nn.BCELoss()
         self.mse = nn.MSELoss()
 
+        self.age_mean = 0.0
+        self.age_std = 1.0
+
     def forward(self, x):
         h = self.trunk(x)
         gender_logit = self.gender_head(h).squeeze(-1)
@@ -86,22 +57,40 @@ class ClassificationModel(nn.Module):
     def a_loss(self, â, a): return self.mse(â, a)
     def abn_loss(self, âbn, ab): return self.bce(âbn, ab)
 
+    def normalize_age(self, a):
+        return (a - self.age_mean) / self.age_std
+
+    def denormalize_age(self, a):
+        return a * self.age_std + self.age_mean
+
 
 # ------------------------------------------------------------------
-# 3.  Training utility
+# 2.  Training utility
 # ------------------------------------------------------------------
 def train(model,
           dataloader,
           n_epochs=50,
-          lr=1e-5,
+          lr=1e-3,
           device='cpu',
-          λ_gender=1.0,
-          λ_age=0.0,
-          λ_abn=1.0):
+          λ_gender=0.0,
+          λ_age=1.0,
+          λ_abn=0.0):
     
     
     device = torch.device(device)
-
+    # get mean and std from the dataloader for age normalization
+    age_mean = 0.0
+    age_std = 0.0
+    for _, _, a, _ in dataloader:
+        age_mean += a.sum().item()
+        age_std += (a ** 2).sum().item()
+    age_mean /= len(dataloader.dataset)
+    age_std = (age_std / len(dataloader.dataset) - age_mean ** 2) ** 0.5
+    print(f"Age mean: {age_mean:.2f}, Age std: {age_std:.2f}")
+    
+    model.age_mean = age_mean
+    model.age_std = age_std
+    
     model.to(device)
     optim = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -115,6 +104,7 @@ def train(model,
             x = x.float()
             g = (g.long() == 2).float().detach()  # Safe runtime conversion
             a = a.float().detach()
+            a = model.normalize_age(a)
             ab = ab.float().detach()
 
             optim.zero_grad()
@@ -127,7 +117,7 @@ def train(model,
             loss_age    = model.a_loss(â, a)
 
             loss = λ_gender * loss_gender + λ_abn * loss_abn + λ_age * loss_age
-
+            print("predicted age:", â[0].item(), "true age:", a[0].item())
             loss.backward()
             optim.step()
             running += loss.item() * x.size(0)

@@ -102,30 +102,42 @@ def main():
     Main function to run the entire pipeline.
     """
     method = "AE"  # Specify the method for latent feature extraction, e.g., "ctm" or "c22"
+    data_corp = "harvard"
 
     # path parameters:
     data_path_train = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train"  # Specify the path to your data
     data_path_eval = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval"  # Specify the path to your evaluation data
-    results_path = "Results/tuh-eeg-" + method + "-parameters/"  # Specify the path to save results
+    data_path_harvard = "/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_root_small_clean"  # Specify the path to your harvard data
+    if data_corp == "harvard":
+        results_path = "Results/harvard-eeg-" + method + "-parameters/"
+    else:
+        results_path = "Results/tuh-eeg-" + method + "-parameters/"  # Specify the path to save results
+        
+    if not os.path.exists(results_path):
+        os.makedirs(results_path)
     
     
     
     # model parameters:
     batch_size = 64  # Specify the batch size for data loading
-    num_epochs = 500  # Specify the number of epochs for training
+    num_epochs = 20  # Specify the number of epochs for training
     hidden_layer_size = 128  # Specify the size of the hidden layer in the model
     hidden_layers = 2  # Specify the number of hidden layers in the model
     
     extracted = True  # Set to True if latent features are already extracted, otherwise False
     
     
-    # ------------------------    # 1. Load and preprocess data.  ------------------------
+    
+    # ------------------------  # 1. Load and preprocess data.  ------------------------
     
     if not extracted:
         # Load and preprocess data
         print("Loading data...")
-        t_data = dl.load_data(data_path_train)
-        e_data = dl.load_data(data_path_eval)
+        if data_corp == "harvard":
+            t_data, e_data = dl.load_data_harvard(data_path_harvard)
+        else:
+            t_data = dl.load_data(data_path_train)
+            e_data = dl.load_data(data_path_eval)
         # ------------------------------------------------------------------------------------
         
         

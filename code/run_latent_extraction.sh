@@ -14,8 +14,8 @@ cd /rds/general/user/lrh24/home/thesis/code
 source ~/env_thesis/bin/activate
 #module load CUDA/12.1
 
-pip uninstall -y pycatch22
-pip install --no-cache-dir --no-binary=:all: pycatch22
+#pip uninstall -y pycatch22
+#pip install --no-cache-dir --no-binary=:all: pycatch22
 
 
 # Run your script
