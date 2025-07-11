@@ -1,5 +1,5 @@
 import torch
-from Model_Training.classification_model import ClassificationModel
+from model_training.classification_model import ClassificationModel
 from itertools import combinations
 import os
 from typing import Dict, Tuple

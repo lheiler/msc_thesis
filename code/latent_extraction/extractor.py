@@ -1,10 +1,8 @@
-from Latent_Extraction.cortico_thalamic import fit_ctm_from_raw 
+from latent_extraction.cortico_thalamic import fit_ctm_from_raw
 from torch.utils.data import DataLoader
-from Latent_Extraction.c22 import extract_c22
-from Latent_Extraction.c22 import extract_c22_psd
-from Latent_Extraction.AE.convAE import Conv1DAutoencoder
-from Latent_Extraction.AE.convAE import EEGAutoEncoder
-from Latent_Extraction.AE.extract_z import extract_z
+from latent_extraction.c22 import extract_c22, extract_c22_psd
+from latent_extraction.AE.convAE import Conv1DAutoencoder, EEGAutoEncoder
+from latent_extraction.AE.extract_z import extract_z
 import os
 import json
 import torch
@@ -27,9 +25,9 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
     
     if method == "AE":
         model = EEGAutoEncoder(chans=19, fixed_len=7680, latent_dim=64)
-        model.load_state_dict(torch.load(
-            "/rds/general/user/lrh24/home/thesis/code/Latent_Extraction/AE/conv1d_autoencoder.pth",
-            map_location=torch.device(device)))
+        # Resolve checkpoint path relative to this file to remain robust to folder renaming
+        ckpt_path = os.path.join(os.path.dirname(__file__), "AE", "conv1d_autoencoder.pth")
+        model.load_state_dict(torch.load(ckpt_path, map_location=device))
 
     for x, g, a, ab in data:
         if method == "ctm":

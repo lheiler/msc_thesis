@@ -1,22 +1,22 @@
 import faulthandler
 faulthandler.enable()
 
-from Data_Preprocessing import data_loading as dl
-import Model_Training.classification_model as cm
-from Model_Training.classification_model import ClassificationModel
-import Evaluation.evaluation as eval
-import Latent_Extraction.extractor as extractor
+# Updated imports after renaming directories to snake_case
+from data_preprocessing import data_loading as dl
+import model_training.classification_model as cm
+from model_training.classification_model import ClassificationModel
+import evaluation.evaluation as eval
+import latent_extraction.extractor as extractor
 import numpy as np
 import os
 import ast
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 import re
 import json
 import torch
-from Visualization import tsne # Assuming you have a tsne visualization function
+from visualization import tsne  # Assuming you have a tsne visualization function
 import argparse
 import yaml
-from pathlib import Path
 
 _FLOAT64_RE = re.compile(r'np\.float64\(([^)]+)\)')  # capture inner number
 
