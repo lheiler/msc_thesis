@@ -73,8 +73,8 @@ def train(model,
           lr=1e-3,
           device='cpu',
           λ_gender=0.0,
-          λ_age=1.0,
-          λ_abn=0.0):
+          λ_age=0.0,
+          λ_abn=1.0):
     
     
     device = torch.device(device)

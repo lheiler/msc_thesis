@@ -53,9 +53,10 @@ def load_data_harvard(data_path, eval_split=0.2):
             subject = subj_dir.name.replace("sub-", "")
             session = ses_dir.name.replace("ses-", "")
             subject_sessions.append((subject, session))
+            #print(f"Found subject-session pair: {subject}, {session}")
 
     # Split subject-session pairs into train/eval
-    train_pairs, eval_pairs = train_test_split(subject_sessions, test_size=eval_split, random_state=42)
+    train_pairs, eval_pairs = train_test_split(subject_sessions, test_size=eval_split, random_state=42, shuffle=True)
 
     def process(pairs):
         result = []
@@ -63,16 +64,17 @@ def load_data_harvard(data_path, eval_split=0.2):
             try:
                 
                 bids_path = BIDSPath(subject=subject,
-                                     session=session,
-                                     task='rEEG',
-                                     suffix='eeg',
-                                     extension='.vhdr',
-                                     datatype='eeg',
-                                     root=data_path)
-
+                     session=session,
+                     suffix='eeg',
+                     extension='.vhdr',
+                     datatype='eeg',
+                     root=data_path)
+                
                 with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", category=RuntimeWarning)
+                    print(f"Reading BIDS path: {bids_path.fpath}")
+                    #warnings.simplefilter("ignore", category=RuntimeWarning)
                     raw = read_raw_bids(bids_path, verbose=False)
+                    
                 raw.load_data()
                 sfreq = raw.info['sfreq']
                 

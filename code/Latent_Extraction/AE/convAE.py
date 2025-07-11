@@ -8,61 +8,64 @@ from mne_bids import BIDSPath, read_raw_bids
 from tqdm import tqdm
 import numpy as np
 import mne
+from mne.io import read_raw_brainvision
 from torch.utils.data import random_split
 
 import torch.nn.functional as F
+
 from math import ceil
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
+
 
 
 
 # === EEG Dataset Class ===
 class EEGSegmentDataset(Dataset):
-    def __init__(self, bids_root, segment_len_samples=7680):
+    """
+    Lazily loads 60‑s BrainVision recordings.  Each item reads exactly one
+    .vhdr header, crops the Raw object BEFORE streaming samples, and returns a
+    z‑scored (C, T) float32 tensor.  Faster and lower‑RAM than eager loading.
+    """
+    def __init__(self, bids_root: Path, segment_len_samples: int = 7680):
+        super().__init__()
         self.segment_len = segment_len_samples
-        self.raw_segments = []
 
-        subject_dirs = [p for p in bids_root.glob("sub-*") if p.is_dir()]
-
-        for subj_dir in subject_dirs:
-            vhdr_files = list(subj_dir.rglob("*_eeg.vhdr"))
-            for vhdr_file in vhdr_files:
-                try:
-                    subject = vhdr_file.parts[-4].replace("sub-", "")
-                    session = vhdr_file.parts[-3].replace("ses-", "")
-                    task = vhdr_file.name.split("_task-")[1].split("_")[0]
-
-                    bids_path = BIDSPath(
-                        subject=subject,
-                        session=session,
-                        task=task,
-                        datatype="eeg",
-                        root=bids_root
-                    )
-
-                    raw = read_raw_bids(bids_path, verbose=False)
-                    raw.load_data()
-                    sfreq = raw.info['sfreq']
-                    raw.crop(0, 60.0 - 1/sfreq)  # Crop to segment length
-                    
-                    # ✅ Expect exactly 7680 samples after preprocessing
-                    if raw.n_times != self.segment_len:
-                        print(f"⚠️ Skipping {vhdr_file.name}: got {raw.n_times} samples, expected {self.segment_len}")
-                        continue
-
-                    segment = raw.get_data()  # shape: (channels, 7680)
-                    self.raw_segments.append(segment.astype(np.float32))
-
-                except Exception as e:
-                    print(f"⚠️ Skipping file {vhdr_file.name}: {e}")
+        # Collect all *_eeg.vhdr files once; no I/O on the data here
+        self.vhdr_files = [
+            p for p in bids_root.rglob("*_eeg.vhdr") if p.is_file()
+        ]
+        if not self.vhdr_files:
+            raise RuntimeError(f"No BrainVision .vhdr files found in {bids_root}")
 
     def __len__(self):
-        return len(self.raw_segments)
+        return len(self.vhdr_files)
 
-    def __getitem__(self, idx):
-        segment = self.raw_segments[idx]
-        segment = (segment - np.mean(segment)) / np.std(segment)  # z-score normalization
-        return torch.tensor(segment, dtype=torch.float32)
-    
+    def __getitem__(self, idx: int):
+        vhdr = self.vhdr_files[idx]
+
+        # --- Load header only (preload=False) ---
+        raw = read_raw_brainvision(str(vhdr), preload=False, verbose=False)
+
+        # Crop BEFORE streaming samples to RAM
+        sfreq = raw.info["sfreq"]
+        t_max = (self.segment_len - 1) / sfreq   # inclusive end
+        raw.crop(tmin=0.0, tmax=t_max)
+        raw.load_data(verbose=False)             # now streams only 60 s
+
+        data = raw.get_data().astype(np.float32)  # (channels, T)
+
+        # Sanity‑check length; sometimes header rounding gives ±1 sample
+        if data.shape[1] != self.segment_len:
+            if data.shape[1] > self.segment_len:
+                data = data[:, : self.segment_len]
+            else:  # pad with zeros
+                pad = self.segment_len - data.shape[1]
+                data = np.pad(data, ((0, 0), (0, pad)), mode="constant")
+
+        # Z‑score normalisation across the entire segment
+        data = (data - data.mean()) / (data.std() + 1e-8)
+
+        return torch.from_numpy(data)
     
 # === Conv1D Autoencoder Class ===    
 class Conv1DAutoencoder(nn.Module):
@@ -241,6 +244,24 @@ class ResidualDilatedBlock(nn.Module):
         return self.act(out + self.shortcut(x))
 
 
+# === Channel-wise Squeeze-and-Excitation ==================================
+class ChannelSE(nn.Module):
+    """Squeeze‑and‑Excitation for channel attention."""
+    def __init__(self, channels: int, reduction: int = 16):
+        super().__init__()
+        self.avg = nn.AdaptiveAvgPool1d(1)
+        self.fc  = nn.Sequential(
+            nn.Conv1d(channels, channels // reduction, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(channels // reduction, channels, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        scale = self.fc(self.avg(x))
+        return x * scale
+
+
 class EEGAutoEncoder(nn.Module):
     """
     Advanced multi‑scale auto‑encoder for 19‑channel EEG.
@@ -258,6 +279,8 @@ class EEGAutoEncoder(nn.Module):
         self.enc1 = ResidualDilatedBlock(32,  64, stride=2)    # L/2
         self.enc2 = ResidualDilatedBlock(64, 128, stride=2)    # L/4
         self.enc3 = ResidualDilatedBlock(128, 256, stride=2)   # L/8
+        # Channel attention
+        self.se = ChannelSE(256)
 
         # ----- Transformer Bottleneck -------------------------------------
         self.transformer = nn.TransformerEncoder(
@@ -295,6 +318,7 @@ class EEGAutoEncoder(nn.Module):
         s2 = self.enc1(s1)     # (B, 64, L/2)
         s3 = self.enc2(s2)     # (B,128, L/4)
         s4 = self.enc3(s3)     # (B,256, L/8)
+        s4 = self.se(s4)          # channel‑wise re‑weighting
 
         # Transformer expects (B, T, C)
         t = self.transformer(s4.permute(0, 2, 1)).permute(0, 2, 1)  # (B,256,T/8)
@@ -316,42 +340,178 @@ class EEGAutoEncoder(nn.Module):
         return self.out_act(self.final_conv(y))
 
 
-def train_autoencoder(model, train_loader, val_loader, optimizer, criterion, n_epochs=20, device='cpu'):
+# === Loss helpers =========================================================
+def spectral_loss(x_hat: torch.Tensor, x: torch.Tensor,
+                  n_fft: int = 256, hop: int = 128) -> torch.Tensor:
+    """
+    Compute log‑spectral mean‑squared error between two EEG segments.
+
+    Both inputs are expected to be shaped (B, C, T). Since
+    ``torch.stft`` only accepts 1‑D (T) or 2‑D (B, T) tensors, the
+    batch and channel dimensions are flattened to (B*C, T) before
+    calling ``stft``.  A Hann window is used to minimise spectral
+    leakage.
+
+    Parameters
+    ----------
+    x_hat : torch.Tensor
+        Reconstructed signal of shape (B, C, T).
+    x : torch.Tensor
+        Target signal of shape (B, C, T).
+    n_fft : int
+        FFT size.
+    hop : int
+        Hop length between STFT frames.
+
+    Returns
+    -------
+    torch.Tensor
+        Scalar loss value.
+    """
+    # ----- Flatten to 2‑D: (B*C, T) -----
+    B, C, T = x.shape
+    x_hat_flat = x_hat.reshape(B * C, T)
+    x_flat     = x.reshape(B * C, T)
+
+    # ----- Hann window to reduce leakage -----
+    window = torch.hann_window(n_fft, device=x.device, dtype=x.dtype)
+
+    # ----- STFT -----
+    Xh = torch.stft(x_hat_flat, n_fft=n_fft, hop_length=hop,
+                    window=window, return_complex=True)
+    X  = torch.stft(x_flat,     n_fft=n_fft, hop_length=hop,
+                    window=window, return_complex=True)
+
+    # ----- Log‑spectral MSE -----
+    return F.mse_loss(torch.log1p(torch.abs(Xh)),
+                      torch.log1p(torch.abs(X)))
+
+def mixed_loss(x_hat: torch.Tensor,
+               x: torch.Tensor,
+               mask: torch.Tensor | None = None,
+               alpha: float = 0.7) -> torch.Tensor:
+    """
+    Combined reconstruction loss.
+
+    * **Time‑domain MSE** is evaluated **only on the masked positions**
+      (if a boolean `mask` tensor is supplied). This encourages the model
+      to in‑fill the occluded parts without being penalised for simply
+      copying the visible input.
+    * **Log‑spectral MSE** is always evaluated on the full sequences to
+      preserve frequency‑domain consistency across the entire segment.
+
+    Parameters
+    ----------
+    x_hat : torch.Tensor
+        Model output of shape ``(B, C, T)``.
+    x : torch.Tensor
+        Ground‑truth target of shape ``(B, C, T)``.
+    mask : torch.Tensor | None
+        Boolean tensor (same shape as ``x``) indicating the time samples
+        that were masked out during input corruption.  If ``None``, the
+        MSE term is computed on all samples.
+    alpha : float
+        Weighting factor for the time‑domain MSE term.  The spectral term
+        is weighted by ``(1 - alpha)``.
+
+    Returns
+    -------
+    torch.Tensor
+        Scalar loss value suitable for ``loss.backward()``.
+    """
+    if mask is not None:
+        mse = F.mse_loss(x_hat[mask], x[mask])
+    else:
+        mse = F.mse_loss(x_hat, x)
+
+    spec = spectral_loss(x_hat, x)
+    return alpha * mse + (1 - alpha) * spec
+
+
+# === Masked reconstruction helper ========================================
+def apply_time_mask(x: torch.Tensor, mask_ratio: float = 0.3,
+                    block_size: int = 256):
+    """
+    Zero‑out random time blocks (size = block_size samples) of each segment.
+    Returns masked input and boolean mask of *masked* positions.
+    """
+    B, C, T = x.shape
+    num_blocks = int(T * mask_ratio // block_size)
+    mask = torch.zeros_like(x, dtype=torch.bool)
+
+    for b in range(B):
+        idx = torch.randperm(T // block_size)[:num_blocks]
+        for i in idx:
+            s, e = i*block_size, (i+1)*block_size
+            x[b, :, s:e] = 0.0
+            mask[b, :, s:e] = True
+    return x, mask
+
+
+def train_autoencoder(model, train_loader, val_loader, optimizer,
+                      n_epochs: int = 40, device: str = 'cpu',
+                      early_stop_patience: int = 8,
+                      mask_ratio: float = 0.3):
+    """
+    Joint masked‑reconstruction training with mixed MSE + spectral loss,
+    cosine warm restarts, aggressive ReduceLROnPlateau and early stopping.
+    """
     model.to(device)
 
-    # Add ReduceLROnPlateau scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+    # LR schedulers
+    plateau = ReduceLROnPlateau(optimizer, mode='min',
+                                factor=0.5, patience=1,
+                                min_lr=1e-5)
+    cosine  = CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2)
+
+    best_val = float('inf')
+    patience_ctr = 0
 
     for epoch in range(n_epochs):
+        # ----------- Training -----------
         model.train()
-        total_train_loss = 0.0
-
+        total_train = 0.0
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{n_epochs}"):
             batch = batch.to(device).float()
+            masked, mask_bool = apply_time_mask(batch.clone(),
+                                                mask_ratio=mask_ratio)
+
             optimizer.zero_grad()
-            output = model(batch)
-            loss = criterion(output, batch)
+            out = model(masked)
+            loss = mixed_loss(out, batch, mask_bool)
             loss.backward()
             optimizer.step()
-            total_train_loss += loss.item()
+            total_train += loss.item()
 
-        avg_train_loss = total_train_loss / len(train_loader)
+        avg_train = total_train / len(train_loader)
 
-        # === Validation ===
+        # ----------- Validation -----------
         model.eval()
-        total_val_loss = 0.0
+        total_val = 0.0
         with torch.no_grad():
             for batch in val_loader:
                 batch = batch.to(device).float()
-                output = model(batch)
-                loss = criterion(output, batch)
-                total_val_loss += loss.item()
-        avg_val_loss = total_val_loss / len(val_loader)
+                out   = model(batch)
+                loss  = mixed_loss(out, batch)
+                total_val += loss.item()
+        avg_val = total_val / len(val_loader)
 
-        print(f"Epoch {epoch+1}/{n_epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+        # Scheduler updates
+        plateau.step(avg_val)
+        cosine.step(epoch + 1)
 
-        # Step the scheduler with validation loss
-        scheduler.step(avg_val_loss)
+        print(f"Epoch {epoch+1}/{n_epochs} | Train Loss: {avg_train:.4f} "
+              f"| Val Loss: {avg_val:.4f}")
+
+        # Early stopping
+        if avg_val + 1e-4 < best_val:
+            best_val = avg_val
+            patience_ctr = 0
+        else:
+            patience_ctr += 1
+            if patience_ctr >= early_stop_patience:
+                print("Early stopping triggered.")
+                break
 
 def autoencoder_main(name_dataset="harvard"):
     """ Main function to train the Conv1D autoencoder on EEG data. """
@@ -363,11 +523,12 @@ def autoencoder_main(name_dataset="harvard"):
         segment_len_samples = segment_len_sec * sample_rate 
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+        
+        print("we quick out here")
         model = EEGAutoEncoder(chans=19, latent_dim=64, fixed_len=segment_len_samples)
+        print("not anymore")
         model = model.to(device)
  
-        criterion = nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
         # ✅ Use the small subset path here!
@@ -382,7 +543,9 @@ def autoencoder_main(name_dataset="harvard"):
         val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
 
         # ✅ Use correct DataLoader variable name
-        train_autoencoder(model, train_loader, val_loader, optimizer, criterion, n_epochs=20, device=device)
+        train_autoencoder(model, train_loader, val_loader, optimizer,
+                          n_epochs=40, device=device,
+                          early_stop_patience=8, mask_ratio=0.3)
         torch.save(model.state_dict(), "conv1d_autoencoder.pth")
         
         

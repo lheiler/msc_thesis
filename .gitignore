@@ -1,3 +1,4 @@
 Datasets/tuh-eeg-ab/
 Datasets/harvard-eeg/
 **/.DS_Store
+**/__pycache__/

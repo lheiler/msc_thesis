@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import shutil
 from pathlib import Path
 from mne_bids import BIDSPath, read_raw_bids, write_raw_bids
@@ -95,8 +96,8 @@ def write_meta_to_sidecar(bids_root: Path, bids_path, meta_dict):
 
 
 # === Setup ===
-bids_root_in = Path("/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_root_small")
-bids_root_out = Path("/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_root_small_clean")
+bids_root_in = Path("/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_100_normal_abnormal")
+bids_root_out = Path("/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_100_normal_abnormal_clean")
 
 
 # IMPORTANT: All the metadata CSVs must be in the same directory
@@ -144,6 +145,10 @@ for subj_dir in subject_dirs:
 
             # === Load and clean data ===
             raw = read_raw_bids(bids_path, verbose=False)
+            # Standardize session recording date to avoid inconsistencies
+            
+            
+            raw.set_meas_date(datetime(2000, 1, 1, tzinfo=timezone.utc))
             raw.load_data()
             
             raw.set_eeg_reference('average', projection=False)
