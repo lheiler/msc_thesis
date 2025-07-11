@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 from Latent_Extraction.c22 import extract_c22
 from Latent_Extraction.c22 import extract_c22_psd
 from Latent_Extraction.AE.convAE import Conv1DAutoencoder
+from Latent_Extraction.AE.convAE import EEGAutoEncoder
 from Latent_Extraction.AE.extract_z import extract_z
 import os
 import json
@@ -22,9 +23,13 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         with open(save_path, "w") as f:
             pass  # This will clear the file
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     if method == "AE":
-        model = Conv1DAutoencoder(n_channels=19, fixed_len=len(data[0][0]), latent_dim=16)
-        model.load_state_dict(torch.load("/rds/general/user/lrh24/home/thesis/code/Latent_Extraction/AE/conv1d_autoencoder.pth"))
+        model = EEGAutoEncoder(chans=19, fixed_len=7680, latent_dim=64)
+        model.load_state_dict(torch.load(
+            "/rds/general/user/lrh24/home/thesis/code/Latent_Extraction/AE/conv1d_autoencoder.pth",
+            map_location=torch.device(device)))
 
     for x, g, a, ab in data:
         if method == "ctm":
@@ -34,7 +39,8 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         elif method == "c22_psd":
             latent_feature = extract_c22_psd(x)
         elif method == "AE":
-            latent_feature = extract_z(model, x)
+            model_device = next(model.parameters()).device
+            latent_feature = extract_z(model, x, device=device)
         else:
             raise ValueError(f"Unknown method: {method}")
 

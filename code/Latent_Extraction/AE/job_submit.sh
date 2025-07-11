@@ -1,14 +1,14 @@
 #!/bin/bash
 #PBS -NconvAE_train
-#PBS -lwalltime=12:00:00
-#PBS -lselect=1:ncpus=4:mem=32gb
+#PBS -lwalltime=01:00:00
+#PBS -lselect=1:ncpus=4:mem=16gb:ngpus=1
 
                              # (a)bort, (b)egin, (e)nd mail
 # ===== load software stack =====
 #module purge
 #module load cuda/12.2                   # GPU drivers + nvcc
 #module load anaconda/2024.02            # Python distro (example)
-
+module load tools/dev
 # ===== activate your virtual/conda env =====
 source env_thesis/bin/activate              # or: conda activate env_thesis
 

@@ -1,0 +1,22 @@
+method: ctm
+# Dataset corpus to use: 'tuh' or 'harvard'
+data_corp: harvard
+
+paths:
+  # Path to TUH EEG training data (ignored for Harvard)
+  data_train: "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train"
+  # Path to TUH EEG evaluation data (ignored for Harvard)
+  data_eval: "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval"
+  # Path to cleaned Harvard EEG BIDS root directory (ignored for TUH)
+  data_harvard: "/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_100_normal_abnormal/clean"
+  # Directory where all results will be written
+  results_root: "Results"
+
+model:
+  batch_size: 16
+  num_epochs: 20
+  hidden_layer_size: 128
+  hidden_layers: 2
+
+# Whether latent representations have already been extracted
+extracted: false 

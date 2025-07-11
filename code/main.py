@@ -14,6 +14,9 @@ import re
 import json
 import torch
 from Visualization import tsne # Assuming you have a tsne visualization function
+import argparse
+import yaml
+from pathlib import Path
 
 _FLOAT64_RE = re.compile(r'np\.float64\(([^)]+)\)')  # capture inner number
 
@@ -101,31 +104,37 @@ def main():
     """
     Main function to run the entire pipeline.
     """
-    method = "AE"  # Specify the method for latent feature extraction, e.g., "ctm" or "c22"
-    data_corp = "harvard"
+    # 0️⃣ Load configuration from YAML / CLI -------------------------------
+    parser = argparse.ArgumentParser(description="EEG classification pipeline")
+    parser.add_argument("--config", type=str, default="config.yaml", help="Path to YAML configuration file")
+    args = parser.parse_args()
 
-    # path parameters:
-    data_path_train = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train"  # Specify the path to your data
-    data_path_eval = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval"  # Specify the path to your evaluation data
-    data_path_harvard = "/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_root_small_clean"  # Specify the path to your harvard data
+    with open(args.config, "r") as f:
+        cfg = yaml.safe_load(f)
+
+    # ------------------------  Parameters from config  ------------------------
+    method    = cfg.get("method", "ctm")
+    data_corp = cfg.get("data_corp", "harvard")
+
+    paths_cfg = cfg.get("paths", {})
+    data_path_train   = paths_cfg.get("data_train", "")
+    data_path_eval    = paths_cfg.get("data_eval", "")
+    data_path_harvard = paths_cfg.get("data_harvard", "")
+
+    results_root = paths_cfg.get("results_root", "Results")
     if data_corp == "harvard":
-        results_path = "Results/harvard-eeg-" + method + "-parameters/"
+        results_path = os.path.join(results_root, f"harvard-eeg-{method}-parameters-100abnormal")
     else:
-        results_path = "Results/tuh-eeg-" + method + "-parameters/"  # Specify the path to save results
-        
-    if not os.path.exists(results_path):
-        os.makedirs(results_path)
-    
-    
-    
-    # model parameters:
-    batch_size = 64  # Specify the batch size for data loading
-    num_epochs = 20  # Specify the number of epochs for training
-    hidden_layer_size = 128  # Specify the size of the hidden layer in the model
-    hidden_layers = 2  # Specify the number of hidden layers in the model
-    
-    extracted = True  # Set to True if latent features are already extracted, otherwise False
-    
+        results_path = os.path.join(results_root, f"tuh-eeg-{method}-parameters")
+    os.makedirs(results_path, exist_ok=True)
+
+    model_cfg = cfg.get("model", {})
+    batch_size        = model_cfg.get("batch_size", 16)
+    num_epochs        = model_cfg.get("num_epochs", 20)
+    hidden_layer_size = model_cfg.get("hidden_layer_size", 128)
+    hidden_layers     = model_cfg.get("hidden_layers", 2)
+
+    extracted = cfg.get("extracted", False)
     
     
     # ------------------------  # 1. Load and preprocess data.  ------------------------
