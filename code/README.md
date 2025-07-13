@@ -11,9 +11,6 @@ A research-grade, end-to-end pipeline for **EEG latent-feature extraction** and 
 4. [Configuration](#configuration)
 5. [Running the Pipeline](#running-the-pipeline)
 6. [Results & Outputs](#results--outputs)
-7. [Testing](#testing)
-8. [Contributing](#contributing)
-9. [License](#license)
 
 ---
 
@@ -85,8 +82,6 @@ paths:
 model:
   batch_size: 16
   num_epochs: 20
-  hidden_layer_size: 128   # reserved for future use
-  hidden_layers: 2         # reserved for future use
 
 extracted: false            # set true to reuse cached latents
 ```
@@ -120,32 +115,4 @@ Results/harvard-eeg-ctm-parameters-100abnormal/
 ├── hsic_matrix.png
 └── tsne_gender.png  (if enabled)
 ```
-The folder is created automatically; change names via `config.yaml`.
-
----
-
-## Testing
-Basic unit tests can be added under `tests/` and executed with `pytest`:
-```bash
-pip install pytest
-pytest -q
-```
-Static checks:
-```bash
-pip install ruff
-ruff .
-```
-
----
-
-## Contributing
-Pull requests are welcome!  Please:
-1. Open an issue first for major changes.
-2. Follow [PEP 8](https://peps.python.org/pep-0008/) style (run `ruff --fix .`).
-3. Add or update unit tests.
-4. Document new modules & functions with Google-style docstrings.
-
----
-
-## License
-© 2023–2024 Your Name.  Released under the MIT License – see `LICENSE` for details. 
+The folder is created automatically; change names via `config.yaml`. 

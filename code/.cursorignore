@@ -1,0 +1,10 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/
+/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/
+code/harvard-eeg/
+# Ignore large dataset directories (relative to repo root)
+harvard-eeg/
+tuh-eeg-ab-clean/
+# Ignore common large data file types
+*.edf
+*.eeg

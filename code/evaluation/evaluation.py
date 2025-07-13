@@ -1,8 +1,10 @@
 import torch
+from torch import nn
+import numpy as np
+from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 from model_training.classification_model import ClassificationModel
-from itertools import combinations
 import os
-from typing import Dict, Tuple
+from typing import Dict, Any
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -96,6 +98,11 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
     total_correct_g = 0
     total_correct_abn = 0
 
+    g_true_all = []
+    g_pred_all = []
+    abn_true_all = []
+    abn_pred_all = []
+
     with torch.no_grad():
         for x, g, a, ab in data:
             batch_size = x.size(0)
@@ -119,6 +126,11 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
             g_pred = (ĝ > 0.5).float()
             abn_pred = (abn > 0.5).float()
 
+            g_true_all.append(g.cpu())
+            g_pred_all.append(g_pred.cpu())
+            abn_true_all.append(ab.cpu())
+            abn_pred_all.append(abn_pred.cpu())
+
             correct_g = (g_pred == g).sum().item()
             correct_abn = (abn_pred == ab).sum().item()
 
@@ -139,7 +151,6 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
             total_loss += (loss_g + loss_a + loss_abn).item() * batch_size
             
     # Age bin performance
-    import numpy as np
     age_true_all = torch.cat(age_true).numpy()
     age_pred_all = torch.cat(age_pred).numpy()
 
@@ -152,6 +163,23 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
         else:
             bin_mae[f"{age_bins[i]}–{age_bins[i+1]}"] = None
 
+    # -------- Additional aggregated metrics --------------------------
+    g_true_concat   = torch.cat(g_true_all).numpy()
+    g_pred_concat   = torch.cat(g_pred_all).numpy()
+    abn_true_concat = torch.cat(abn_true_all).numpy()
+    abn_pred_concat = torch.cat(abn_pred_all).numpy()
+
+    # confusion matrices (2×2) for gender / abnormality
+    cm_gender = confusion_matrix(g_true_concat, g_pred_concat, labels=[0.,1.])
+    cm_abn    = confusion_matrix(abn_true_concat, abn_pred_concat, labels=[0.,1.])
+
+    # precision / recall / f1 (macro) for binary tasks
+    prf_g = precision_recall_fscore_support(g_true_concat, g_pred_concat, average='binary', zero_division=0)
+    prf_a = precision_recall_fscore_support(abn_true_concat, abn_pred_concat, average='binary', zero_division=0)
+
+    # RMSE computed manually to support older scikit-learn versions
+    rmse_a = float(np.sqrt(((age_true_all - age_pred_all) ** 2).mean()))
+
     return {
         'loss_g': total_loss_g / total_samples,
         'loss_a': total_loss_a / total_samples,
@@ -160,25 +188,87 @@ def evaluate_model(model: ClassificationModel, data, device: str = 'cpu'):
         'accuracy_g': total_correct_g / total_samples,
         'accuracy_abn': total_correct_abn / total_samples,
         'mae_a': total_mae_a / total_samples,
+        'rmse_a': rmse_a,
+        'gender_confusion': cm_gender.tolist(),
+        'abn_confusion': cm_abn.tolist(),
+        'gender_precision_recall_f1': {
+            'precision': prf_g[0],
+            'recall': prf_g[1],
+            'f1': prf_g[2],
+        },
+        'abn_precision_recall_f1': {
+            'precision': prf_a[0],
+            'recall': prf_a[1],
+            'f1': prf_a[2],
+        },
         'age_bin_mae': bin_mae,
     }
     
     
-def save_results(metrics, file_path: str):
-    """
-    Save evaluation metrics to a file.
+def _flatten_dict(d, parent_key="", sep="."):
+    """Flatten nested dicts for easier writing to text file."""
+    items = {}
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.update(_flatten_dict(v, new_key, sep=sep))
+        else:
+            items[new_key] = v
+    return items
 
-    Parameters
-    ----------
-    metrics : dict
-        Dictionary containing evaluation metrics.
-    file_path : str
-        Path to the file where metrics will be saved.
+
+def save_results(metrics, file_path: str):
+    """Save evaluation metrics with inline explanations.
+
+    Large arrays are summarised; each key is followed by a short description
+    so readers know what the number means.
     """
-    with open(os.path.join(file_path, "final_metrics.txt"), 'w') as f:
-        for key, value in metrics.items():
-            f.write(f"{key}: {value}\n")
-    
+    import os, numpy as _np
+
+    _DESCR = {
+        "loss_g": "Binary-cross-entropy loss for gender head (lower is better)",
+        "loss_a": "MSE loss for age head after z-scaling", 
+        "loss_abn": "Binary-cross-entropy loss for abnormality head",
+        "total_loss": "Sum of all three task losses", 
+        "accuracy_g": "Classification accuracy for gender (proportion correct)",
+        "accuracy_abn": "Classification accuracy for abnormality",
+        "mae_a": "Mean absolute error for age prediction (years)",
+        "rmse_a": "Root-mean-square error for age prediction (years)",
+        "gender_confusion": "2×2 confusion matrix: rows=true, cols=predicted (gender)",
+        "abn_confusion": "2×2 confusion matrix: rows=true, cols=predicted (abnormality)",
+        "gender_precision_recall_f1.precision": "Gender-task precision (positive=males)",
+        "gender_precision_recall_f1.recall": "Gender-task recall",
+        "gender_precision_recall_f1.f1": "Gender-task F1-score",
+        "abn_precision_recall_f1.precision": "Abnormality precision (positive=abnormal)",
+        "abn_precision_recall_f1.recall": "Abnormality recall",
+        "abn_precision_recall_f1.f1": "Abnormality F1-score",
+        "global_independence_score": "Mean off-diag HSIC of latent features (lower = more independent)",
+        "age_bin_mae": "Dict: MAE per age bin (years)",
+        "train_dataset_stats.n_samples": "Number of training samples",
+        "eval_dataset_stats.n_samples": "Number of evaluation samples",
+    }
+
+    flat = _flatten_dict(metrics)
+
+    with open(os.path.join(file_path, "final_metrics.txt"), "w") as f:
+        for key, value in flat.items():
+            if isinstance(value, _np.ndarray):
+                val_repr = f"<array shape {value.shape}>"
+            else:
+                val_repr = value
+            descr = _DESCR.get(key, "")
+            if descr:
+                f.write(f"{key}: {val_repr}    # {descr}\n")
+            else:
+                f.write(f"{key}: {val_repr}\n")
+
+    # Also generate Markdown & JSON via utils.reporting
+    try:
+        from utils.reporting import write_markdown_report
+        write_markdown_report(metrics, file_path)
+    except Exception as e:
+        print(f"⚠️ Could not write Markdown report: {e}")
+
 
 def run_evaluation(model: ClassificationModel, data, save_path):
     """
@@ -202,11 +292,6 @@ def run_evaluation(model: ClassificationModel, data, save_path):
     xs = torch.cat([batch[0] for batch in data], dim=0)
 
     independence_scores = independence_of_features(xs, save_path=save_path)
-    metrics['global_independence_score'] = independence_scores['global_score']
-    metrics['hsic_matrix'] = independence_scores['hsic'].numpy()
-    if 'pval' in independence_scores:
-        metrics['pval_matrix'] = independence_scores['pval'].numpy()
-    else:
-        metrics['pval_matrix'] = None
+    metrics['global_independence_score'] = independence_scores['global_score']  # Keep only summary
     
     return metrics

@@ -1,12 +1,11 @@
 from latent_extraction.cortico_thalamic import fit_ctm_from_raw
 from torch.utils.data import DataLoader
 from latent_extraction.c22 import extract_c22, extract_c22_psd
-from latent_extraction.AE.convAE import Conv1DAutoencoder, EEGAutoEncoder
+from latent_extraction.AE.convAE import EEGAutoEncoder
 from latent_extraction.AE.extract_z import extract_z
 import os
 import json
 import torch
-
 
 
 def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
@@ -31,13 +30,12 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
 
     for x, g, a, ab in data:
         if method == "ctm":
-            latent_feature = fit_ctm_from_raw(x)
+            latent_feature = fit_ctm_from_raw(x, as_vector=True)
         elif method == "c22":
             latent_feature = extract_c22(x)
         elif method == "c22_psd":
             latent_feature = extract_c22_psd(x)
         elif method == "AE":
-            model_device = next(model.parameters()).device
             latent_feature = extract_z(model, x, device=device)
         else:
             raise ValueError(f"Unknown method: {method}")

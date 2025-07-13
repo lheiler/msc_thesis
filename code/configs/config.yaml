@@ -8,7 +8,7 @@ paths:
   # Path to TUH EEG evaluation data (ignored for Harvard)
   data_eval: "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval"
   # Path to cleaned Harvard EEG BIDS root directory (ignored for TUH)
-  data_harvard: "/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_100_normal_abnormal_clean"
+  data_harvard: "/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_age_500_clean"
   # Directory where all results will be written
   results_root: "Results"
 
@@ -20,10 +20,9 @@ model:
   scheduler: cosine  # options: none | cosine | plateau
 
 loss_weights:
-  lambda_gender: 0.0
-  lambda_age: 0.0
+  lambda_gender: 1.0
+  lambda_age: 0.2
   lambda_abn: 1.0
 
 # Whether latent representations have already been extracted
-extracted: true
-
+extracted: false 
