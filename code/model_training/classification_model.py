@@ -2,7 +2,6 @@
 # multitask_paramnet.py
 # Estimate gender, age and abnormal / normal from a JR vector
 # -------------------------------------------------------------
-import numpy as np
 import torch
 from torch import nn
 
@@ -74,10 +73,19 @@ def train(model,
           device='cpu',
           λ_gender=0.0,
           λ_age=0.0,
-          λ_abn=1.0):
+          λ_abn=1.0,
+          weight_decay: float = 0.0,
+          scheduler: str = "none"):
     
     
     device = torch.device(device)
+
+    # Ensure numeric parameters are floats (handles YAML strings like "1e-4")
+    try:
+        weight_decay = float(weight_decay)
+    except (TypeError, ValueError):
+        raise ValueError(f"weight_decay must be numeric, got {weight_decay!r}")
+
     # get mean and std from the dataloader for age normalization
     age_mean = 0.0
     age_std = 0.0
@@ -86,13 +94,21 @@ def train(model,
         age_std += (a ** 2).sum().item()
     age_mean /= len(dataloader.dataset)
     age_std = (age_std / len(dataloader.dataset) - age_mean ** 2) ** 0.5
-    print(f"Age mean: {age_mean:.2f}, Age std: {age_std:.2f}")
+    #print(f"Age mean: {age_mean:.2f}, Age std: {age_std:.2f}")
     
     model.age_mean = age_mean
     model.age_std = age_std
     
     model.to(device)
-    optim = torch.optim.Adam(model.parameters(), lr=lr)
+    optim = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    # Optional LR scheduler -------------------------------------------------
+    if scheduler == "cosine":
+        sched = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optim, T_0=10, T_mult=2)
+    elif scheduler == "plateau":
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, factor=0.5, patience=4)
+    else:
+        sched = None
 
     for epoch in range(1, n_epochs + 1):
         model.train()
@@ -117,9 +133,17 @@ def train(model,
             loss_age    = model.a_loss(â, a)
 
             loss = λ_gender * loss_gender + λ_abn * loss_abn + λ_age * loss_age
-            print("predicted age:", â[0].item(), "true age:", a[0].item())
+            #("predicted age:", â[0].item(), "true age:", a[0].item())
             loss.backward()
             optim.step()
             running += loss.item() * x.size(0)
 
-        print(f"Epoch {epoch:03d}:  loss = {running / len(dataloader.dataset):.4f}")
+        epoch_loss = running / len(dataloader.dataset)
+        print(f"Epoch {epoch:03d}:  loss = {epoch_loss:.4f}")
+
+        # Step scheduler at epoch end
+        if sched is not None:
+            if isinstance(sched, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                sched.step(epoch_loss)
+            else:
+                sched.step(epoch + 1)  # CosineWarmRestarts expects epoch count

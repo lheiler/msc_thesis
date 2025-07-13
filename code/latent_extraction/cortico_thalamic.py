@@ -34,7 +34,9 @@ import numpy as np
 import cma
 from scipy.interpolate import interp1d
 import mne
-
+import matplotlib.pyplot as plt
+import os
+import re
 mne.set_log_level('WARNING')  # Suppress MNE warnings
 
 # ---------------------------------------------------------------------
@@ -144,8 +146,22 @@ def compute_psd(
 # ---------------------------------------------------------------------
 # Loss and optimisation
 # ---------------------------------------------------------------------
-_PARAM_KEYS = ['G_ee', 'G_ei', 'G_ese', 'G_esre', 'G_srs', 'alpha', 'beta', 't0']
-_DEFAULT_THETA0 = np.asarray([10.3, -11.2, 1.7, -2.7, -0.13, 58.0, 305.0, 0.08])
+# Public order of parameters (9-element vector)
+_PARAM_KEYS = [
+    'G_ee', 'G_ei', 'G_ese', 'G_esre', 'G_srs',
+    'alpha', 'beta', 't0', 'gain'
+]
+
+# ---------------------------------------------------------------------
+# Helper: convert dict → ordered NumPy vector
+# ---------------------------------------------------------------------
+
+def _dict_to_vector(p: dict[str, float]):
+    """Return NumPy array in canonical _PARAM_KEYS order."""
+    import numpy as _np  # local import to avoid unconditional dependency
+    return _np.asarray([p[k] for k in _PARAM_KEYS], dtype=_np.float32)
+
+_DEFAULT_THETA0 = np.asarray([10.3, -11.2, 1.7, -2.7, -0.13, 58.0, 305.0, 0.08, 1.0])
 _DEFAULT_BOUNDS = np.asarray(
     [
         (0, 30),      # G_ee
@@ -156,6 +172,7 @@ _DEFAULT_BOUNDS = np.asarray(
         (10, 100),    # alpha
         (100, 400),   # beta
         (0.01, 0.2),  # t0
+        (1e-4, 1e2),  # gain
     ],
     dtype=float,
 )
@@ -167,8 +184,9 @@ def _loss_function(
     real_psd: np.ndarray,
 ) -> float:
     """Weighted MSE in log-space between model and empirical PSD."""
-    p = dict(zip(_PARAM_KEYS, theta))
-    model_psd = _P_omega(p)
+    p_full = dict(zip(_PARAM_KEYS, theta))
+    gain = p_full.pop('gain')
+    model_psd = gain * _P_omega(p_full)
 
     # Interpolate model to match empirical frequency grid
     interp_func = interp1d(_f, model_psd, kind='linear', bounds_error=False,
@@ -178,10 +196,7 @@ def _loss_function(
     log_model = np.log10(model_resampled + 1e-10)
     log_real = np.log10(real_psd + 1e-10)
 
-    # Emphasise the alpha (8–12 Hz) range
-    weights = np.ones_like(freqs)
-    alpha_mask = (freqs >= 8) & (freqs <= 12)
-    weights[alpha_mask] *= 5.0
+    weights = 1.0 / (real_psd + 1e-10)  # data‑driven weighting
 
     return np.mean(weights * (log_model - log_real) ** 2)
 
@@ -215,18 +230,20 @@ def fit_parameters(
         1-D array of power values (linear units) corresponding to
         ``freqs``.
     initial_theta
-        Optional 8-element array of starting parameters.  Defaults to
+        Optional 9-element array of starting parameters.  Defaults to
         the canonical values from the original script.
     sigma0
         Initial CMA-ES sampling spread.
     bounds
-        (8, 2) array of lower/upper bounds.  Defaults to the original
+        (9, 2) array of lower/upper bounds.  Defaults to the original
         bounds.
     cma_opts
         Additional keyword arguments forwarded to
         :class:`cma.CMAEvolutionStrategy`.
     return_full
         If *True*, additionally returns *(theta_best, loss_best)*.
+    gain
+        Scalar amplitude factor multiplying the model PSD.
 
     Returns
     -------
@@ -237,8 +254,8 @@ def fit_parameters(
     """
     theta0 = _DEFAULT_THETA0 if initial_theta is None else np.asarray(initial_theta, dtype=float)
     bounds_arr = _DEFAULT_BOUNDS if bounds is None else np.asarray(bounds, dtype=float)
-    if bounds_arr.shape != (8, 2):
-        raise ValueError('bounds must have shape (8, 2)')
+    if bounds_arr.shape != (9, 2):
+        raise ValueError('bounds must have shape (9, 2)')
 
     lower_bounds, upper_bounds = bounds_arr[:, 0], bounds_arr[:, 1]
     opts = {
@@ -247,7 +264,7 @@ def fit_parameters(
         'verb_log': 0        # don't write CMA log files
     }
     
-    opts.setdefault('tolfun', 1e-7)  # Less strict convergence tolerance
+    opts.setdefault('tolfun', 1e-8)  # Less strict convergence tolerance
     opts.setdefault('maxiter', 600)  # Allow more iterations
     
     if cma_opts:
@@ -294,8 +311,9 @@ def fit_ctm_from_raw(
     *,
     channel: str | list[str] = 'O1..',
     n_fft: int = 128,
+    as_vector: bool = False,
     **fit_kwargs,
-) -> dict[str, float]:
+) -> 'np.ndarray | dict[str, float]':
     """High-level helper: estimate PSD and fit CTM in one call.
 
     All keyword arguments not recognised by this function are forwarded
@@ -323,5 +341,35 @@ def fit_ctm_from_raw(
     freqs = freqss[0]  # Assuming all channels have the same frequency grid
         
     params = fit_parameters(freqs, psd, **fit_kwargs)
-    print(f"Fitted parameters for all channels: {params}")
+    # print first 5 decimals of each parameter but all in one line
+    print(" ".join([f"{key}: {value:.5f}" for key, value in params.items()]))
+    
+    # ---- Save PSD comparison plot (name includes EEG task) ----
+    # Attempt to infer the BIDS task from the raw file name
+    task = "unknown"
+    if hasattr(raw, "filenames") and raw.filenames:
+        fname = os.path.basename(raw.filenames[0])
+        match = re.search(r"task-([^_]+)", fname)
+        if match:
+            task = match.group(1)
+
+    model_psd = _P_omega(params)
+    interp_func = interp1d(_f, model_psd, kind='linear', bounds_error=False,
+                           fill_value='extrapolate')
+    model_resampled = interp_func(freqs)
+
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(freqs, psd, label='Empirical PSD', color='blue')
+    # plt.plot(freqs, model_resampled, label='Fitted CTM PSD', color='red', linestyle='--')
+    # plt.xscale('log')
+    # plt.yscale('log')
+    # plt.xlabel('Frequency (Hz)')
+    # plt.ylabel('Power Spectral Density')
+    # plt.title(f'CTM Fitting ({task}): Empirical vs Fitted PSD')
+    # plt.legend()
+    # plt.grid(True)
+    # plt.savefig(f'fitted_psd_{task}.png')
+    
+    if as_vector:
+        return _dict_to_vector(params)
     return params

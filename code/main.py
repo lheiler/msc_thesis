@@ -1,7 +1,6 @@
 import faulthandler
 faulthandler.enable()
 
-# Updated imports after renaming directories to snake_case
 from data_preprocessing import data_loading as dl
 import model_training.classification_model as cm
 from model_training.classification_model import ClassificationModel
@@ -14,92 +13,18 @@ from torch.utils.data import DataLoader
 import re
 import json
 import torch
-from visualization import tsne  # Assuming you have a tsne visualization function
 import argparse
 import yaml
+from utils.latent_loading import (
+    load_latent_parameters_array,
+    load_latent_c22_parameters_array,
+    load_latent_ae_parameters_array,)
 
-_FLOAT64_RE = re.compile(r'np\.float64\(([^)]+)\)')  # capture inner number
+# Dataset stats helper
+from utils.data_metrics import compute_dataset_stats
 
-def load_latent_parameters_array(file_path, batch_size: int = 32):
-    """
-    Read a text file where each line is:
-        ({'G_ee': np.float64(...), ...}, label, age, abn)
-    and return a DataLoader that yields tuples:
-        (np.ndarray[float32], label, age, abn)
-    """
-    latent_params = []
-    file_path = file_path + ".txt" if not file_path.endswith(".txt") else file_path
-    with open(file_path, "r") as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            if not line:
-                continue
+# Helper functions have been moved to utils.latent_loading
 
-            # Remove np.float64(...) so literal_eval can parse safely
-            cleaned = _FLOAT64_RE.sub(r'\1', line)
-
-            # Parse tuple -> (dict, label, age, abn)
-            try:
-                param_dict, label, age, abn = ast.literal_eval(cleaned)
-            except (ValueError, SyntaxError) as err:
-                print(f"Skipping malformed line: {raw_line[:80]} … ({err})")
-                continue
-
-            # Convert dict values to a float64 NumPy vector
-            param_values = np.array([float(v) for v in param_dict.values()],
-                                    dtype=np.float32)
-
-            latent_params.append((param_values, label, age, abn))
-    return DataLoader(latent_params, batch_size=batch_size, shuffle=False)
-
-def load_latent_c22_parameters_array(file_path, batch_size: int = 32):
-    latent_params = []
-    file_path = file_path + ".json" if not file_path.endswith(".json") else file_path
-    with open(file_path, "r") as f:
-        for line in f:
-            if line.strip():
-                try:
-                    entry = json.loads(line)
-                    latent_vec = torch.tensor(entry[0], dtype=torch.float32)
-                    g = torch.tensor(entry[1], dtype=torch.float32)
-                    a = torch.tensor(entry[2], dtype=torch.float32)
-                    ab = torch.tensor(entry[3], dtype=torch.float32)
-
-                    latent_params.append((latent_vec, g, a, ab))
-                except json.JSONDecodeError as e:
-                    print(f"Skipping invalid JSON line: {e}")
-
-    print(f"Loaded {len(latent_params)} latent parameters from {file_path}")
-    return DataLoader(latent_params, batch_size=batch_size, shuffle=False)
-            
-
-def load_latent_ae_parameters_array(file_path, batch_size: int = 32):
-    """
-    Read a text file where each line is:
-        [np.ndarray[float32], label, age, abn]
-    and return a DataLoader that yields tuples:
-        (np.ndarray[float32], label, age, abn)
-    """
-    latent_params = []
-    file_path = file_path + ".json" if not file_path.endswith(".json") else file_path
-    with open(file_path, "r") as f:
-        for line in f:
-            if line.strip():
-                try:
-                    entry = json.loads(line)
-                    latent_vec = torch.tensor(entry[0], dtype=torch.float32)
-                    g = torch.tensor(entry[1], dtype=torch.float32)
-                    a = torch.tensor(entry[2], dtype=torch.float32)
-                    ab = torch.tensor(entry[3], dtype=torch.float32)
-
-                    latent_params.append((latent_vec, g, a, ab))
-                except json.JSONDecodeError as e:
-                    print(f"Skipping invalid JSON line: {e}")
-
-    print(f"Loaded {len(latent_params)} latent parameters from {file_path}")
-    return DataLoader(latent_params, batch_size=batch_size, shuffle=False)
-        
-            
 def main():
     """
     Main function to run the entire pipeline.
@@ -129,13 +54,18 @@ def main():
     os.makedirs(results_path, exist_ok=True)
 
     model_cfg = cfg.get("model", {})
-    batch_size        = model_cfg.get("batch_size", 16)
-    num_epochs        = model_cfg.get("num_epochs", 20)
-    hidden_layer_size = model_cfg.get("hidden_layer_size", 128)
-    hidden_layers     = model_cfg.get("hidden_layers", 2)
+    batch_size    = model_cfg.get("batch_size", 16)
+    num_epochs    = model_cfg.get("num_epochs", 20)
+    dropout       = model_cfg.get("dropout", 0.2)
+    weight_decay  = model_cfg.get("weight_decay", 0.0)
+    scheduler     = model_cfg.get("scheduler", "none")
+
+    loss_cfg = cfg.get("loss_weights", {})
+    lambda_gender = loss_cfg.get("lambda_gender", 0.0)
+    lambda_age    = loss_cfg.get("lambda_age", 0.0)
+    lambda_abn    = loss_cfg.get("lambda_abn", 1.0)
 
     extracted = cfg.get("extracted", False)
-    
     
     # ------------------------  # 1. Load and preprocess data.  ------------------------
     
@@ -166,6 +96,17 @@ def main():
         e_latent_features = load_latent_ae_parameters_array(os.path.join(results_path, "temp_latent_features_eval"), batch_size=batch_size)
         
         print("Latent features loaded successfully.")
+
+    # --------------------------------------------------------------------
+    # Safety check: ensure we have data before proceeding
+    # --------------------------------------------------------------------
+    if len(t_latent_features.dataset) == 0 or len(e_latent_features.dataset) == 0:
+        msg = (
+            "❌ No training or evaluation samples were loaded. "
+            "Please verify the dataset paths and that preprocessing succeeded."
+        )
+        print(msg)
+        return
     
     # ------------------------    # visualize tsne  ------------------------
     
@@ -176,12 +117,29 @@ def main():
     
     # Train the classification model
     print("Training classification model...")
-    model = ClassificationModel(input_dim=t_latent_features.dataset[0][0].shape[0])
-    cm.train(model, t_latent_features, n_epochs=num_epochs)
-    # Evaluate the model
-    print("Evaluating model...")
+    model = ClassificationModel(input_dim=t_latent_features.dataset[0][0].shape[0], dropout=dropout)
+    cm.train(
+        model,
+        t_latent_features,
+        n_epochs=num_epochs,
+        λ_gender=lambda_gender,
+        λ_age=lambda_age,
+        λ_abn=lambda_abn,
+        weight_decay=weight_decay,
+        scheduler=scheduler,
+    )
+    # ------------------------------------------------------------
+    # 3. Dataset descriptive statistics
+    # ------------------------------------------------------------
+    train_stats = compute_dataset_stats(t_latent_features)
+    eval_stats  = compute_dataset_stats(e_latent_features)
+
+    # 4. Evaluate the model
     evaluation_results = eval.run_evaluation(model, e_latent_features, save_path=results_path)
 
+    # 5. Merge dataset stats into metrics before saving
+    evaluation_results["train_dataset_stats"] = train_stats
+    evaluation_results["eval_dataset_stats"]  = eval_stats
     
     # Save the results
     print("Saving results...")

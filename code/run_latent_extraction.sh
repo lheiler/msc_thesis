@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -lwalltime=02:00:00
-#PBS -lselect=1:ncpus=1:ngpus=1:mem=24gb
+#PBS -lselect=1:ncpus=8:mem=16gb
 #PBS -o /rds/general/user/lrh24/home/thesis/code/job_output.log
 #PBS -e /rds/general/user/lrh24/home/thesis/code/job_error.log
 

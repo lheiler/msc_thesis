@@ -1,13 +1,21 @@
-import torch
-from torch.utils.data import DataLoader
 import mne
 import os
-import numpy as np
-from mne_bids import BIDSPath, read_raw_bids
+from mne_bids import BIDSPath, read_raw_bids, get_entities_from_fname
 import json
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 import warnings
+
+import re
+
+# ---------------------------------------------------------------------
+# Harvard‑EEG abnormality definition (same columns used at sampling time)
+# ---------------------------------------------------------------------
+ABNORMAL_COLS = [
+    "spikes", "lpd", "gpd", "lrda", "grda", "bs",
+    "foc slowing", "gen slowing", "bipd", "status"
+]
+NORM_TOKENS = {"none", "normal", "", "nan", None}
 
 
 
@@ -47,12 +55,63 @@ def load_data_harvard(data_path, eval_split=0.2):
     data_path = Path(data_path)
     subject_dirs = sorted([p for p in data_path.glob("sub-*") if p.is_dir()])
 
-    subject_sessions = []
+    # ------------------------------------------------------------------
+    # 🔍  Build fallback abnormal-session lookup from original CSVs
+    #      (in case HEEDB_meta lacks the abnormality columns)
+    # ------------------------------------------------------------------
+    metadata_root = data_path.parent.parent / "metadata"  # ../.. / metadata
+    abnormal_lookup = set()
+    try:
+        import pandas as _pd
+        csvs_meta     = list(metadata_root.glob("*eeg_metadata_*.csv"))
+        csvs_reports  = list(metadata_root.glob("*_EEG__reports_findings.csv"))
+        if csvs_meta and csvs_reports:
+            meta_df    = _pd.concat([_pd.read_csv(fp) for fp in csvs_meta], ignore_index=True)
+            reports_df = _pd.concat([_pd.read_csv(fp) for fp in csvs_reports], ignore_index=True)
+
+            df = _pd.merge(meta_df, reports_df,
+                           on=["SiteID", "BDSPPatientID", "SessionID"], how="inner")
+
+            def _row_is_abnormal(row):
+                vals = [row.get(col) for col in ABNORMAL_COLS]
+                vals = ["none" if _pd.isna(v) else str(v).strip().lower() for v in vals]
+                has_abn = any(v not in NORM_TOKENS for v in vals)
+                seizure_txt = str(row.get("seizure", ""))
+                if _pd.isna(seizure_txt):
+                    seizure_txt = ""
+                return has_abn and ("seizure" not in seizure_txt.lower())
+
+            abn_rows = df[df.apply(_row_is_abnormal, axis=1)]
+            for _, r in abn_rows.iterrows():
+                subj = str(r["BidsFolder"]).replace("sub-", "") if not _pd.isna(r.get("BidsFolder")) else f"{r['SiteID']}{int(r['BDSPPatientID'])}"
+                sess = str(int(r["SessionID"]))
+                abnormal_lookup.add((subj, sess))
+            print(f"🔎  Built abnormal lookup with {len(abnormal_lookup)} sessions.")
+        else:
+            print("⚠️  Could not find metadata CSVs – fallback abnormal lookup disabled.")
+    except Exception as e:
+        print(f"⚠️  Failed to build abnormal lookup: {e}")
+
+    # Example filename: sub-XXXX_ses-YY_task-cEEG_eeg.vhdr
+    subject_sessions = []  # tuples of (subject, session, task, vhdr_path)
     for subj_dir in subject_dirs:
         for ses_dir in subj_dir.glob("ses-*"):
-            subject = subj_dir.name.replace("sub-", "")
-            session = ses_dir.name.replace("ses-", "")
-            subject_sessions.append((subject, session))
+            eeg_dir = ses_dir / "eeg"
+            vhdr_files = list(eeg_dir.glob("*_eeg.vhdr"))
+            if not vhdr_files:
+                continue  # skip sessions with no EEG header
+
+            for vhdr_path in vhdr_files:  # include *every* task file
+                m = re.match(
+                    r"sub-(?P<sub>[^_]+)_ses-(?P<ses>[^_]+)_task-(?P<task>[^_]+)_eeg\.vhdr",
+                    vhdr_path.name,
+                )
+                if not m:
+                    print(f"⚠️  Could not parse entities from {vhdr_path.name}; skipping")
+                    continue
+
+                subject, session, task = m.group("sub", "ses", "task")
+                subject_sessions.append((subject, session, task, vhdr_path))
             #print(f"Found subject-session pair: {subject}, {session}")
 
     # Split subject-session pairs into train/eval
@@ -60,19 +119,15 @@ def load_data_harvard(data_path, eval_split=0.2):
 
     def process(pairs):
         result = []
-        for i,(subject, session) in enumerate(pairs):
+        for i, (subject, session, task, vhdr_path) in enumerate(pairs):
             try:
-                
-                bids_path = BIDSPath(subject=subject,
-                     session=session,
-                     suffix='eeg',
-                     extension='.vhdr',
-                     datatype='eeg',
-                     root=data_path)
+                # Build BIDSPath directly from filename entities
+                ent = get_entities_from_fname(str(vhdr_path))
+                bids_path = BIDSPath(**ent, extension='.vhdr', root=data_path, datatype='eeg')
                 
                 with warnings.catch_warnings():
-                    print(f"Reading BIDS path: {bids_path.fpath}")
-                    #warnings.simplefilter("ignore", category=RuntimeWarning)
+                    warnings.simplefilter("ignore", category=RuntimeWarning)
+                    #warnings.filterwarnings("ignore", message="The search_str was .*events.tsv")
                     raw = read_raw_bids(bids_path, verbose=False)
                     
                 raw.load_data()
@@ -90,13 +145,33 @@ def load_data_harvard(data_path, eval_split=0.2):
                 meta = sidecar.get("HEEDB_meta", {})
                 sex_code = int(1 if meta.get("SexDSC") == "Male" else (2 if meta.get("SexDSC") == "Female" else 0))
                 age = float(meta.get("AgeAtVisit", -1))         # adapt if the key is different
-                abn = int(0 if meta.get("abnormal", 0)== "nan" else 1)       # or another appropriate key
+
+                # ----- Primary: infer from sidecar metadata -----
+                def _meta_val(column: str):
+                    return meta.get(column, meta.get(f"{column}_rep", ""))
+
+                abnormal_hit = any(
+                    str(_meta_val(col)).strip().lower() not in NORM_TOKENS
+                    for col in ABNORMAL_COLS
+                )
+                seizure_txt = str(meta.get("seizure", meta.get("seizure_rep", ""))).strip().lower()
+                if "seizure" in seizure_txt:
+                    abnormal_hit = False
+
+                # ----- Fallback: lookup table from CSVs -----
+                if not abnormal_hit and (subject, str(int(session))) in abnormal_lookup:
+                    abnormal_hit = True
+
+                abn = int(abnormal_hit)
+                print(subject, session, "→ abnormal =", abn)
+                # if i < 3:
+                #     print(subject, session, "→ abnormal =", abn)
                 
-                print(i,(raw, sex_code, age, abn))
+                #print(i,(raw, sex_code, age, abn))
                 result.append((raw, sex_code, age, abn))
 
             except Exception as e:
-                #print(f"⚠️ Skipping {subject}, {session}: {e}")
+                print(f"⚠️ Skipping {subject}, {session}: {e}")
                 continue
 
         return result

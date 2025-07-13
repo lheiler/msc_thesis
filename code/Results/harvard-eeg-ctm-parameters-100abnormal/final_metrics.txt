@@ -1,0 +1,52 @@
+loss_g: 0.6981172404791179    # Binary-cross-entropy loss for gender head (lower is better)
+loss_a: 2342.5770713404604    # MSE loss for age head after z-scaling
+loss_abn: 0.6901857821564925    # Binary-cross-entropy loss for abnormality head
+total_loss: 2343.965460526316    # Sum of all three task losses
+accuracy_g: 0.39473684210526316    # Classification accuracy for gender (proportion correct)
+accuracy_abn: 0.5526315789473685    # Classification accuracy for abnormality
+mae_a: 1008.5531198601974    # Mean absolute error for age prediction (years)
+rmse_a: 26.410160064697266    # Root-mean-square error for age prediction (years)
+gender_confusion: [[15, 0], [23, 0]]    # 2×2 confusion matrix: rows=true, cols=predicted (gender)
+abn_confusion: [[0, 17], [0, 21]]    # 2×2 confusion matrix: rows=true, cols=predicted (abnormality)
+gender_precision_recall_f1.precision: 0.0    # Gender-task precision (positive=males)
+gender_precision_recall_f1.recall: 0.0    # Gender-task recall
+gender_precision_recall_f1.f1: 0.0    # Gender-task F1-score
+abn_precision_recall_f1.precision: 0.5526315789473685    # Abnormality precision (positive=abnormal)
+abn_precision_recall_f1.recall: 1.0    # Abnormality recall
+abn_precision_recall_f1.f1: 0.711864406779661    # Abnormality F1-score
+age_bin_mae.0–20: 37.1711540222168
+age_bin_mae.20–40: 21.086910247802734
+age_bin_mae.40–60: 5.704368591308594
+age_bin_mae.60–80: 20.707212448120117
+age_bin_mae.80–100: 37.61041259765625
+global_independence_score: 0.013779190368950367    # Mean off-diag HSIC of latent features (lower = more independent)
+train_dataset_stats.n_samples: 149    # Number of training samples
+train_dataset_stats.gender_counts.female(2): 78
+train_dataset_stats.gender_counts.male(1): 71
+train_dataset_stats.gender_counts.unknown(0): 0
+train_dataset_stats.abnormal_counts.abnormal(1): 74
+train_dataset_stats.abnormal_counts.normal(0): 75
+train_dataset_stats.age_bin_counts.0–10: 12
+train_dataset_stats.age_bin_counts.10–20: 11
+train_dataset_stats.age_bin_counts.20–30: 22
+train_dataset_stats.age_bin_counts.30–40: 12
+train_dataset_stats.age_bin_counts.40–50: 19
+train_dataset_stats.age_bin_counts.50–60: 15
+train_dataset_stats.age_bin_counts.60–70: 22
+train_dataset_stats.age_bin_counts.70–80: 24
+train_dataset_stats.age_bin_counts.80–120: 12
+eval_dataset_stats.n_samples: 38    # Number of evaluation samples
+eval_dataset_stats.gender_counts.female(2): 23
+eval_dataset_stats.gender_counts.male(1): 15
+eval_dataset_stats.gender_counts.unknown(0): 0
+eval_dataset_stats.abnormal_counts.abnormal(1): 21
+eval_dataset_stats.abnormal_counts.normal(0): 17
+eval_dataset_stats.age_bin_counts.0–10: 4
+eval_dataset_stats.age_bin_counts.10–20: 4
+eval_dataset_stats.age_bin_counts.20–30: 11
+eval_dataset_stats.age_bin_counts.30–40: 1
+eval_dataset_stats.age_bin_counts.40–50: 2
+eval_dataset_stats.age_bin_counts.50–60: 4
+eval_dataset_stats.age_bin_counts.60–70: 6
+eval_dataset_stats.age_bin_counts.70–80: 2
+eval_dataset_stats.age_bin_counts.80–120: 4
