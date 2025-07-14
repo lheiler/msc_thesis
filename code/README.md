@@ -31,12 +31,11 @@ code/
 ├── latent_extraction/       # CTM, Catch22, Auto-encoder, …
 ├── model_training/          # ClassificationModel & trainer
 ├── evaluation/              # Metrics, HSIC independence, saving
-├── visualization/           # t-SNE plots, confusion matrices, …
-├── Results/                 # <-- auto-generated artefacts
+├── Results/                 # <-- auto-generated metrics
 ├── configs/                 # YAML experiment files (optional)
 ├── main.py                  # Single entry-point
 ├── requirements.txt         # Python deps (>= versions)
-└── README.md                # You are here
+└── README.md                
 ```
 *Large datasets are **not** stored in the repo – supply paths in `config.yaml` or your own YAML file.*
 
@@ -54,7 +53,7 @@ pip install -r requirements.txt
 # 3. Edit config.yaml to point to your dataset locations (see below)
 
 # 4. Run the pipeline
-printf "%q" "python main.py --config config.yaml"
+python main.py --config config.yaml
 ```
 The first run will:
 1. Load the dataset(s) defined in your config.
