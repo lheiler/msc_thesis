@@ -2,14 +2,20 @@ import faulthandler
 faulthandler.enable()
 
 from data_preprocessing import data_loading as dl
-import model_training.classification_model as cm
-from model_training.classification_model import ClassificationModel
-import evaluation.evaluation as eval
+# OLD multitask imports removed
+# import model_training.classification_model as cm
+# from model_training.classification_model import ClassificationModel
+
+# 🆕 Independent single-task model utilities
+from model_training.single_task_model import SingleTaskModel, train as train_single_task
+from evaluation.single_task_evaluation import evaluate_single_task
+
+import evaluation.evaluation as eval  # keep generic helpers (e.g. HSIC + reporting)
 import latent_extraction.extractor as extractor
 import numpy as np
 import os
 import ast
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 import re
 import json
 import torch
@@ -47,11 +53,19 @@ def main():
     data_path_harvard = paths_cfg.get("data_harvard", "")
 
     results_root = paths_cfg.get("results_root", "Results")
+    # Derive an experiment‐specific identifier from the *actual* BIDS root that is being used. This
+    # avoids different source folders writing into the same results directory 
     if data_corp == "harvard":
-        results_path = os.path.join(results_root, f"harvard-eeg-{method}-parameters-100abnormal")
+        dataset_root = data_path_harvard
     else:
-        results_path = os.path.join(results_root, f"tuh-eeg-{method}-parameters")
+        # TUH or any other corpus: fall back to the training directory path (eval may be empty)
+        dataset_root = data_path_train or data_path_eval
+
+    dataset_id = os.path.basename(os.path.normpath(dataset_root)) or data_corp
+    results_path = os.path.join(results_root, f"{dataset_id}-{method}")
     os.makedirs(results_path, exist_ok=True)
+    
+    print(f"Results will be saved to: {results_path}")
 
     model_cfg = cfg.get("model", {})
     batch_size    = model_cfg.get("batch_size", 16)
@@ -59,12 +73,7 @@ def main():
     dropout       = model_cfg.get("dropout", 0.2)
     weight_decay  = model_cfg.get("weight_decay", 0.0)
     scheduler     = model_cfg.get("scheduler", "none")
-
-    loss_cfg = cfg.get("loss_weights", {})
-    lambda_gender = loss_cfg.get("lambda_gender", 0.0)
-    lambda_age    = loss_cfg.get("lambda_age", 0.0)
-    lambda_abn    = loss_cfg.get("lambda_abn", 1.0)
-
+    
     extracted = cfg.get("extracted", False)
     
     # ------------------------  # 1. Load and preprocess data.  ------------------------
@@ -108,45 +117,115 @@ def main():
         print(msg)
         return
     
-    # ------------------------    # visualize tsne  ------------------------
-    
-    # tsne.tsne_plot(t_latent_features, results_path)
-    
-    # ------------------------    # 2. Train the classification model.  ------------------------
-    
-    
-    # Train the classification model
-    print("Training classification model...")
-    model = ClassificationModel(input_dim=t_latent_features.dataset[0][0].shape[0], dropout=dropout)
-    cm.train(
-        model,
-        t_latent_features,
-        n_epochs=num_epochs,
-        λ_gender=lambda_gender,
-        λ_age=lambda_age,
-        λ_abn=lambda_abn,
-        weight_decay=weight_decay,
-        scheduler=scheduler,
-    )
+    # --------------------------------------------------------------------
+    # t-SNE visualisation removed – entire module has been deprecated.
+    # --------------------------------------------------------------------
+    # ------------------------    # 2. Train **independent** models per task  ------------------------
+
+    print("Detecting tasks from dataset …")
+    sample0 = t_latent_features.dataset[0]
+    latent_vec = sample0[0].detach().clone()  # convert once for dimensionality
+    input_dim = latent_vec.numel()
+    num_tasks = len(sample0) - 1
+    print(f"📈 Found {num_tasks} prediction task(s) – training separate networks for each.")
+
+    metrics_all = {}
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    for task_idx in range(num_tasks):
+        # ---------------- Data preparation per task ----------------
+        x_train, y_raw_train = [], []
+        for sample in t_latent_features.dataset:
+            x_train.append(sample[0].detach().clone().float())
+            y_raw_train.append(float(sample[task_idx + 1]))
+
+        # ------------- Determine task type (simple heuristic) -------------
+        uniq_vals = torch.unique(torch.tensor(y_raw_train))
+        if uniq_vals.numel() <= 10 and torch.all((uniq_vals == 0) | (uniq_vals == 1) | (uniq_vals == 2)):
+            task_type = "classification"
+        else:
+            task_type = "regression"
+
+        # ----------- Infer human-readable task name ----------------------
+        if task_type == "regression":
+            task_name = "age"
+        else:  # classification
+            label_set = set(uniq_vals.tolist())
+            # Abnormality annotations are 0/1 only. Gender uses 1/2 (optionally 0=unknown).
+            if label_set.issubset({0.0, 1.0}):
+                task_name = "abnormal"
+            else:
+                task_name = "gender"
+
+        print(
+            f"🔹 Task {task_idx+1}: detected as {task_type} → '{task_name}' "
+            f"(unique values: {uniq_vals.tolist()})"
+        )
+
+        # 🗂  Finalise tensors & loaders ----------------------------------
+        X_train = torch.stack(x_train)
+        y_train_tensor = torch.tensor(y_raw_train, dtype=torch.float32)
+
+        # For classification tasks with labels ∈ {1,2}, map → {0,1}
+        if task_type == "classification":
+            if torch.all((y_train_tensor == 1) | (y_train_tensor == 2)):
+                y_train_tensor = (y_train_tensor == 2).float()
+
+        train_loader = DataLoader(TensorDataset(X_train, y_train_tensor), batch_size=batch_size, shuffle=True)
+
+        # Eval split ------------------------------------------------------
+        x_eval, y_raw_eval = [], []
+        for sample in e_latent_features.dataset:
+            x_eval.append(sample[0].detach().clone().float())
+            y_raw_eval.append(float(sample[task_idx + 1]))
+        X_eval = torch.stack(x_eval)
+        y_eval_tensor = torch.tensor(y_raw_eval, dtype=torch.float32)
+        if task_type == "classification":
+            if torch.all((y_eval_tensor == 1) | (y_eval_tensor == 2)):
+                y_eval_tensor = (y_eval_tensor == 2).float()
+
+        eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=False)
+
+        # ---------------- Model + training -----------------------
+        model = SingleTaskModel(input_dim=input_dim, output_type=task_type, dropout=dropout)
+        print(f"   → Training independent {task_type} network …")
+        train_single_task(
+            model,
+            train_loader,
+            n_epochs=num_epochs,
+            weight_decay=weight_decay,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        # ---------------- Evaluation -----------------------------
+        task_metrics = evaluate_single_task(model, eval_loader, output_type=task_type, device=device)
+        metrics_all[task_name] = task_metrics
+
+        # Persist model weights
+        #torch.save(model.state_dict(), os.path.join(results_path, f"task_{task_idx}_model.pth"))
+
     # ------------------------------------------------------------
-    # 3. Dataset descriptive statistics
+    # 3. Dataset descriptive statistics & latent-space independence
     # ------------------------------------------------------------
     train_stats = compute_dataset_stats(t_latent_features)
     eval_stats  = compute_dataset_stats(e_latent_features)
 
-    # 4. Evaluate the model
-    evaluation_results = eval.run_evaluation(model, e_latent_features, save_path=results_path)
+    xs_eval = torch.stack([sample[0].detach().clone().float() for sample in e_latent_features.dataset])
+    independence_scores = eval.independence_of_features(xs_eval, save_path=results_path)
 
-    # 5. Merge dataset stats into metrics before saving
-    evaluation_results["train_dataset_stats"] = train_stats
-    evaluation_results["eval_dataset_stats"]  = eval_stats
-    
-    # Save the results
-    print("Saving results...")
-    eval.save_results(evaluation_results, results_path)
-    
-    # Print completion message
-    print("Pipeline completed successfully!")
+    # 4. Collate and save final results --------------------------
+    final_results = {
+        "metrics_per_task": metrics_all,
+        "train_dataset_stats": train_stats,
+        "eval_dataset_stats": eval_stats,
+        "global_independence_score": independence_scores["global_score"],
+    }
+
+    print("Saving results …")
+    eval.save_results(final_results, results_path)
+
+    print("✅ Pipeline completed successfully!")
     
 
     

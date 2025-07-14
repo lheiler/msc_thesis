@@ -3,58 +3,35 @@
 
 ## Losses
 
-| Metric                   |       Value |
-|--------------------------|-------------|
-| Loss – gender (BCE)      |    0.698117 |
-| Loss – age (MSE)         | 2342.58     |
-| Loss – abnormality (BCE) |    0.690186 |
-| Total loss               | 2343.97     |
+| Metric                   | Value   |
+|--------------------------|---------|
+| Loss – gender (BCE)      |         |
+| Loss – age (MSE)         |         |
+| Loss – abnormality (BCE) |         |
+| Total loss               |         |
 
 ## Classification metrics
 
-| Metric            |    Value |
-|-------------------|----------|
-| Gender accuracy   | 0.394737 |
-| Abnormal accuracy | 0.552632 |
-| Gender precision  | 0        |
-| Gender recall     | 0        |
-| Gender F1         | 0        |
-| Abn precision     | 0.552632 |
-| Abn recall        | 1        |
-| Abn F1            | 0.711864 |
+| Metric            | Value   |
+|-------------------|---------|
+| Gender accuracy   |         |
+| Abnormal accuracy |         |
+| Gender precision  |         |
+| Gender recall     |         |
+| Gender F1         |         |
+| Abn precision     |         |
+| Abn recall        |         |
+| Abn F1            |         |
 
 ## Confusion matrices
 
-### Gender
-
-|        |   Pred 0 |   Pred 1 |
-|--------|----------|----------|
-| True 0 |       15 |        0 |
-| True 1 |       23 |        0 |
-
-### Abnormality
-
-|        |   Pred 0 |   Pred 1 |
-|--------|----------|----------|
-| True 0 |        0 |       17 |
-| True 1 |        0 |       21 |
 
 ## Age regression
 
-| Metric       |     Value |
-|--------------|-----------|
-| MAE (years)  | 1008.55   |
-| RMSE (years) |   26.4102 |
-
-### MAE per age bin
-
-| Age bin   |      MAE |
-|-----------|----------|
-| 0–20      | 37.1712  |
-| 20–40     | 21.0869  |
-| 40–60     |  5.70437 |
-| 60–80     | 20.7072  |
-| 80–100    | 37.6104  |
+| Metric       | Value   |
+|--------------|---------|
+| MAE (years)  |         |
+| RMSE (years) |         |
 
 ## Dataset statistics – train
 
@@ -126,6 +103,6 @@ Age distribution
 
 ## Latent-feature independence
 
-Global HSIC score: **0.013779190368950367**
+Global HSIC score: **0.013779191300272942**
 
 (See `hsic_matrix.png` for full matrix.)

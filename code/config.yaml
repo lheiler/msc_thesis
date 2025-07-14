@@ -14,15 +14,10 @@ paths:
 
 model:
   batch_size: 16
-  num_epochs: 20
+  num_epochs: 40
   dropout: 0.3
   weight_decay: 1e-4
   scheduler: cosine  # options: none | cosine | plateau
-
-loss_weights:
-  lambda_gender: 0.0
-  lambda_age: 0.0
-  lambda_abn: 1.0
 
 # Whether latent representations have already been extracted
 extracted: true

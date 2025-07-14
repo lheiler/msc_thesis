@@ -8,3 +8,4 @@ tuh-eeg-ab-clean/
 # Ignore common large data file types
 *.edf
 *.eeg
+*.fif

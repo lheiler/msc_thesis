@@ -31,55 +31,32 @@ def write_markdown_report(metrics: Dict[str, Any], output_path: str | Path):
     output_path = Path(output_path)
     lines: list[str] = ["# Model Evaluation Report\n"]
 
-    # 1. Losses & global metrics
-    losses_tbl = [
-        ["Loss – gender (BCE)", metrics.get("loss_g")],
-        ["Loss – age (MSE)", metrics.get("loss_a")],
-        ["Loss – abnormality (BCE)", metrics.get("loss_abn")],
-        ["Total loss", metrics.get("total_loss")],
-    ]
-    lines.append(_section("Losses"))
-    lines.append(tabulate(losses_tbl, headers=["Metric", "Value"], tablefmt="github"))
+    # ------------------------------------------------------------------
+    # 1. Task-specific metrics (generic) --------------------------------
+    # ------------------------------------------------------------------
+    if "metrics_per_task" in metrics:
+        task_dict: Dict[str, Any] = metrics["metrics_per_task"]
+        for task_name, task_metrics in task_dict.items():
+            lines.append(_section(f"Task: {task_name}"))
 
-    # 2. Classification performance
-    class_tbl = [
-        ["Gender accuracy", metrics.get("accuracy_g")],
-        ["Abnormal accuracy", metrics.get("accuracy_abn")],
-        ["Gender precision", metrics.get("gender_precision_recall_f1", {}).get("precision")],
-        ["Gender recall", metrics.get("gender_precision_recall_f1", {}).get("recall")],
-        ["Gender F1", metrics.get("gender_precision_recall_f1", {}).get("f1")],
-        ["Abn precision", metrics.get("abn_precision_recall_f1", {}).get("precision")],
-        ["Abn recall", metrics.get("abn_precision_recall_f1", {}).get("recall")],
-        ["Abn F1", metrics.get("abn_precision_recall_f1", {}).get("f1")],
-    ]
-    lines.append(_section("Classification metrics"))
-    lines.append(tabulate(class_tbl, headers=["Metric", "Value"], tablefmt="github"))
+            # Decide whether task is classification or regression based on keys present
+            if "accuracy" in task_metrics or "loss" in task_metrics and "accuracy" in task_metrics:
+                tbl = [
+                    ["Loss (BCE)", task_metrics.get("loss")],
+                    ["Accuracy", task_metrics.get("accuracy")],
+                ]
+            else:  # regression
+                tbl = [
+                    ["Loss (MSE)", task_metrics.get("loss")],
+                    ["MAE", task_metrics.get("mae")],
+                    ["RMSE", task_metrics.get("rmse")],
+                ]
 
-    # 3. Confusion matrices
-    lines.append(_section("Confusion matrices"))
-    cm_g = metrics.get("gender_confusion")
-    if cm_g is not None:
-        lines.append("### Gender\n")
-        lines.append(tabulate(cm_g, headers=["Pred 0", "Pred 1"], showindex=["True 0", "True 1"], tablefmt="github"))
-    cm_a = metrics.get("abn_confusion")
-    if cm_a is not None:
-        lines.append("\n### Abnormality\n")
-        lines.append(tabulate(cm_a, headers=["Pred 0", "Pred 1"], showindex=["True 0", "True 1"], tablefmt="github"))
+            lines.append(tabulate(tbl, headers=["Metric", "Value"], tablefmt="github"))
 
-    # 4. Age regression
-    lines.append(_section("Age regression"))
-    age_tbl = [
-        ["MAE (years)", metrics.get("mae_a")],
-        ["RMSE (years)", metrics.get("rmse_a")],
-    ]
-    lines.append(tabulate(age_tbl, headers=["Metric", "Value"], tablefmt="github"))
-
-    if "age_bin_mae" in metrics:
-        lines.append("\n### MAE per age bin\n")
-        age_bins_items = sorted(metrics["age_bin_mae"].items(), key=lambda kv: kv[0])
-        lines.append(tabulate(age_bins_items, headers=["Age bin", "MAE"], tablefmt="github"))
-
-    # 5. Dataset stats
+    # ------------------------------------------------------------------
+    # 2. Dataset stats ----------------------------------------------------
+    # ------------------------------------------------------------------
     for split in ("train_dataset_stats", "eval_dataset_stats"):
         if split in metrics:
             stats = metrics[split]
@@ -95,13 +72,17 @@ def write_markdown_report(metrics: Dict[str, Any], output_path: str | Path):
             lines.append("\nAge distribution\n")
             lines.append(tabulate(stats["age_bin_counts"].items(), headers=["Age bin", "N"], tablefmt="github"))
 
-    # 6. Independence score
+    # ------------------------------------------------------------------
+    # 3. Independence score ---------------------------------------------
+    # ------------------------------------------------------------------
     lines.append(_section("Latent-feature independence"))
     lines.append(f"Global HSIC score: **{metrics.get('global_independence_score', 'n/a')}**\n")
     lines.append("(See `hsic_matrix.png` for full matrix.)\n")
 
     (output_path / "final_metrics.md").write_text("\n".join(lines))
 
-    # Also dump raw metrics JSON for programmatic use
+    # ------------------------------------------------------------------
+    # 4. Dump raw metrics JSON ------------------------------------------
+    # ------------------------------------------------------------------
     with open(output_path / "final_metrics.json", "w") as jf:
         json.dump(_to_builtin(metrics), jf, indent=2)

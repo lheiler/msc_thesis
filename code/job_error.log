@@ -1,8 +1,0 @@
-
-The following have been reloaded with a version change:
-  1) tools/prod => tools/dev
-
-/rds/general/user/lrh24/home/thesis/code/data_preprocessing/data_loading.py:70: DtypeWarning: Columns (37,38) have mixed types. Specify dtype option on import or set low_memory=False.
-  reports_df = _pd.concat([_pd.read_csv(fp) for fp in csvs_reports], ignore_index=True)
-/rds/general/user/lrh24/home/thesis/code/data_preprocessing/data_loading.py:70: DtypeWarning: Columns (36,37,42,43) have mixed types. Specify dtype option on import or set low_memory=False.
-  reports_df = _pd.concat([_pd.read_csv(fp) for fp in csvs_reports], ignore_index=True)
