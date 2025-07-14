@@ -45,6 +45,10 @@ def write_markdown_report(metrics: Dict[str, Any], output_path: str | Path):
                     ["Loss (BCE)", task_metrics.get("loss")],
                     ["Accuracy", task_metrics.get("accuracy")],
                 ]
+                # We append the main metrics table *after* preparing the
+                # `tbl` variable – outside the if/else – to avoid code
+                # duplication.  The prediction-distribution section is
+                # appended *after* that common table is written.
             else:  # regression
                 tbl = [
                     ["Loss (MSE)", task_metrics.get("loss")],
@@ -53,6 +57,18 @@ def write_markdown_report(metrics: Dict[str, Any], output_path: str | Path):
                 ]
 
             lines.append(tabulate(tbl, headers=["Metric", "Value"], tablefmt="github"))
+
+            # ------------------------------------------------------------------
+            # Optional: show how often the network predicted each label (cls)
+            # ------------------------------------------------------------------
+            if "pred_counts" in task_metrics:
+                lines.append("\nModel prediction distribution\n")
+                pred_counts = task_metrics["pred_counts"]
+                n_pred = sum(pred_counts.values()) or 1  # avoid div-by-zero
+                pred_tbl = [
+                    [lbl, cnt, f"{cnt / n_pred * 100:.1f}%"] for lbl, cnt in pred_counts.items()
+                ]
+                lines.append(tabulate(pred_tbl, headers=["Label", "Count", "%"], tablefmt="github"))
 
     # ------------------------------------------------------------------
     # 2. Dataset stats ----------------------------------------------------
@@ -65,10 +81,21 @@ def write_markdown_report(metrics: Dict[str, Any], output_path: str | Path):
             base_tbl = [["Samples", stats["n_samples"]]]
             lines.append(tabulate(base_tbl, tablefmt="github"))
             # gender
+            n_total = stats.get("n_samples", 1)
+
+            # ---- Gender ----
             lines.append("\nGender counts\n")
-            lines.append(tabulate(stats["gender_counts"].items(), headers=["Gender code", "Count"], tablefmt="github"))
+            gender_tbl = [
+                [label, cnt, f"{cnt / n_total * 100:.1f}%"] for label, cnt in stats["gender_counts"].items()
+            ]
+            lines.append(tabulate(gender_tbl, headers=["Gender code", "Count", "%"], tablefmt="github"))
+
+            # ---- Abnormality ----
             lines.append("\nAbnormal counts\n")
-            lines.append(tabulate(stats["abnormal_counts"].items(), headers=["Label", "Count"], tablefmt="github"))
+            abn_tbl = [
+                [label, cnt, f"{cnt / n_total * 100:.1f}%"] for label, cnt in stats["abnormal_counts"].items()
+            ]
+            lines.append(tabulate(abn_tbl, headers=["Label", "Count", "%"], tablefmt="github"))
             lines.append("\nAge distribution\n")
             lines.append(tabulate(stats["age_bin_counts"].items(), headers=["Age bin", "N"], tablefmt="github"))
 

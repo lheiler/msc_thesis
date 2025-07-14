@@ -5,22 +5,22 @@
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.678217 |
+| Loss (BCE) | 0.679643 |
 | Accuracy   | 0.605263 |
 
 ## Task: age
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (MSE) | 639.349  |
-| MAE        |  22.9303 |
-| RMSE       |  25.2854 |
+| Loss (MSE) | 696.346  |
+| MAE        |  22.7086 |
+| RMSE       |  26.3884 |
 
 ## Task: abnormal
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.696722 |
+| Loss (BCE) | 0.694101 |
 | Accuracy   | 0.447368 |
 
 ## Dataset statistics – train
@@ -93,6 +93,6 @@ Age distribution
 
 ## Latent-feature independence
 
-Global HSIC score: **0.012650377117097378**
+Global HSIC score: **0.13003607094287872**
 
 (See `hsic_matrix.png` for full matrix.)

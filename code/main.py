@@ -2,11 +2,7 @@ import faulthandler
 faulthandler.enable()
 
 from data_preprocessing import data_loading as dl
-# OLD multitask imports removed
-# import model_training.classification_model as cm
-# from model_training.classification_model import ClassificationModel
 
-# 🆕 Independent single-task model utilities
 from model_training.single_task_model import SingleTaskModel, train as train_single_task
 from evaluation.single_task_evaluation import evaluate_single_task
 
@@ -28,8 +24,6 @@ from utils.latent_loading import (
 
 # Dataset stats helper
 from utils.data_metrics import compute_dataset_stats
-
-# Helper functions have been moved to utils.latent_loading
 
 def main():
     """
@@ -74,37 +68,64 @@ def main():
     weight_decay  = model_cfg.get("weight_decay", 0.0)
     scheduler     = model_cfg.get("scheduler", "none")
     
-    extracted = cfg.get("extracted", False)
+    # If ``reset`` is True the latent feature files will be (re-)generated even
+    # when they already exist. Otherwise the pipeline attempts to reuse cached
+    # latents whenever their sample count matches the raw dataset.
+    reset = cfg.get("reset", False)
     
-    # ------------------------  # 1. Load and preprocess data.  ------------------------
-    
-    if not extracted:
-        # Load and preprocess data
-        print("Loading data...")
-        if data_corp == "harvard":
-            t_data, e_data = dl.load_data_harvard(data_path_harvard)
-        else:
-            t_data = dl.load_data(data_path_train)
-            e_data = dl.load_data(data_path_eval)
-        # ------------------------------------------------------------------------------------
-        
-        
-        # Extract latent features
-        print("Extracting latent features...")
-        t_latent_features = extractor.extract_latent_features(t_data, batch_size=batch_size, save_path=os.path.join(results_path,"temp_latent_features_train.json"), method=method)
-        e_latent_features = extractor.extract_latent_features(e_data, batch_size=batch_size, save_path=os.path.join(results_path,"temp_latent_features_eval.json"), method=method)
-        
-        #np.save("Results/tuh-eeg-ctm-parameters/t_latent_features.npy", t_latent_features.dataset.tensors[0].numpy())
-        #np.save("Results/tuh-eeg-ctm-parameters/e_latent_features.npy", e_latent_features.dataset.tensors[0].numpy())
-        #print("Latent features extracted and saved as numpy arrays.")
-    # ------------------------------------------------------------------------------------
+    # --------------------------------------------------------------------
+    # 1. Load raw EEG data (required for counts + potential extraction)
+    # --------------------------------------------------------------------
+    print("Loading raw EEG data …")
+    if data_corp == "harvard":
+        t_data, e_data = dl.load_data_harvard(data_path_harvard)
     else:
-        # Load latent features from saved files
-        print("Loading latent features from saved files...")
-        t_latent_features = load_latent_ae_parameters_array(os.path.join(results_path, "temp_latent_features_train"), batch_size=batch_size)
-        e_latent_features = load_latent_ae_parameters_array(os.path.join(results_path, "temp_latent_features_eval"), batch_size=batch_size)
-        
-        print("Latent features loaded successfully.")
+        t_data = dl.load_data(data_path_train)
+        e_data = dl.load_data(data_path_eval)
+
+    n_train, n_eval = len(t_data), len(e_data)
+
+    # --------------------------------------------------------------------
+    # 2. Decide whether to reuse cached latent features
+    # --------------------------------------------------------------------
+    def _latent_loader(split: str):
+        path_stem = os.path.join(results_path, f"temp_latent_features_{split}")
+        return load_latent_ae_parameters_array(path_stem, batch_size=batch_size)
+
+    use_cache = not reset
+    if use_cache:
+        cache_exists = (
+            os.path.exists(os.path.join(results_path, "temp_latent_features_train.json")) and
+            os.path.exists(os.path.join(results_path, "temp_latent_features_eval.json"))
+        )
+        if cache_exists:
+            t_latent_features = _latent_loader("train")
+            e_latent_features = _latent_loader("eval")
+            if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval:
+                print("⚠️  Cached latent features do not match dataset size – regenerating …")
+                use_cache = False
+        else:
+            use_cache = False
+
+    # --------------------------------------------------------------------
+    # 3. If required, extract fresh latent representations
+    # --------------------------------------------------------------------
+    if not use_cache:
+        print("Extracting latent features …")
+        t_latent_features = extractor.extract_latent_features(
+            t_data,
+            batch_size=batch_size,
+            save_path=os.path.join(results_path, "temp_latent_features_train.json"),
+            method=method,
+        )
+        e_latent_features = extractor.extract_latent_features(
+            e_data,
+            batch_size=batch_size,
+            save_path=os.path.join(results_path, "temp_latent_features_eval.json"),
+            method=method,
+        )
+    else:
+        print("Cached latent features loaded successfully.")
 
     # --------------------------------------------------------------------
     # Safety check: ensure we have data before proceeding
