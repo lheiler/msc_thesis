@@ -40,6 +40,9 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         else:
             raise ValueError(f"Unknown method: {method}")
 
+        # Ensure output is a float32 tensor for downstream .detach() usage
+        latent_feature = torch.as_tensor(latent_feature, dtype=torch.float32)
+
         # Serialize safely
         record = (
             latent_feature.tolist() if hasattr(latent_feature, 'tolist') else latent_feature,

@@ -22,7 +22,9 @@ def evaluate_single_task(
     model.to(device)
     model.eval()
 
-    criterion = nn.BCELoss() if output_type == "classification" else nn.MSELoss()
+    criterion = (
+        nn.BCEWithLogitsLoss() if output_type == "classification" else nn.MSELoss()
+    )
 
     total_loss = 0.0
     total = 0
@@ -31,6 +33,8 @@ def evaluate_single_task(
     correct_cls = 0
     mae_sum = 0.0
     sqe_sum = 0.0
+    # For classification: track how often the network predicts each label
+    pred_positive = 0  # Number of times model predicts label 1 / "positive"
 
     with torch.no_grad():
         for x, y in dataloader:
@@ -42,8 +46,12 @@ def evaluate_single_task(
             total += x.size(0)
 
             if output_type == "classification":
-                preds = (y_pred > 0.5).float()
+                probs = torch.sigmoid(y_pred)
+                preds = (probs > 0.5).float()
                 correct_cls += (preds == y).sum().item()
+
+                # Update prediction count statistics
+                pred_positive += preds.sum().item()
             else:
                 mae_sum += torch.abs(y_pred - y).sum().item()
                 sqe_sum += ((y_pred - y) ** 2).sum().item()
@@ -51,6 +59,13 @@ def evaluate_single_task(
     metrics: Dict[str, float] = {"loss": total_loss / max(total, 1)}
     if output_type == "classification":
         metrics["accuracy"] = correct_cls / max(total, 1)
+
+        # Add label-prediction frequency (counts only – percentages rendered in report)
+        pred_negative = max(total, 0) - pred_positive
+        metrics["pred_counts"] = {
+            "label_0": int(pred_negative),
+            "label_1": int(pred_positive),
+        }
     else:
         metrics["mae"] = mae_sum / max(total, 1)
         metrics["rmse"] = (sqe_sum / max(total, 1)) ** 0.5

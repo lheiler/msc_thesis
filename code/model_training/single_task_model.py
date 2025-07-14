@@ -48,7 +48,9 @@ class SingleTaskModel(nn.Module):
         self.head = nn.Linear(last_dim, 1)
 
         # Losses --------------------------------------------------------
-        self._bce = nn.BCELoss()
+        # Using logits instead of post-sigmoid probabilities is numerically
+        # more stable for binary classification → pair with ``BCEWithLogitsLoss``.
+        self._bce = nn.BCEWithLogitsLoss()
         self._mse = nn.MSELoss()
 
     # -----------------------------------------------------------------
@@ -56,8 +58,11 @@ class SingleTaskModel(nn.Module):
     # -----------------------------------------------------------------
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # (N,d) → (N,)
         h = self.trunk(x)
+        # Return **raw logits** for classification tasks – the calling code is
+        # responsible for applying ``torch.sigmoid`` when probabilities are
+        # required (e.g. during evaluation).
         out = self.head(h).squeeze(-1)  # (N,)
-        return torch.sigmoid(out) if self.output_type == "classification" else out
+        return out  # logits for classification, continuous output for regression
 
     # -----------------------------------------------------------------
     # Helper: get criterion matching the task type
