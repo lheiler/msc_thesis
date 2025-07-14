@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "code",
+			"path": "code"
+		},
+		{
+			"name": "Datasets",
+			"path": "Datasets"
+		},
+		{
+			"name": "harvard-eeg",
+			"path": "../../ephemeral/harvard-eeg"
+		}
+	],
+	"settings": {}
+}
