@@ -1,6 +1,6 @@
 #!/bin/bash
-#PBS -lwalltime=06:00:00
-#PBS -lselect=1:ncpus=4:mem=32gb
+#PBS -lwalltime=10:00:00
+#PBS -lselect=1:ncpus=32:mem=32gb
 
 
 # ======= Runtime Environment =======
