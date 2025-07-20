@@ -66,8 +66,9 @@ def load_data_harvard(data_path, eval_split=0.2):
         csvs_meta     = list(metadata_root.glob("*eeg_metadata_*.csv"))
         csvs_reports  = list(metadata_root.glob("*_EEG__reports_findings.csv"))
         if csvs_meta and csvs_reports:
-            meta_df    = _pd.concat([_pd.read_csv(fp) for fp in csvs_meta], ignore_index=True)
-            reports_df = _pd.concat([_pd.read_csv(fp) for fp in csvs_reports], ignore_index=True)
+            _read_csv_opts = {"dtype": str, "low_memory": False}
+            meta_df    = _pd.concat([_pd.read_csv(fp, **_read_csv_opts) for fp in csvs_meta], ignore_index=True)
+            reports_df = _pd.concat([_pd.read_csv(fp, **_read_csv_opts) for fp in csvs_reports], ignore_index=True)
 
             df = _pd.merge(meta_df, reports_df,
                            on=["SiteID", "BDSPPatientID", "SessionID"], how="inner")
@@ -163,7 +164,7 @@ def load_data_harvard(data_path, eval_split=0.2):
                     abnormal_hit = True
 
                 abn = int(abnormal_hit)
-                print(subject, session, "→ abnormal =", abn)
+                #print(subject, session, "→ abnormal =", abn)
                 # if i < 3:
                 #     print(subject, session, "→ abnormal =", abn)
                 

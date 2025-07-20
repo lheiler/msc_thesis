@@ -18,6 +18,9 @@ pycatch22>=0.4
 matplotlib>=3.7
 seaborn>=0.13
 
+# Hyper-parameter optimisation
+optuna>=3.5
+
 # Utilities
 PyYAML>=6.0
 tqdm>=4.66 

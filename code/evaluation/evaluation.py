@@ -62,7 +62,7 @@ def independence_of_features(xs: torch.Tensor, save_path, device: str = "cpu") -
     global_score = hsic[mask].mean().item() if mask.any() else 0.0
     
     
-    sns.heatmap(hsic, vmin=0, vmax=0.05, square=True, cmap="mako")
+    sns.heatmap(hsic.cpu(), vmin=0, vmax=0.05, square=True, cmap="mako")
     plt.savefig(os.path.join(save_path, "hsic_matrix.png"))
     plt.close()
 

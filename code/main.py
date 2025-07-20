@@ -3,7 +3,10 @@ faulthandler.enable()
 
 from data_preprocessing import data_loading as dl
 
+# Core training helpers
 from model_training.single_task_model import SingleTaskModel, train as train_single_task
+# Optional hyper-parameter optimisation
+from model_training.optuna_search import tune_hyperparameters
 from evaluation.single_task_evaluation import evaluate_single_task
 
 import evaluation.evaluation as eval  # keep generic helpers (e.g. HSIC + reporting)
@@ -24,6 +27,7 @@ from utils.latent_loading import (
 
 # Dataset stats helper
 from utils.data_metrics import compute_dataset_stats
+from sklearn.model_selection import train_test_split
 
 def main():
     """
@@ -61,12 +65,23 @@ def main():
     
     print(f"Results will be saved to: {results_path}")
 
-    model_cfg = cfg.get("model", {})
-    batch_size    = model_cfg.get("batch_size", 16)
-    num_epochs    = model_cfg.get("num_epochs", 20)
-    dropout       = model_cfg.get("dropout", 0.2)
-    weight_decay  = model_cfg.get("weight_decay", 0.0)
-    scheduler     = model_cfg.get("scheduler", "none")
+    model_cfg   = cfg.get("model", {})  # kept for backwards compat
+
+    # ---------------- Optuna section (overrides manual h-params) ----------------
+    optuna_cfg  = cfg.get("optuna", {})
+    use_optuna  = bool(optuna_cfg)
+
+    # Manual hyper-params (ignored if Optuna enabled)
+    batch_size   = model_cfg.get("batch_size", 16)
+    num_epochs   = model_cfg.get("num_epochs", 20)
+    dropout      = model_cfg.get("dropout", 0.2)
+    weight_decay = model_cfg.get("weight_decay", 0.0)
+    scheduler    = model_cfg.get("scheduler", "none")
+
+    # Optuna parameters ---------------------------------------------------------
+    n_trials_opt   = optuna_cfg.get("n_trials", 30)
+    val_split_opt  = optuna_cfg.get("val_split", 0.2)
+    patience_opt   = optuna_cfg.get("patience", 10)
     
     # If ``reset`` is True the latent feature files will be (re-)generated even
     # when they already exist. Otherwise the pipeline attempts to reuse cached
@@ -126,6 +141,14 @@ def main():
         )
     else:
         print("Cached latent features loaded successfully.")
+        
+
+    features_train = torch.stack([sample[0] for sample in t_latent_features.dataset])
+    features_eval  = torch.stack([sample[0] for sample in e_latent_features.dataset])
+
+    # only for task 1 and 3
+    print("📊 Train latent std task 1:", features_train[:, 0].std().item())
+    print("📊 Eval latent std task 1:", features_eval[:, 0].std().item())
 
     # --------------------------------------------------------------------
     # Safety check: ensure we have data before proceeding
@@ -151,7 +174,20 @@ def main():
     print(f"📈 Found {num_tasks} prediction task(s) – training separate networks for each.")
 
     metrics_all = {}
+    hyperparams_all = {}
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # --------------------------------------------------
+    # Create *one* fixed train/val split (indices)
+    # --------------------------------------------------
+    all_indices = list(range(len(t_latent_features.dataset)))
+    val_split_frac = val_split_opt if use_optuna else 0.2
+    train_indices_global, val_indices_global = train_test_split(
+        all_indices,
+        test_size=val_split_frac,
+        random_state=42,
+        shuffle=True,
+    )
 
     for task_idx in range(num_tasks):
         # ---------------- Data preparation per task ----------------
@@ -180,7 +216,7 @@ def main():
 
         print(
             f"🔹 Task {task_idx+1}: detected as {task_type} → '{task_name}' "
-            f"(unique values: {uniq_vals.tolist()})"
+            #f"(unique values: {uniq_vals.tolist()})"
         )
 
         # 🗂  Finalise tensors & loaders ----------------------------------
@@ -192,7 +228,14 @@ def main():
             if torch.all((y_train_tensor == 1) | (y_train_tensor == 2)):
                 y_train_tensor = (y_train_tensor == 2).float()
 
-        train_loader = DataLoader(TensorDataset(X_train, y_train_tensor), batch_size=batch_size, shuffle=True)
+        assert X_train.shape[0] == y_train_tensor.shape[0], "Mismatch: features and labels have different lengths (train)."
+        # Build loaders using **global** split
+        train_dataset_full = TensorDataset(X_train, y_train_tensor)
+        val_dataset_full   = TensorDataset(X_train, y_train_tensor)  # same tensors, will subset
+
+        from torch.utils.data import Subset
+        train_loader = DataLoader(Subset(train_dataset_full, train_indices_global), batch_size=batch_size, shuffle=True)
+        val_loader   = DataLoader(Subset(val_dataset_full,   val_indices_global),   batch_size=batch_size, shuffle=False)
 
         # Eval split ------------------------------------------------------
         x_eval, y_raw_eval = [], []
@@ -205,23 +248,48 @@ def main():
             if torch.all((y_eval_tensor == 1) | (y_eval_tensor == 2)):
                 y_eval_tensor = (y_eval_tensor == 2).float()
 
+        assert X_eval.shape[0] == y_eval_tensor.shape[0], "Mismatch: features and labels have different lengths (eval)."
         eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=False)
 
         # ---------------- Model + training -----------------------
-        model = SingleTaskModel(input_dim=input_dim, output_type=task_type, dropout=dropout)
-        print(f"   → Training independent {task_type} network …")
-        train_single_task(
-            model,
-            train_loader,
-            n_epochs=num_epochs,
-            weight_decay=weight_decay,
-            scheduler=scheduler,
-            device=device,
-        )
+        if use_optuna:
+            print(f"   → Optuna search (n_trials={n_trials_opt}) for {task_type} …")
+            search_out = tune_hyperparameters(
+                train_loader,
+                val_loader,
+                input_dim=input_dim,
+                output_type=task_type,
+                n_trials=n_trials_opt,
+                device=device,
+                val_split=val_split_opt,
+                early_stopping_patience=patience_opt,
+            )
+            model = search_out["best_model"]
+            best_params = search_out["best_params"]
+        else:
+            model = SingleTaskModel(input_dim=input_dim, output_type=task_type, dropout=dropout)
+            print(f"   → Training independent {task_type} network …")
+            train_single_task(
+                model,
+                train_loader,
+                val_loader=val_loader,
+                n_epochs=num_epochs,
+                weight_decay=weight_decay,
+                scheduler=scheduler,
+                device=device,
+            )
+            best_params = {
+                "dropout": dropout,
+                "weight_decay": weight_decay,
+                "scheduler": scheduler,
+                "n_epochs": num_epochs,
+            }
 
         # ---------------- Evaluation -----------------------------
         task_metrics = evaluate_single_task(model, eval_loader, output_type=task_type, device=device)
+
         metrics_all[task_name] = task_metrics
+        hyperparams_all[task_name] = best_params
 
         # Persist model weights
         #torch.save(model.state_dict(), os.path.join(results_path, f"task_{task_idx}_model.pth"))
@@ -233,11 +301,12 @@ def main():
     eval_stats  = compute_dataset_stats(e_latent_features)
 
     xs_eval = torch.stack([sample[0].detach().clone().float() for sample in e_latent_features.dataset])
-    independence_scores = eval.independence_of_features(xs_eval, save_path=results_path)
+    independence_scores = eval.independence_of_features(xs_eval, save_path=results_path, device=device)
 
     # 4. Collate and save final results --------------------------
     final_results = {
         "metrics_per_task": metrics_all,
+        "hyperparams_per_task": hyperparams_all,
         "train_dataset_stats": train_stats,
         "eval_dataset_stats": eval_stats,
         "global_independence_score": independence_scores["global_score"],
@@ -246,7 +315,7 @@ def main():
     print("Saving results …")
     eval.save_results(final_results, results_path)
 
-    print("✅ Pipeline completed successfully!")
+    print(f"✅ Pipeline completed successfully to the path {results_path}!")
     
 
     

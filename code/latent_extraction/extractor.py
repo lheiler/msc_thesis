@@ -39,6 +39,9 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
             latent_feature = extract_z(model, x, device=device)
         else:
             raise ValueError(f"Unknown method: {method}")
+        
+        if latent_feature is None:
+            continue
 
         # Ensure output is a float32 tensor for downstream .detach() usage
         latent_feature = torch.as_tensor(latent_feature, dtype=torch.float32)

@@ -1,4 +1,4 @@
-method: ctm
+method: c22
 # Dataset corpus to use: 'tuh' or 'harvard'
 data_corp: harvard
 
@@ -8,16 +8,19 @@ paths:
   # Path to TUH EEG evaluation data (ignored for Harvard)
   data_eval: "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval"
   # Path to cleaned Harvard EEG BIDS root directory (ignored for TUH)
-  data_harvard: "/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_100_normal_abnormal_clean"
+  data_harvard: "/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_500_normal_abnormal_clean"
   # Directory where all results will be written
   results_root: "Results"
 
 model:
+  # Only batch size is needed when Optuna search is enabled
   batch_size: 16
-  num_epochs: 40
-  dropout: 0.3
-  weight_decay: 1e-4
-  scheduler: cosine  # options: none | cosine | plateau
+
+# Hyper-parameter optimisation via Optuna (overrides manual settings)
+optuna:
+  n_trials: 100     # Number of optimisation trials per task
+  val_split: 0.2   # Fraction of training data reserved for validation
+  patience: 20     # Early-stopping patience within each trial
 
 # Whether to *re-extract* latent representations even when cached files exist
 reset: false

@@ -47,8 +47,12 @@ def evaluate_single_task(
 
             if output_type == "classification":
                 probs = torch.sigmoid(y_pred)
-                preds = (probs > 0.5).float()
+                #print("Sigmoid outputs:", probs[:10].tolist())
+                # Predict label 1 ("positive") when probability ≥ 0.5
+                preds = (probs >= 0.5).float()
+                #print(preds)
                 correct_cls += (preds == y).sum().item()
+                
 
                 # Update prediction count statistics
                 pred_positive += preds.sum().item()
@@ -66,6 +70,7 @@ def evaluate_single_task(
             "label_0": int(pred_negative),
             "label_1": int(pred_positive),
         }
+        print("🔍 Prediction counts:", metrics["pred_counts"])
     else:
         metrics["mae"] = mae_sum / max(total, 1)
         metrics["rmse"] = (sqe_sum / max(total, 1)) ** 0.5

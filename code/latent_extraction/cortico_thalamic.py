@@ -18,14 +18,6 @@ The public API exposes three convenience functions:
           ``channel`` from *raw*, band-pass filters it, estimates the
           PSD, and fits the CTM.  All keyword arguments are forwarded
           to :func:`fit_parameters`.
-
-Example
--------
->>> import mne
->>> from ctm_fitting import fit_ctm_from_raw
->>> raw = mne.io.read_raw_edf('subject01.edf', preload=True)
->>> params = fit_ctm_from_raw(raw, channel='O1..')
->>> print(params['alpha'], params['beta'])
 """
 
 from __future__ import annotations
@@ -328,11 +320,16 @@ def fit_ctm_from_raw(
     eeg_chs = [name for name, type_ in zips if type_ == 'eeg']
     
     for channel in eeg_chs:
-        freqs, psd = compute_psd(
-            raw,
-            channel=channel,
-            n_fft=n_fft,
-        )
+        try:
+            freqs, psd = compute_psd(
+                raw,
+                channel=channel,
+                n_fft=n_fft,
+            )
+        except Exception as e:
+            print(f"Error computing PSD for channel {channel}: {e}")
+            return None
+            continue
         psds.append(psd)
         freqss.append(freqs)
     

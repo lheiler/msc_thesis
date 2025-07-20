@@ -14,4 +14,9 @@ model:
   weight_decay: 1e-4
   scheduler: cosine
 
+optuna:
+  n_trials: 100
+  val_split: 0.2
+  patience: 20
+
 reset: false

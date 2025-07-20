@@ -96,8 +96,8 @@ def write_meta_to_sidecar(bids_root: Path, bids_path, meta_dict):
 
 
 # === Setup ===
-bids_root_in = Path("/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_100_normal_abnormal")
-bids_root_out = Path("/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_100_normal_abnormal_clean")
+bids_root_in = Path("/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_2000_normal_abnormal")
+bids_root_out = Path("/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_2000_normal_abnormal_clean")
 
 
 # IMPORTANT: All the metadata CSVs must be in the same directory
@@ -114,6 +114,9 @@ standard_19 = [
 ]
 
 duration = 60.0  # seconds
+
+# All recordings will be assigned this same (arbitrary but valid) measurement date.
+UNIFORM_DATE = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
 
 
@@ -141,14 +144,29 @@ for subj_dir in subject_dirs:
                 root=bids_root_in
             )
 
+            # ------------------------------------------------------------
+            # Skip this file if we have already written a cleaned version
+            # (BrainVision header file *.vhdr inside the cleaned BIDS root)
+            out_path = bids_path.copy().update(root=bids_root_out)
+            out_vhdr = out_path.copy().update(suffix="eeg", extension=".vhdr").fpath
+            if out_vhdr.exists():
+                print(f"⏩  Skipping {bids_path.basename}: cleaned file already exists.")
+                continue
+            # ------------------------------------------------------------
+
             print(f"Processing {bids_path.basename}...")
 
             # === Load and clean data ===
-            raw = read_raw_bids(bids_path, verbose=False)
-            # Standardize session recording date to avoid inconsistencies
-            
-            
-            raw.set_meas_date(datetime(2000, 1, 1, tzinfo=timezone.utc))
+            try:
+                raw = read_raw_bids(bids_path, verbose=False)
+            except ValueError as e:
+                # Some sidecar JSON files contain a non-ISO timestamp like
+                # "YYYY-mm-dd HH:MM:SS.xxxxxx" (space instead of "T"), which MNE-BIDS
+                # fails to parse. Fall back to reading the EDF directly in that case.
+                
+                    # Ensure EEG reference is set like in the normal branch
+                    print(str(e)+ "you fucked up")
+            raw.set_meas_date(UNIFORM_DATE)
             raw.load_data()
             
             raw.set_eeg_reference('average', projection=False)
@@ -192,7 +210,6 @@ for subj_dir in subject_dirs:
                 continue
             
             # === Write cleaned version ===
-            out_path = bids_path.copy().update(root=bids_root_out)
             write_raw_bids(
                 raw,
                 bids_path=out_path,

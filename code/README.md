@@ -17,7 +17,7 @@ A research-grade, end-to-end pipeline for **EEG latent-feature extraction** and 
 ## Features
 * **Modular pipeline** – data loading, latent-feature extraction, model training, evaluation, and visualisation live in dedicated packages.
 * **Multiple extraction methods** – `ctm`, `c22`, `c22_psd`, and deep-learning `AE`.
-* **Multi-task model** – predicts gender, age (regression), and abnormality in a single network.
+* **Independent per-task models** – trains *separate* lightweight MLPs for gender, age, and abnormality, avoiding parameter sharing.
 * **YAML-driven config** – switch datasets, methods, hyper-parameters without touching code.
 * **Snake-case package layout** – PEP-8 compliant, importable with `pip install -e .`.
 * **Reproducible results** – each run writes to an auto-generated `Results/…` directory.
@@ -61,7 +61,7 @@ The first run will:
 3. Train the multi-task classifier.
 4. Evaluate and save metrics + figures.
 
-Subsequent runs with `extracted: true` in the YAML will skip step 2 and re-use cached latents (much faster).
+Set `reset: true` in the YAML if you **want to force re-extraction** of latent features even if matching cached files already exist.  Leave it `false` (default) to reuse cached latents for faster iteration.
 
 ---
 
@@ -98,7 +98,7 @@ python main.py --config configs/ablation_c22.yaml
 | Latent extraction | `latent_extraction/extractor.py` | `extract_latent_features()` |
 | Model training | `model_training/classification_model.py` | `train()` |
 | Evaluation | `evaluation/evaluation.py` | `run_evaluation()` |
-| Visualisation | `visualization/tsne.py` | `tsne_plot()` |
+| HSIC independence | `evaluation/evaluation.py` | `independence_of_features()` |
 
 Each stage can also be called independently in an interactive notebook for debugging.
 
@@ -107,11 +107,11 @@ Each stage can also be called independently in an interactive notebook for debug
 ## Results & Outputs
 After a successful run you’ll find a folder like:
 ```
-Results/harvard-eeg-ctm-parameters-100abnormal/
+Results/bids_100_normal_abnormal_clean-ctm/
 ├── temp_latent_features_train.json
 ├── temp_latent_features_eval.json
 ├── final_metrics.txt
 ├── hsic_matrix.png
-└── tsne_gender.png  (if enabled)
-```
-The folder is created automatically; change names via `config.yaml`. 
+└── hsic_matrix.png          (pair-wise latent dependency)
+
+In addition to classic metrics (loss, accuracy, MAE/RMSE), the **final_metrics.md** report now includes a *Model prediction distribution* table for each **classification** task, showing how often the network predicted each label (counts + %). 
