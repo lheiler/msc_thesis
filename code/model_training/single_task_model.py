@@ -201,6 +201,7 @@ def train(
         epoch_loss = running / max(total, 1)
 
         # ---------------- Metrics ------------------------------------
+        
         if model.output_type == "classification":
             epoch_acc = correct_cls / max(total, 1)
             msg = f"loss = {epoch_loss:.4f}, acc = {epoch_acc:.2f}"
@@ -240,7 +241,7 @@ def train(
             current_val_score = None
             plateau_metric = epoch_loss
 
-        print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
+        if epoch % 5 == 0: print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
 
         # ---------------- Early-stopping tracking ------------------
         current_metric = plateau_metric

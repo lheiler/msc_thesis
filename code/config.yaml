@@ -1,6 +1,6 @@
 method: c22
 # Dataset corpus to use: 'tuh' or 'harvard'
-data_corp: harvard
+data_corp: tuh
 
 paths:
   # Path to TUH EEG training data (ignored for Harvard)

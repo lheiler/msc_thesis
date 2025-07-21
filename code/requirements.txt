@@ -21,6 +21,8 @@ seaborn>=0.13
 # Hyper-parameter optimisation
 optuna>=3.5
 
+torcheeg>=1.0
+
 # Utilities
 PyYAML>=6.0
 tqdm>=4.66 
