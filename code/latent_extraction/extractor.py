@@ -6,6 +6,7 @@ from latent_extraction.AE.extract_z import extract_z
 import os
 import json
 import torch
+from latent_extraction.baseline_model import extract_torcheeg
 
 
 def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
@@ -37,6 +38,8 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
             latent_feature = extract_c22_psd(x)
         elif method == "AE":
             latent_feature = extract_z(model, x, device=device)
+        elif method == "torcheeg":
+            latent_feature = extract_torcheeg(x)
         else:
             raise ValueError(f"Unknown method: {method}")
         

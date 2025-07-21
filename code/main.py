@@ -1,14 +1,7 @@
-import faulthandler
-faulthandler.enable()
-
 from data_preprocessing import data_loading as dl
-
-# Core training helpers
 from model_training.single_task_model import SingleTaskModel, train as train_single_task
-# Optional hyper-parameter optimisation
 from model_training.optuna_search import tune_hyperparameters
 from evaluation.single_task_evaluation import evaluate_single_task
-
 import evaluation.evaluation as eval  # keep generic helpers (e.g. HSIC + reporting)
 import latent_extraction.extractor as extractor
 import numpy as np
@@ -24,8 +17,6 @@ from utils.latent_loading import (
     load_latent_parameters_array,
     load_latent_c22_parameters_array,
     load_latent_ae_parameters_array,)
-
-# Dataset stats helper
 from utils.data_metrics import compute_dataset_stats
 from sklearn.model_selection import train_test_split
 
@@ -97,6 +88,7 @@ def main():
     else:
         t_data = dl.load_data(data_path_train)
         e_data = dl.load_data(data_path_eval)
+        print(f"Loaded {len(t_data)} training samples and {len(e_data)} evaluation samples from tuh dataset")
 
     n_train, n_eval = len(t_data), len(e_data)
 

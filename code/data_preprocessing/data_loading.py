@@ -30,12 +30,12 @@ def load_data(data_path_train): #specifically for TUH EEG dataset
             if sub_path == ".DS_Store":
                 continue
             eeg_path = os.path.join(data_path_train, path, sub_path)
-            print("Loading training data from:", eeg_path)
+            #print("Loading training data from:", eeg_path)
             raw = mne.io.read_raw_fif(eeg_path, preload=True, verbose=False)
             sex_code = raw.info['subject_info']['sex']
             age = 0
             abn = 1 if path == "abnormal" else 0  # Abnormal
-            t_data.append((raw, sex_code, age, abn))
+            t_data.append((raw, sex_code, abn))
 
     return t_data
 
