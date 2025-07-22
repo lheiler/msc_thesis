@@ -1,0 +1,41 @@
+metrics_per_task.abnormal.loss: 0.5319737109585084
+metrics_per_task.abnormal.accuracy: 0.7355072463768116
+metrics_per_task.abnormal.pred_counts.label_0: 165
+metrics_per_task.abnormal.pred_counts.label_1: 111
+hyperparams_per_task.abnormal.lr: 0.0006215145220731259
+hyperparams_per_task.abnormal.dropout: 0.10071938664946858
+hyperparams_per_task.abnormal.weight_decay: 1.086950588634969e-05
+hyperparams_per_task.abnormal.scheduler: cosine
+hyperparams_per_task.abnormal.n_layers: 2
+hyperparams_per_task.abnormal.base_width: 64
+train_dataset_stats.n_samples: 2717    # Number of training samples
+train_dataset_stats.gender_counts.female(2): 1447
+train_dataset_stats.gender_counts.male(1): 1270
+train_dataset_stats.gender_counts.unknown(0): 0
+train_dataset_stats.abnormal_counts.abnormal(1): 1346
+train_dataset_stats.abnormal_counts.normal(0): 1371
+train_dataset_stats.age_bin_counts.0–10: 2717
+train_dataset_stats.age_bin_counts.10–20: 0
+train_dataset_stats.age_bin_counts.20–30: 0
+train_dataset_stats.age_bin_counts.30–40: 0
+train_dataset_stats.age_bin_counts.40–50: 0
+train_dataset_stats.age_bin_counts.50–60: 0
+train_dataset_stats.age_bin_counts.60–70: 0
+train_dataset_stats.age_bin_counts.70–80: 0
+train_dataset_stats.age_bin_counts.80–120: 0
+eval_dataset_stats.n_samples: 276    # Number of evaluation samples
+eval_dataset_stats.gender_counts.female(2): 148
+eval_dataset_stats.gender_counts.male(1): 128
+eval_dataset_stats.gender_counts.unknown(0): 0
+eval_dataset_stats.abnormal_counts.abnormal(1): 126
+eval_dataset_stats.abnormal_counts.normal(0): 150
+eval_dataset_stats.age_bin_counts.0–10: 276
+eval_dataset_stats.age_bin_counts.10–20: 0
+eval_dataset_stats.age_bin_counts.20–30: 0
+eval_dataset_stats.age_bin_counts.30–40: 0
+eval_dataset_stats.age_bin_counts.40–50: 0
+eval_dataset_stats.age_bin_counts.50–60: 0
+eval_dataset_stats.age_bin_counts.60–70: 0
+eval_dataset_stats.age_bin_counts.70–80: 0
+eval_dataset_stats.age_bin_counts.80–120: 0
+global_independence_score: 0.01089698076248169    # Mean off-diag HSIC of latent features (lower = more independent)

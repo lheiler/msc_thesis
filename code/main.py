@@ -138,9 +138,6 @@ def main():
     features_train = torch.stack([sample[0] for sample in t_latent_features.dataset])
     features_eval  = torch.stack([sample[0] for sample in e_latent_features.dataset])
 
-    # only for task 1 and 3
-    print("📊 Train latent std task 1:", features_train[:, 0].std().item())
-    print("📊 Eval latent std task 1:", features_eval[:, 0].std().item())
 
     # --------------------------------------------------------------------
     # Safety check: ensure we have data before proceeding
@@ -153,9 +150,7 @@ def main():
         print(msg)
         return
     
-    # --------------------------------------------------------------------
-    # t-SNE visualisation removed – entire module has been deprecated.
-    # --------------------------------------------------------------------
+
     # ------------------------    # 2. Train **independent** models per task  ------------------------
 
     print("Detecting tasks from dataset …")
@@ -167,7 +162,7 @@ def main():
 
     metrics_all = {}
     hyperparams_all = {}
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 
     # --------------------------------------------------
     # Create *one* fixed train/val split (indices)
@@ -182,6 +177,7 @@ def main():
     )
 
     for task_idx in range(num_tasks):
+        if task_idx != 2: continue
         # ---------------- Data preparation per task ----------------
         x_train, y_raw_train = [], []
         for sample in t_latent_features.dataset:
@@ -208,7 +204,7 @@ def main():
 
         print(
             f"🔹 Task {task_idx+1}: detected as {task_type} → '{task_name}' "
-            #f"(unique values: {uniq_vals.tolist()})"
+            f"(unique values: {uniq_vals.tolist()})"
         )
 
         # 🗂  Finalise tensors & loaders ----------------------------------
@@ -227,7 +223,7 @@ def main():
 
         from torch.utils.data import Subset
         train_loader = DataLoader(Subset(train_dataset_full, train_indices_global), batch_size=batch_size, shuffle=True)
-        val_loader   = DataLoader(Subset(val_dataset_full,   val_indices_global),   batch_size=batch_size, shuffle=False)
+        val_loader   = DataLoader(Subset(val_dataset_full,   val_indices_global),   batch_size=batch_size, shuffle=True)
 
         # Eval split ------------------------------------------------------
         x_eval, y_raw_eval = [], []
@@ -241,7 +237,7 @@ def main():
                 y_eval_tensor = (y_eval_tensor == 2).float()
 
         assert X_eval.shape[0] == y_eval_tensor.shape[0], "Mismatch: features and labels have different lengths (eval)."
-        eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=False)
+        eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=True)
 
         # ---------------- Model + training -----------------------
         if use_optuna:

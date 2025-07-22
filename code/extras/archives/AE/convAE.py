@@ -522,7 +522,7 @@ def autoencoder_main(name_dataset="harvard"):
         sample_rate = 128
         segment_len_samples = segment_len_sec * sample_rate 
 
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device = 'cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu')
         
         print("we quick out here")
         model = EEGAutoEncoder(chans=19, latent_dim=64, fixed_len=segment_len_samples)

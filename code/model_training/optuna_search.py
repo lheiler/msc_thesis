@@ -14,7 +14,7 @@ def _suggest_hidden_dims(trial: optuna.Trial, input_dim: int) -> tuple[int, ...]
     We follow a simple scheme: choose *n_layers* ∈ [1,4] and a *base* hidden
     width.  Widths then decay by ×0.5 each subsequent layer.
     """
-    n_layers = trial.suggest_int("n_layers", 1, 4)
+    n_layers = trial.suggest_int("n_layers", 2, 4)
     base     = trial.suggest_int("base_width", 64, 512, step=64)
     return tuple(max(int(base * (0.5 ** i)), 16) for i in range(n_layers))
 
@@ -37,9 +37,9 @@ def tune_hyperparameters(
 
     def objective(trial: optuna.Trial):
         # ---------------- Hyper-parameter suggestions -----------------
-        lr           = trial.suggest_loguniform("lr", 1e-4, 1e-2)
+        lr           = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
         dropout      = trial.suggest_float("dropout", 0.0, 0.5)
-        weight_decay = trial.suggest_loguniform("weight_decay", 1e-6, 1e-2)
+        weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
         scheduler     = trial.suggest_categorical("scheduler", ["plateau", "cosine", "none"])
         hidden_dims  = _suggest_hidden_dims(trial, input_dim)
 
@@ -64,6 +64,9 @@ def tune_hyperparameters(
             early_stopping_patience=early_stopping_patience,
         )
 
+        # 👇 Add this line to log current trial parameters
+        print(f"[Trial {trial.number}] Params: lr={lr:.5f}, dropout={dropout:.2f}, weight_decay={weight_decay:.6f}, scheduler={scheduler}, hidden_dims={hidden_dims}")
+        
         # We aim to *minimise* validation loss (best_val_metric from train())
         if output_type == "classification":
             # maximise accuracy → minimise negative accuracy
