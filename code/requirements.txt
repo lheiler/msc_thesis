@@ -1,28 +1,28 @@
 # Core numerical & ML libraries
-numpy>=1.23
-scipy>=1.10
-scikit-learn>=1.3
+numpy
+scipy
+scikit-learn
 
 # Deep learning
-torch>=2.0
+torch
 
 # EEG processing
-mne>=1.3
-mne-bids>=0.11
+mne
+mne-bids
 
 # Optimisation & feature extraction
-cma>=3.2
-pycatch22>=0.4
+cma
+pycatch22
 
 # Visualisation
-matplotlib>=3.7
-seaborn>=0.13
+matplotlib
+seaborn
 
 # Hyper-parameter optimisation
-optuna>=3.5
+optuna
 
-torcheeg>=1.0
+torcheeg
 
 # Utilities
-PyYAML>=6.0
-tqdm>=4.66 
+PyYAML
+tqdm 
