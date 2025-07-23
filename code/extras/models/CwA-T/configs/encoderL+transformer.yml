@@ -7,21 +7,23 @@ input_size: 6000
 n_channels: 19
 
 dataset:
-  train_data_dir: '/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train'
-  val_data_dir:   '/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval'
+  #train_data_dir: '/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train'
+  #val_data_dir:   '/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval'
+  train_data_dir: '/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean/train'
+  val_data_dir: '/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean/eval'
   classes:
     normal: 0
     abnormal: 1
-  num_workers: 16
+  num_workers: 6
   shuffle: True
   # mean: [...]   # optional
   # std:  [...]   # optional
 
 model:
-  name: encoderSL+transformer
+  name: encoderL+transformer   # ‘L’ selects the large auto-encoder
   d_model: 256
-  n_head: 1
-  n_layer: 1
+  n_head: 4            # increased heads for more representational power
+  n_layer: 2           # two transformer encoder layers
   
 
 criterion:
@@ -29,21 +31,22 @@ criterion:
 
 optimizer:
   name: adam
-  init_lr: 0.001
-  weight_decay: 0.0
+  init_lr: 0.0003      # slightly lower LR for stability
+  weight_decay: 0.0001 # lighter L2 regularisation
 
 scheduler:
   name: cosine
   lr_gamma: 0.99
-  lr_min: 0
+  lr_min: 1e-5         # don't let LR fall to exactly zero
+  warmup_steps: 500    # gradual ramp-up of LR
 
 warmup: 0
 
 train:
   experiment: tuh_abnormal
-  warmup_steps: 200
-  n_epochs: 15
-  batch_size: 128
+  warmup_steps: 500    # align with scheduler warm-up
+  n_epochs: 25         # allow LR to anneal fully
+  batch_size: 64       # smaller batch improves gradient estimates
   use_cuda: 1
   gpu_id: 0
   deterministic: 1

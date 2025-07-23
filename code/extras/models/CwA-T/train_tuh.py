@@ -1,13 +1,16 @@
 import tqdm
 from pathlib import Path
-import sys, os, time, logging, argparse, yaml, math, torch
+import sys, os, time, logging, argparse, yaml, math, torch, shutil
+import multiprocessing
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils import clip_grad_norm_
 from torch import nn, Tensor
 from datetime import datetime
 from typing import List, Tuple
 from collections import OrderedDict
-
+import mne
+mne.set_log_level("WARNING")  
 # -----------------------------------------------------------------------------
 #  Make code/ directory importable so we can access the shared preprocessing util
 # -----------------------------------------------------------------------------
@@ -20,7 +23,8 @@ from data_loading import load_data  # noqa: E402
 # -----------------------------------------------------------------------------
 #  Model imports (same as original CwA-T train.py)
 # -----------------------------------------------------------------------------
-from models.encoder import res_encoderM  # noqa: E402
+# Import all encoder variants so we can choose at runtime
+from models.encoder import res_encoderS, res_encoderM, res_encoderL  # noqa: E402
 from models.classifier import transformer_classifier  # noqa: E402
 
 logger = logging.getLogger("train_tuh")
@@ -73,6 +77,8 @@ class TUHDataset(Dataset):
         self.n_channels = n_channels
         self.mean = torch.tensor(mean) if mean is not None else None
         self.std = torch.tensor(std) if std is not None else None
+        # Cache processed signals so we do not resample/crop every epoch.
+        self._cache: dict[int, tuple[Tensor, Tensor, str]] = {}
 
     def __len__(self):
         return len(self.samples)
@@ -98,6 +104,10 @@ class TUHDataset(Dataset):
         return torch.tensor(data.T, dtype=torch.float32)
 
     def __getitem__(self, idx):
+        # Return cached version if available in this worker
+        if idx in self._cache:
+            return self._cache[idx]
+
         raw, _sex_code, abn = self.samples[idx]
         signal = self._process_raw(raw)
 
@@ -106,21 +116,50 @@ class TUHDataset(Dataset):
 
         # Build a stable file identifier for per-case evaluation (filename stem)
         fname = os.path.basename(raw.filenames[0]) if raw.filenames else f"sample_{idx}.fif"
-        return signal, torch.tensor(abn, dtype=torch.long), fname
+
+        sample = (signal, torch.tensor(abn, dtype=torch.long), fname)
+        self._cache[idx] = sample
+        return sample
 
 # -----------------------------------------------------------------------------
 #  Model wrapper (identical to original but renamed for clarity)
 # -----------------------------------------------------------------------------
 
 class CwATModel(nn.Module):
-    def __init__(self, input_size: int, n_channels: int, hyp: dict, num_classes: int):
+    """Wrapper that selects the Auto-Encoder depth (S/M/L) based on the config."""
+
+    def __init__(
+        self,
+        *,
+        input_size: int,
+        n_channels: int,
+        hyp: dict,
+        num_classes: int,
+    ) -> None:
         super().__init__()
-        self.encoder = res_encoderM(
+
+        # ------------------------------------------------------------------
+        # Select encoder variant
+        # ------------------------------------------------------------------
+        encoder_name: str = hyp.get("name", "encoderM")  # fallback if not provided
+        if "L" in encoder_name.upper():
+            encoder_fn = res_encoderL
+            print("Using encoderL")
+        elif "S" in encoder_name.upper():
+            encoder_fn = res_encoderS
+            print("Using encoderS")
+        else:
+            encoder_fn = res_encoderM  # default
+            print("Using encoderM")
+
+        self.encoder = encoder_fn(
             n_channels=n_channels,
             groups=n_channels,
             num_classes=num_classes,
             d_model=hyp["d_model"],
         )
+
+        # Transformer head stays unchanged
         self.transformer_head = transformer_classifier(input_size, n_channels, hyp, num_classes)
         self._init_weights()
 
@@ -165,6 +204,14 @@ def train(cfg: dict):
     sfreq = cfg["processing"]["frequency"]
     n_channels = cfg["n_channels"]
 
+    # --------------------------------------------------------------
+    # Resolve num_workers: if cfg sets -1, use all available cores
+    # (or the PyTorch-recommended maximum returned by multiprocessing).
+    # --------------------------------------------------------------
+    requested_workers = cfg["dataset"].get("num_workers", 0)
+    if requested_workers < 0:
+        requested_workers = multiprocessing.cpu_count()
+
     train_ds = TUHDataset(
         train_samples,
         target_len=input_size,
@@ -183,18 +230,36 @@ def train(cfg: dict):
     )
 
     
+    persistent = cfg["dataset"]["num_workers"] > 0
     train_loader = DataLoader(
         train_ds,
         batch_size=cfg["train"]["batch_size"],
         shuffle=cfg["dataset"]["shuffle"],
-        num_workers=cfg["dataset"]["num_workers"],
+        num_workers=requested_workers,
+        persistent_workers=persistent,
     )
     val_loader = DataLoader(
         val_ds,
         batch_size=cfg["train"]["batch_size"],
         shuffle=False,
-        num_workers=cfg["dataset"]["num_workers"],
+        num_workers=requested_workers,
+        persistent_workers=persistent,
     )
+
+    # --------------------------------------------------------------
+    # Scheduler will operate per *batch*, so we need the total number
+    # of optimisation steps.
+    # --------------------------------------------------------------
+    steps_per_epoch = len(train_loader)
+
+    # ------------------------------------------------------------------
+    # Prepare checkpoint directory (clear previous run for same model)
+    # ------------------------------------------------------------------
+    ckpt_root = Path(cfg["checkpoint"]["checkpoint_dir"]).expanduser()
+    ckpt_dir = ckpt_root / cfg["model"]["name"]
+    if ckpt_dir.exists():
+        shutil.rmtree(ckpt_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Build model --------------------------------------------------------------
     model = CwATModel(
@@ -204,7 +269,28 @@ def train(cfg: dict):
         num_classes=len(cfg["dataset"]["classes"]),
     ).to(DEVICE)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg["optimizer"]["init_lr"], weight_decay=cfg["optimizer"]["weight_decay"])
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=cfg["optimizer"]["init_lr"],
+        weight_decay=cfg["optimizer"]["weight_decay"],
+    )
+
+    # ------------------------------------------------------------------
+    # Scheduler: use cosine annealing (with optional warm-up) so that the
+    # learning-rate follows the hyper-params specified in the config.
+    # ------------------------------------------------------------------
+    scheduler_name = cfg.get("scheduler", {}).get("name", "none").lower()
+    if scheduler_name == "cosine":
+        eta_min_val = float(cfg["scheduler"].get("lr_min", 0.0))
+        total_steps = cfg["train"]["n_epochs"] * steps_per_epoch
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=total_steps,
+            eta_min=eta_min_val,
+        )
+    else:
+        scheduler = None  # fallback to constant LR if not requested
+
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     # Logging / TensorBoard ----------------------------------------------------
@@ -217,6 +303,7 @@ def train(cfg: dict):
     # Training loop -----------------------------------------------------------
     epochs = cfg["train"]["n_epochs"]
     global_step = 0
+    best_acc = -float("inf")
     for epoch in tqdm.tqdm(range(epochs)):
         model.train()
         for signals, targets, _ in train_loader:
@@ -225,14 +312,21 @@ def train(cfg: dict):
             outputs = model(signals)
             loss = criterion(outputs, targets)
             loss.backward()
+            # Gradient clipping for training stabilisation
+            clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+
+            # ------------------------------------------------------------------
+            # Per-batch LR scheduler step & logging
+            # ------------------------------------------------------------------
+            if scheduler is not None:
+                scheduler.step()
+                writer.add_scalar("train/lr", scheduler.get_last_lr()[0], global_step)
 
             writer.add_scalar("train/loss", loss.item(), global_step)
             global_step += 1
 
-        # Adjust LR -----------------------------------------------------------
-        lr = poly_lr_scheduler(optimizer, cfg["optimizer"]["init_lr"], epoch + 1, max_iter=epochs)
-        writer.add_scalar("train/lr", lr, epoch)
+        # LR is now stepped per batch; nothing to do here
 
         # Validation ----------------------------------------------------------
         model.eval()
@@ -248,14 +342,21 @@ def train(cfg: dict):
         val_acc /= len(val_loader)
         writer.add_scalar("val/loss", val_loss, epoch)
         writer.add_scalar("val/acc", val_acc, epoch)
-        logger.info(f"Epoch {epoch+1}/{epochs} – val_loss: {val_loss:.4f} – val_acc: {val_acc:.4f}")
+
+        logger.info(
+            f"Epoch {epoch+1}/{epochs} – val_loss: {val_loss:.4f} – val_acc: {val_acc:.4f}"
+        )
 
         # Save checkpoint -----------------------------------------------------
-        ckpt_dir = Path(cfg["checkpoint"]["checkpoint_dir"]).expanduser()
-        ckpt_dir.mkdir(parents=True, exist_ok=True)
-        torch.save(model.state_dict(), ckpt_dir / f"{datetime.now().strftime('%y%m%d%H%M')}_{cfg['model']['name']}.pth")
+        if val_acc > best_acc:
+            best_acc = val_acc
+            torch.save(model.state_dict(), ckpt_dir / "best.pth")
+            logger.info(f"New best model saved with val_acc={best_acc:.4f}")
 
     writer.close()
+
+    # Return stats for hyper-parameter tuning frameworks (e.g. Optuna)
+    return best_acc, ckpt_dir / "best.pth"
 
 
 # -----------------------------------------------------------------------------
@@ -278,4 +379,4 @@ if __name__ == "__main__":
     logging.basicConfig(filename=str(log_file), level=logging.INFO, filemode="w")
     logger.addHandler(logging.StreamHandler())
 
-    train(cfg) 
+    _best_acc, _best_path = train(cfg) 
