@@ -1,0 +1,4 @@
+INFO:train_tuh:Loading TUH EEG dataset ...
+INFO:train_tuh:Epoch 1/60 – val_loss: 0.6145 – val_acc: 0.6775
+INFO:train_tuh:New best model saved with val_acc=0.6775
+INFO:train_tuh:Epoch 2/60 – val_loss: 0.6334 – val_acc: 0.6630

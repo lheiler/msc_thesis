@@ -17,9 +17,31 @@ from vit import ViT
 from util import *
 from train_and_eval_config import *
 from batch_test_hyperparameters import *
+from tqdm import tqdm
+from functools import reduce
+from operator import mul
+
 
 
 from torch.nn.functional import elu,relu,gelu
+
+import os
+import braindecode.datasets.tuh as tuh_module
+
+def patched_parse_description_from_file_path(file_path):
+    is_abnormal = 'abnormal' in file_path.lower()
+    return {
+        "subject": "unknown_subject",
+        "session": "unknown_session",
+        "year": 2000,
+        "month": 1,
+        "day": 1,
+        "segment": "0000",
+        "path": file_path,
+        "pathological": int(is_abnormal),
+    }
+
+tuh_module._parse_description_from_file_path = patched_parse_description_from_file_path
 
 
 
@@ -28,6 +50,31 @@ import warnings
 warnings.filterwarnings("once")
 
 pd.set_option('display.max_columns', 10)
+
+# ------------------------ Progress bar setup -------------------------- #
+# Compute total number of outer (data/preprocessing) and inner (model/
+# training) parameter combinations so that tqdm can display an accurate
+# progress bar.
+outer_total = reduce(mul, [
+    len(RANDOM_STATE), len(TUAB), len(TUEG), len(N_TUAB), len(N_TUEG),
+    len(N_LOAD), len(PRELOAD), len(WINDOW_LEN_S), len(TUAB_PATH),
+    len(TUEG_PATH), len(SAVED_DATA), len(SAVED_PATH),
+    len(SAVED_WINDOWS_DATA), len(SAVED_WINDOWS_PATH),
+    len(LOAD_SAVED_DATA), len(LOAD_SAVED_WINDOWS), len(BANDPASS_FILTER),
+    len(LOW_CUT_HZ), len(HIGH_CUT_HZ), len(STANDARDIZATION),
+    len(FACTOR_NEW), len(INIT_BLOCK_SIZE), len(N_JOBS), len(TMIN),
+    len(TMAX), len(MULTIPLE), len(SEC_TO_CUT), len(DURATION_RECORDING_SEC),
+    len(MAX_ABS_VAL), len(SAMPLING_FREQ), len(TEST_ON_VAL), len(SPLIT_WAY),
+    len(TRAIN_SIZE), len(VALID_SIZE), len(TEST_SIZE), len(SHUFFLE),
+    len(WINDOW_STRIDE_SAMPLES), len(RELABEL_DATASET), len(RELABEL_LABEL),
+    len(CHANNELS), len(REMOVE_ATTRIBUTE), len(ACTIVATION)
+], 1)
+
+inner_total = reduce(mul, [
+    N_REPETITIONS, len(N_CLASSES), len(LR), len(WEIGHT_DECAY),
+    len(BATCH_SIZE), len(N_EPOCHS), len(MODEL_NAME),
+    len(FINAL_CONV_LENGTH), len(DROPOUT)
+], 1)
 
 
 # import ctypes
@@ -64,14 +111,14 @@ for (random_state,tuab,tueg,n_tuab,n_tueg,n_load,preload,window_len_s,\
      load_saved_data,load_saved_windows,bandpass_filter,low_cut_hz,high_cut_hz,\
      standardization,factor_new,init_block_size,n_jobs,tmin,tmax,multiple,sec_to_cut,duration_recording_sec,max_abs_val,\
      sampling_freq,test_on_eval,split_way,train_size,valid_size,test_size,shuffle,window_stride_samples,\
-     relabel_dataset,relabel_label,channels,remove_attribute,activation) in product(
+     relabel_dataset,relabel_label,channels,remove_attribute,activation) in tqdm(product(
             RANDOM_STATE,TUAB,TUEG,N_TUAB,N_TUEG,N_LOAD,PRELOAD,\
             WINDOW_LEN_S,TUAB_PATH,TUEG_PATH,SAVED_DATA,SAVED_PATH,SAVED_WINDOWS_DATA,\
             SAVED_WINDOWS_PATH,LOAD_SAVED_DATA,LOAD_SAVED_WINDOWS,BANDPASS_FILTER,\
             LOW_CUT_HZ,HIGH_CUT_HZ,STANDARDIZATION,FACTOR_NEW,INIT_BLOCK_SIZE,N_JOBS,\
             TMIN,TMAX,MULTIPLE,SEC_TO_CUT,\
             DURATION_RECORDING_SEC,MAX_ABS_VAL,SAMPLING_FREQ,TEST_ON_VAL,SPLIT_WAY,\
-            TRAIN_SIZE,VALID_SIZE,TEST_SIZE,SHUFFLE,WINDOW_STRIDE_SAMPLES,RELABEL_DATASET,RELABEL_LABEL,CHANNELS,REMOVE_ATTRIBUTE,ACTIVATION):
+            TRAIN_SIZE,VALID_SIZE,TEST_SIZE,SHUFFLE,WINDOW_STRIDE_SAMPLES,RELABEL_DATASET,RELABEL_LABEL,CHANNELS,REMOVE_ATTRIBUTE,ACTIVATION), total=outer_total, desc='Data/Preproc configs'):
     print(random_state, tuab, tueg, n_tuab, n_tueg, n_load, preload, window_len_s, \
     tuab_path, tueg_path, saved_data, saved_path, saved_windows_data, saved_windows_path, \
     load_saved_data, load_saved_windows, bandpass_filter, low_cut_hz, high_cut_hz, \
@@ -204,8 +251,8 @@ for (random_state,tuab,tueg,n_tuab,n_tueg,n_load,preload,window_len_s,\
 
     # Iterate over model/training hyperparameters
     for (i, n_classes, lr, weight_decay, batch_size, n_epochs, model_name, final_conv_length,dropout) \
-      in product(range(N_REPETITIONS), N_CLASSES, LR, WEIGHT_DECAY, BATCH_SIZE, N_EPOCHS, MODEL_NAME, \
-      FINAL_CONV_LENGTH,DROPOUT):
+      in tqdm(product(range(N_REPETITIONS), N_CLASSES, LR, WEIGHT_DECAY, BATCH_SIZE, N_EPOCHS, MODEL_NAME, \
+      FINAL_CONV_LENGTH,DROPOUT), total=inner_total, desc='Model/Training combos', leave=False):
         print(i, random_state, tuab, tueg, n_tuab, n_tueg, n_load, preload, window_len_s, \
               tuab_path, tueg_path, saved_data, saved_path, saved_windows_data, saved_windows_path, \
               load_saved_data, load_saved_windows, bandpass_filter, low_cut_hz, high_cut_hz, \

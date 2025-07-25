@@ -14,7 +14,7 @@ dataset:
   classes:
     normal: 0
     abnormal: 1
-  num_workers: 6
+  num_workers: 16
   shuffle: True
   # mean: [...]   # optional
   # std:  [...]   # optional
@@ -45,7 +45,7 @@ warmup: 0
 train:
   experiment: tuh_abnormal
   warmup_steps: 500    # align with scheduler warm-up
-  n_epochs: 25         # allow LR to anneal fully
+  n_epochs: 60         # training budget restored
   batch_size: 64       # smaller batch improves gradient estimates
   use_cuda: 1
   gpu_id: 0
