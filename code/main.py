@@ -2,7 +2,7 @@ from data_preprocessing import data_loading as dl
 from model_training.single_task_model import SingleTaskModel, train as train_single_task
 from model_training.optuna_search import tune_hyperparameters
 from evaluation.single_task_evaluation import evaluate_single_task
-import evaluation.evaluation as eval  # keep generic helpers (e.g. HSIC + reporting)
+import evaluation.evaluation as eval
 import latent_extraction.extractor as extractor
 import numpy as np
 import os
@@ -37,8 +37,9 @@ def main():
     data_corp = cfg.get("data_corp", "harvard")
 
     paths_cfg = cfg.get("paths", {})
-    data_path_train   = paths_cfg.get("data_train", "")
-    data_path_eval    = paths_cfg.get("data_eval", "")
+    data_path_tuh   = paths_cfg.get("data_tuh", "")
+    data_path_train = os.path.join(data_path_tuh, "train")
+    data_path_eval = os.path.join(data_path_tuh, "eval")
     data_path_harvard = paths_cfg.get("data_harvard", "")
 
     results_root = paths_cfg.get("results_root", "Results")
@@ -66,8 +67,19 @@ def main():
     batch_size   = model_cfg.get("batch_size", 16)
     num_epochs   = model_cfg.get("num_epochs", 20)
     dropout      = model_cfg.get("dropout", 0.2)
+    hidden_dims  = model_cfg.get("hidden_dims", [512, 256, 128, 64])
+    if isinstance(hidden_dims, int):
+        hidden_dims = [hidden_dims]
+    if not hasattr(hidden_dims, "__iter__"):
+        raise ValueError("model.hidden_dims must be an int or a list of ints in config.yaml")
+    hidden_dims = tuple(int(h) for h in hidden_dims)
     weight_decay = model_cfg.get("weight_decay", 0.0)
     scheduler    = model_cfg.get("scheduler", "none")
+
+    # ---------------- New: classifier head selection ----------------
+    classifier_type = model_cfg.get("classifier", "mlp").lower()
+    transformer_cfg = model_cfg.get("transformer", {})
+    # --------------------------------------------------------------
 
     # Optuna parameters ---------------------------------------------------------
     n_trials_opt   = optuna_cfg.get("n_trials", 30)
@@ -176,6 +188,8 @@ def main():
         shuffle=True,
     )
 
+
+
     for task_idx in range(num_tasks):
         if task_idx != 2: continue
         # ---------------- Data preparation per task ----------------
@@ -219,11 +233,13 @@ def main():
         assert X_train.shape[0] == y_train_tensor.shape[0], "Mismatch: features and labels have different lengths (train)."
         # Build loaders using **global** split
         train_dataset_full = TensorDataset(X_train, y_train_tensor)
-        val_dataset_full   = TensorDataset(X_train, y_train_tensor)  # same tensors, will subset
+        val_dataset_full   = TensorDataset(X_train.clone(), y_train_tensor.clone())
 
         from torch.utils.data import Subset
         train_loader = DataLoader(Subset(train_dataset_full, train_indices_global), batch_size=batch_size, shuffle=True)
-        val_loader   = DataLoader(Subset(val_dataset_full,   val_indices_global),   batch_size=batch_size, shuffle=True)
+        val_loader   = DataLoader(Subset(train_dataset_full, val_indices_global),   batch_size=batch_size, shuffle=True)
+        
+        # print
 
         # Eval split ------------------------------------------------------
         x_eval, y_raw_eval = [], []
@@ -238,7 +254,6 @@ def main():
 
         assert X_eval.shape[0] == y_eval_tensor.shape[0], "Mismatch: features and labels have different lengths (eval)."
         eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=True)
-
         # ---------------- Model + training -----------------------
         if use_optuna:
             print(f"   → Optuna search (n_trials={n_trials_opt}) for {task_type} …")
@@ -252,10 +267,44 @@ def main():
                 val_split=val_split_opt,
                 early_stopping_patience=patience_opt,
             )
+            
             model = search_out["best_model"]
             best_params = search_out["best_params"]
         else:
-            model = SingleTaskModel(input_dim=input_dim, output_type=task_type, dropout=dropout)
+            if classifier_type == "transformer":
+                from model_training.transformer_task_model import TransformerTaskModel
+                # Determine transformer hyper-params (fallbacks ensure minimal config changes)
+                n_channels = int(transformer_cfg.get("n_channels", 19))
+                # Auto-infer d_model when not specified explicitly
+                d_model_cfg = transformer_cfg.get("d_model")
+                if d_model_cfg is None:
+                    if input_dim % n_channels != 0:
+                        raise ValueError(
+                            "input_dim is not divisible by n_channels – cannot infer d_model. "
+                            "Please set model.transformer.d_model in the YAML config."
+                        )
+                    d_model_cfg = input_dim // n_channels
+                d_model_cfg = int(d_model_cfg)
+                n_head = int(transformer_cfg.get("n_head", 4))
+                n_layer = int(transformer_cfg.get("n_layer", 2))
+
+                model = TransformerTaskModel(
+                    input_dim=input_dim,
+                    output_type=task_type,
+                    n_channels=n_channels,
+                    d_model=d_model_cfg,
+                    n_head=n_head,
+                    n_layer=n_layer,
+                    dropout=dropout,
+                )
+            else:
+                # Default MLP head
+                model = SingleTaskModel(
+                    input_dim=input_dim,
+                    output_type=task_type,
+                    hidden_dims=hidden_dims,
+                    dropout=dropout,
+                )
             print(f"   → Training independent {task_type} network …")
             train_single_task(
                 model,
@@ -271,9 +320,11 @@ def main():
                 "weight_decay": weight_decay,
                 "scheduler": scheduler,
                 "n_epochs": num_epochs,
+                "hidden_dims": hidden_dims,
             }
 
         # ---------------- Evaluation -----------------------------
+        print(model)
         task_metrics = evaluate_single_task(model, eval_loader, output_type=task_type, device=device)
 
         metrics_all[task_name] = task_metrics
@@ -289,7 +340,7 @@ def main():
     eval_stats  = compute_dataset_stats(e_latent_features)
 
     xs_eval = torch.stack([sample[0].detach().clone().float() for sample in e_latent_features.dataset])
-    independence_scores = eval.independence_of_features(xs_eval, save_path=results_path, device=device)
+    #independence_scores = eval.independence_of_features(xs_eval, save_path=results_path, device=device)
 
     # 4. Collate and save final results --------------------------
     final_results = {
@@ -297,7 +348,7 @@ def main():
         "hyperparams_per_task": hyperparams_all,
         "train_dataset_stats": train_stats,
         "eval_dataset_stats": eval_stats,
-        "global_independence_score": independence_scores["global_score"],
+        #"global_independence_score": independence_scores["global_score"],
     }
 
     print("Saving results …")

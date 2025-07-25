@@ -71,7 +71,7 @@ class SingleTaskModel(nn.Module):
     # -----------------------------------------------------------------
     def get_criterion(self, pos_weight: torch.Tensor = None):
         if self.output_type == "classification":
-            return nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+            return nn.BCEWithLogitsLoss()
         else:
             return nn.MSELoss()
 
@@ -241,7 +241,7 @@ def train(
             current_val_score = None
             plateau_metric = epoch_loss
 
-        if epoch % 5 == 0: print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
+        if epoch % 1 == 0: print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
 
         # ---------------- Early-stopping tracking ------------------
         current_metric = plateau_metric

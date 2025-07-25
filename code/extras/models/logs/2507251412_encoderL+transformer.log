@@ -1,0 +1,65 @@
+INFO:train_tuh:Loading TUH EEG dataset ...
+INFO:train_tuh:Epoch 1/60 – val_loss: 0.8720 – val_acc: 0.4601
+INFO:train_tuh:New best model saved with val_acc=0.4601
+INFO:train_tuh:Epoch 2/60 – val_loss: 0.7346 – val_acc: 0.6413
+INFO:train_tuh:New best model saved with val_acc=0.6413
+INFO:train_tuh:Epoch 3/60 – val_loss: 0.5551 – val_acc: 0.7319
+INFO:train_tuh:New best model saved with val_acc=0.7319
+INFO:train_tuh:Epoch 4/60 – val_loss: 0.7653 – val_acc: 0.6558
+INFO:train_tuh:Epoch 5/60 – val_loss: 0.6552 – val_acc: 0.6594
+INFO:train_tuh:Epoch 6/60 – val_loss: 0.5255 – val_acc: 0.7790
+INFO:train_tuh:New best model saved with val_acc=0.7790
+INFO:train_tuh:Epoch 7/60 – val_loss: 0.5313 – val_acc: 0.7500
+INFO:train_tuh:Epoch 8/60 – val_loss: 0.5434 – val_acc: 0.7572
+INFO:train_tuh:Epoch 9/60 – val_loss: 0.5586 – val_acc: 0.7645
+INFO:train_tuh:Epoch 10/60 – val_loss: 0.5775 – val_acc: 0.7246
+INFO:train_tuh:Epoch 11/60 – val_loss: 0.5573 – val_acc: 0.7428
+INFO:train_tuh:Epoch 12/60 – val_loss: 0.5307 – val_acc: 0.7536
+INFO:train_tuh:Epoch 13/60 – val_loss: 0.5689 – val_acc: 0.7210
+INFO:train_tuh:Epoch 14/60 – val_loss: 0.5694 – val_acc: 0.7065
+INFO:train_tuh:Epoch 15/60 – val_loss: 0.5552 – val_acc: 0.7572
+INFO:train_tuh:Epoch 16/60 – val_loss: 0.6242 – val_acc: 0.7065
+INFO:train_tuh:Epoch 17/60 – val_loss: 0.5543 – val_acc: 0.7572
+INFO:train_tuh:Epoch 18/60 – val_loss: 0.5835 – val_acc: 0.6957
+INFO:train_tuh:Epoch 19/60 – val_loss: 0.5898 – val_acc: 0.7246
+INFO:train_tuh:Epoch 20/60 – val_loss: 0.5850 – val_acc: 0.7681
+INFO:train_tuh:Epoch 21/60 – val_loss: 0.5643 – val_acc: 0.7645
+INFO:train_tuh:Epoch 22/60 – val_loss: 0.5650 – val_acc: 0.7428
+INFO:train_tuh:Epoch 23/60 – val_loss: 0.5357 – val_acc: 0.7717
+INFO:train_tuh:Epoch 24/60 – val_loss: 0.5779 – val_acc: 0.7645
+INFO:train_tuh:Epoch 25/60 – val_loss: 0.6151 – val_acc: 0.7500
+INFO:train_tuh:Epoch 26/60 – val_loss: 0.5818 – val_acc: 0.7572
+INFO:train_tuh:Epoch 27/60 – val_loss: 0.5644 – val_acc: 0.7464
+INFO:train_tuh:Epoch 28/60 – val_loss: 0.6376 – val_acc: 0.7500
+INFO:train_tuh:Epoch 29/60 – val_loss: 0.6754 – val_acc: 0.7536
+INFO:train_tuh:Epoch 30/60 – val_loss: 0.6404 – val_acc: 0.7283
+INFO:train_tuh:Epoch 31/60 – val_loss: 0.6711 – val_acc: 0.7391
+INFO:train_tuh:Epoch 32/60 – val_loss: 0.7634 – val_acc: 0.6594
+INFO:train_tuh:Epoch 33/60 – val_loss: 0.7148 – val_acc: 0.7138
+INFO:train_tuh:Epoch 34/60 – val_loss: 0.7908 – val_acc: 0.6920
+INFO:train_tuh:Epoch 35/60 – val_loss: 0.8690 – val_acc: 0.7065
+INFO:train_tuh:Epoch 36/60 – val_loss: 0.9007 – val_acc: 0.6630
+INFO:train_tuh:Epoch 37/60 – val_loss: 0.9735 – val_acc: 0.6884
+INFO:train_tuh:Epoch 38/60 – val_loss: 0.8342 – val_acc: 0.7210
+INFO:train_tuh:Epoch 39/60 – val_loss: 0.9666 – val_acc: 0.6812
+INFO:train_tuh:Epoch 40/60 – val_loss: 0.9519 – val_acc: 0.6848
+INFO:train_tuh:Epoch 41/60 – val_loss: 1.1194 – val_acc: 0.7029
+INFO:train_tuh:Epoch 42/60 – val_loss: 0.9870 – val_acc: 0.6993
+INFO:train_tuh:Epoch 43/60 – val_loss: 1.0564 – val_acc: 0.6993
+INFO:train_tuh:Epoch 44/60 – val_loss: 1.0305 – val_acc: 0.7210
+INFO:train_tuh:Epoch 45/60 – val_loss: 1.2135 – val_acc: 0.7065
+INFO:train_tuh:Epoch 46/60 – val_loss: 1.2112 – val_acc: 0.7174
+INFO:train_tuh:Epoch 47/60 – val_loss: 1.2851 – val_acc: 0.7138
+INFO:train_tuh:Epoch 48/60 – val_loss: 1.1836 – val_acc: 0.6957
+INFO:train_tuh:Epoch 49/60 – val_loss: 1.3580 – val_acc: 0.7174
+INFO:train_tuh:Epoch 50/60 – val_loss: 1.5369 – val_acc: 0.6920
+INFO:train_tuh:Epoch 51/60 – val_loss: 1.2933 – val_acc: 0.7138
+INFO:train_tuh:Epoch 52/60 – val_loss: 1.5960 – val_acc: 0.6957
+INFO:train_tuh:Epoch 53/60 – val_loss: 1.5684 – val_acc: 0.6884
+INFO:train_tuh:Epoch 54/60 – val_loss: 1.7388 – val_acc: 0.6848
+INFO:train_tuh:Epoch 55/60 – val_loss: 1.7640 – val_acc: 0.6920
+INFO:train_tuh:Epoch 56/60 – val_loss: 1.8653 – val_acc: 0.6848
+INFO:train_tuh:Epoch 57/60 – val_loss: 1.8216 – val_acc: 0.6993
+INFO:train_tuh:Epoch 58/60 – val_loss: 2.0420 – val_acc: 0.6775
+INFO:train_tuh:Epoch 59/60 – val_loss: 2.1475 – val_acc: 0.6957
+INFO:train_tuh:Epoch 60/60 – val_loss: 2.2176 – val_acc: 0.6920

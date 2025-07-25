@@ -36,7 +36,6 @@ class MLP_1l(nn.Module):
             )
     
     def forward(self, x):
-        
         z = torch.flatten(x, 1)
         z = self.mlp(z)
         return y

@@ -35,7 +35,7 @@ def load_data(data_path_train): #specifically for TUH EEG dataset
             sex_code = raw.info['subject_info']['sex']
             age = 0
             abn = 1 if path == "abnormal" else 0  # Abnormal
-            t_data.append((raw, sex_code, abn))
+            t_data.append((raw, sex_code, age, abn))
 
     return t_data
 

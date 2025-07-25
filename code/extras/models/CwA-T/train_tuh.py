@@ -108,7 +108,7 @@ class TUHDataset(Dataset):
         if idx in self._cache:
             return self._cache[idx]
 
-        raw, _sex_code, abn = self.samples[idx]
+        raw, _sex_code,_, abn = self.samples[idx]
         signal = self._process_raw(raw)
 
         if self.mean is not None and self.std is not None:
@@ -291,7 +291,7 @@ def train(cfg: dict):
     else:
         scheduler = None  # fallback to constant LR if not requested
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.0)
 
     # Logging / TensorBoard ----------------------------------------------------
     from torch.utils.tensorboard import SummaryWriter
@@ -304,6 +304,12 @@ def train(cfg: dict):
     epochs = cfg["train"]["n_epochs"]
     global_step = 0
     best_acc = -float("inf")
+    # -----------------------------
+    # Early-stopping parameters
+    # -----------------------------
+    patience = cfg.get("train", {}).get("early_stop_patience", 10)
+    epochs_without_improve = 0
+
     for epoch in tqdm.tqdm(range(epochs)):
         model.train()
         for signals, targets, _ in train_loader:
@@ -330,16 +336,19 @@ def train(cfg: dict):
 
         # Validation ----------------------------------------------------------
         model.eval()
-        val_loss, val_acc = 0.0, 0.0
+        # --- compute metrics over the *entire* validation set --------------
+        val_loss, total_correct, total_samples = 0.0, 0, 0
         with torch.no_grad():
             for signals, targets, _ in val_loader:
                 signals, targets = signals.to(DEVICE), targets.to(DEVICE)
                 outputs = model(signals)
-                val_loss += criterion(outputs, targets).item()
-                val_acc += accuracy(outputs, targets)
+                val_loss += criterion(outputs, targets).item() * signals.size(0)
+                preds = outputs.argmax(dim=1)
+                total_correct += preds.eq(targets).sum().item()
+                total_samples += targets.size(0)
 
-        val_loss /= len(val_loader)
-        val_acc /= len(val_loader)
+        val_loss /= total_samples
+        val_acc = total_correct / total_samples
         writer.add_scalar("val/loss", val_loss, epoch)
         writer.add_scalar("val/acc", val_acc, epoch)
 
@@ -347,11 +356,20 @@ def train(cfg: dict):
             f"Epoch {epoch+1}/{epochs} – val_loss: {val_loss:.4f} – val_acc: {val_acc:.4f}"
         )
 
-        # Save checkpoint -----------------------------------------------------
+        # Save checkpoint / handle early-stopping -----------------------------
         if val_acc > best_acc:
             best_acc = val_acc
             torch.save(model.state_dict(), ckpt_dir / "best.pth")
             logger.info(f"New best model saved with val_acc={best_acc:.4f}")
+            epochs_without_improve = 0
+        else:
+            epochs_without_improve += 1
+
+        if epochs_without_improve >= patience:
+            logger.info(
+                f"Early stopping after {epoch + 1} epochs – no improvement for {patience} epochs."
+            )
+            break
 
     writer.close()
 

@@ -1,0 +1,66 @@
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+Using encoderL
+
+========== Optuna finished ==========
+Best trial:
+  Value (accuracy): 0.7948
+  Params:
+    init_lr: 8.899411507097458e-05
+    weight_decay: 8.624816900324095e-05
+    lr_min: 2.660736220363774e-06
+    d_model: 128
+    n_head: 8
+    batch_size: 128
+
+Retrained best model val_acc=0.7328
+Best model saved to: ../weights/encoderL+transformer/optuna_best.pth
+

@@ -46,7 +46,7 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
             latent_feature = extract_c22_psd(x)
         elif method in {"cwat", "CwA-T", "cwa_t"}:
             # extract_cwat was imported above only if needed
-            latent_feature = extract_cwat(x, device=device)  # type: ignore
+            latent_feature = extract_cwat(x, device=device)[0]  # type: ignore
         else:
             raise ValueError(f"Unknown method: {method}")
         

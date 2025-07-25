@@ -146,7 +146,7 @@ class AutoEncoder(nn.Module):
 
         self.avgpool_2 = nn.AdaptiveAvgPool2d((self.groups, self.d_model))   
         self.dropout2 = nn.Dropout(0.2)
-        self.dropout5 = nn.Dropout(0.5)   
+        self.dropout5 = nn.Dropout(0.2)   
 
 
         for m in self.modules():
@@ -246,16 +246,13 @@ def _autoencoder(
 
 # 2min: 12000, 2^5-->375, avgpool-->256
 def res_encoderS(*, weights = None, progress: bool = True, **kwargs: Any) -> AutoEncoder:  
-
     return _autoencoder(BasicBlock, [2, 1, 1, 1], progress, **kwargs)
 
 
 def res_encoderM(*, weights = None, progress: bool = True, **kwargs: Any) -> AutoEncoder: 
-
     return _autoencoder(BasicBlock, [2, 2, 2, 2, 2], progress, **kwargs)
 
 def res_encoderL(*, weights = None, progress: bool = True, **kwargs: Any) -> AutoEncoder:
-
     return _autoencoder(BasicBlock, [3, 4, 6, 3, 2, 2], progress, **kwargs)
 
 
