@@ -1,0 +1,6 @@
+2025-07-26 22:27:44,113 [INFO] Parameters initialised.
+2025-07-26 22:28:17,834 [INFO] Epoch 1/50 | Train Loss 0.7869 | Train Acc 0.5164 | Val Acc 0.5507 (152/276)
+2025-07-26 22:28:44,584 [INFO] Epoch 2/50 | Train Loss 0.6818 | Train Acc 0.6080 | Val Acc 0.5290 (146/276)
+2025-07-26 22:29:11,428 [INFO] Epoch 3/50 | Train Loss 0.5864 | Train Acc 0.7041 | Val Acc 0.6051 (167/276)
+2025-07-26 22:29:38,496 [INFO] Epoch 4/50 | Train Loss 0.5101 | Train Acc 0.7722 | Val Acc 0.6123 (169/276)
+2025-07-26 22:30:05,479 [INFO] Epoch 5/50 | Train Loss 0.4397 | Train Acc 0.8414 | Val Acc 0.5942 (164/276)
