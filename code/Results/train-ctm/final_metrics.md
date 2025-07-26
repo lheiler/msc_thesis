@@ -5,15 +5,15 @@
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.547494 |
-| Accuracy   | 0.73913  |
+| Loss (BCE) | 0.65246  |
+| Accuracy   | 0.605072 |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |     178 | 64.5% |
-| label_1 |      98 | 35.5% |
+| label_0 |     183 | 66.3% |
+| label_1 |      93 | 33.7% |
 
 ## Dataset statistics – train
 

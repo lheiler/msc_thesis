@@ -122,6 +122,54 @@ class TUHDataset(Dataset):
         return sample
 
 # -----------------------------------------------------------------------------
+#  Utility: compute per-channel mean / std over the dataset
+# -----------------------------------------------------------------------------
+
+
+def compute_channel_stats(
+    samples: list[tuple["mne.io.BaseRaw", int, int, int]],
+    *,
+    target_len: int,
+    target_sf: int,
+    n_channels: int,
+) -> tuple[list[float], list[float]]:
+    """Return channel-wise mean and std (lists of length *n_channels*).
+
+    We replicate the same preprocessing steps used in *TUHDataset* so that the
+    statistics match the tensors seen during training.
+    """
+
+    import numpy as _np
+
+    # Running sums for mean / variance (Welford)
+    channel_sum = _np.zeros(n_channels, dtype=_np.float64)
+    channel_sum_sq = _np.zeros(n_channels, dtype=_np.float64)
+    total_samples = 0
+
+    for raw, *_ in samples:
+        if int(raw.info["sfreq"]) != target_sf:
+            raw = raw.copy().resample(target_sf)
+
+        data = raw.get_data(picks="eeg")[:n_channels, :]
+
+        # Crop / pad exactly like _process_raw
+        if data.shape[1] >= target_len:
+            data = data[:, :target_len]
+        else:
+            pad_width = target_len - data.shape[1]
+            data = _np.pad(data, ((0, 0), (0, pad_width)), mode="constant")
+
+        channel_sum += data.sum(axis=1)
+        channel_sum_sq += (data ** 2).sum(axis=1)
+        total_samples += data.shape[1]
+
+    mean = channel_sum / total_samples
+    var = channel_sum_sq / total_samples - mean ** 2
+    std = _np.sqrt(_np.maximum(var, 1e-8))
+
+    return mean.tolist(), std.tolist()
+
+# -----------------------------------------------------------------------------
 #  Model wrapper (identical to original but renamed for clarity)
 # -----------------------------------------------------------------------------
 
@@ -212,21 +260,40 @@ def train(cfg: dict):
     if requested_workers < 0:
         requested_workers = multiprocessing.cpu_count()
 
+    # --------------------------------------------------------------
+    # 1️⃣  Compute mean / std if not provided in YAML ---------------
+    # --------------------------------------------------------------
+    mean_cfg = cfg["dataset"].get("mean")
+    std_cfg = cfg["dataset"].get("std")
+
+    if mean_cfg is None or std_cfg is None:
+        logger.info("Computing channel-wise mean/std … this runs once and may take a minute …")
+        mean_cfg, std_cfg = compute_channel_stats(
+            train_samples,
+            target_len=input_size,
+            target_sf=sfreq,
+            n_channels=n_channels,
+        )
+        cfg["dataset"]["mean"] = mean_cfg
+        cfg["dataset"]["std"] = std_cfg
+        logger.info(" → mean: %s", [f"{m:.3e}" for m in mean_cfg])
+        logger.info(" → std : %s", [f"{s:.3e}" for s in std_cfg])
+
     train_ds = TUHDataset(
         train_samples,
         target_len=input_size,
         target_sf=sfreq,
         n_channels=n_channels,
-        mean=cfg["dataset"].get("mean"),
-        std=cfg["dataset"].get("std"),
+        mean=mean_cfg,
+        std=std_cfg,
     )
     val_ds = TUHDataset(
         val_samples,
         target_len=input_size,
         target_sf=sfreq,
         n_channels=n_channels,
-        mean=cfg["dataset"].get("mean"),
-        std=cfg["dataset"].get("std"),
+        mean=mean_cfg,
+        std=std_cfg,
     )
 
     
@@ -312,6 +379,9 @@ def train(cfg: dict):
 
     for epoch in tqdm.tqdm(range(epochs)):
         model.train()
+        # ---- epoch-level accumulators -----------------------------------
+        epoch_loss, epoch_correct, epoch_samples = 0.0, 0, 0
+
         for signals, targets, _ in train_loader:
             signals, targets = signals.to(DEVICE), targets.to(DEVICE)
             optimizer.zero_grad()
@@ -322,15 +392,26 @@ def train(cfg: dict):
             clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
-            # ------------------------------------------------------------------
-            # Per-batch LR scheduler step & logging
-            # ------------------------------------------------------------------
+            # ---- accumulate metrics -------------------------------------
+            bs = signals.size(0)
+            epoch_loss += loss.item() * bs
+            preds = outputs.argmax(dim=1)
+            epoch_correct += preds.eq(targets).sum().item()
+            epoch_samples += bs
+
+            # ---- per-batch LR scheduler & logging -----------------------
             if scheduler is not None:
                 scheduler.step()
                 writer.add_scalar("train/lr", scheduler.get_last_lr()[0], global_step)
 
             writer.add_scalar("train/loss", loss.item(), global_step)
             global_step += 1
+
+        # ---- epoch metrics ---------------------------------------------
+        epoch_loss /= epoch_samples
+        epoch_acc = epoch_correct / epoch_samples
+        writer.add_scalar("train/epoch_loss", epoch_loss, epoch)
+        writer.add_scalar("train/epoch_acc", epoch_acc, epoch)
 
         # LR is now stepped per batch; nothing to do here
 
@@ -352,8 +433,12 @@ def train(cfg: dict):
         writer.add_scalar("val/loss", val_loss, epoch)
         writer.add_scalar("val/acc", val_acc, epoch)
 
+        current_lr = (
+            scheduler.get_last_lr()[0] if scheduler is not None else optimizer.param_groups[0]["lr"]
+        )
+
         logger.info(
-            f"Epoch {epoch+1}/{epochs} – val_loss: {val_loss:.4f} – val_acc: {val_acc:.4f}"
+            f"Epoch {epoch+1}/{epochs} – train_acc: {epoch_acc:.4f} – val_acc: {val_acc:.4f} – lr: {current_lr:.2e}"
         )
 
         # Save checkpoint / handle early-stopping -----------------------------

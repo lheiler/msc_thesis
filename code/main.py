@@ -1,7 +1,6 @@
 from data_preprocessing import data_loading as dl
 from model_training.single_task_model import SingleTaskModel, train as train_single_task
 from model_training.optuna_search import tune_hyperparameters
-from evaluation.single_task_evaluation import evaluate_single_task
 import evaluation.evaluation as eval
 import latent_extraction.extractor as extractor
 import numpy as np
@@ -76,10 +75,7 @@ def main():
     weight_decay = model_cfg.get("weight_decay", 0.0)
     scheduler    = model_cfg.get("scheduler", "none")
 
-    # ---------------- New: classifier head selection ----------------
-    classifier_type = model_cfg.get("classifier", "mlp").lower()
-    transformer_cfg = model_cfg.get("transformer", {})
-    # --------------------------------------------------------------
+    # No alternative classifier heads – we always use the MLP (SingleTaskModel).
 
     # Optuna parameters ---------------------------------------------------------
     n_trials_opt   = optuna_cfg.get("n_trials", 30)
@@ -266,45 +262,19 @@ def main():
                 device=device,
                 val_split=val_split_opt,
                 early_stopping_patience=patience_opt,
+                results_dir=results_path,
             )
             
             model = search_out["best_model"]
             best_params = search_out["best_params"]
         else:
-            if classifier_type == "transformer":
-                from model_training.transformer_task_model import TransformerTaskModel
-                # Determine transformer hyper-params (fallbacks ensure minimal config changes)
-                n_channels = int(transformer_cfg.get("n_channels", 19))
-                # Auto-infer d_model when not specified explicitly
-                d_model_cfg = transformer_cfg.get("d_model")
-                if d_model_cfg is None:
-                    if input_dim % n_channels != 0:
-                        raise ValueError(
-                            "input_dim is not divisible by n_channels – cannot infer d_model. "
-                            "Please set model.transformer.d_model in the YAML config."
-                        )
-                    d_model_cfg = input_dim // n_channels
-                d_model_cfg = int(d_model_cfg)
-                n_head = int(transformer_cfg.get("n_head", 4))
-                n_layer = int(transformer_cfg.get("n_layer", 2))
-
-                model = TransformerTaskModel(
-                    input_dim=input_dim,
-                    output_type=task_type,
-                    n_channels=n_channels,
-                    d_model=d_model_cfg,
-                    n_head=n_head,
-                    n_layer=n_layer,
-                    dropout=dropout,
-                )
-            else:
-                # Default MLP head
-                model = SingleTaskModel(
-                    input_dim=input_dim,
-                    output_type=task_type,
-                    hidden_dims=hidden_dims,
-                    dropout=dropout,
-                )
+            # SingleTaskModel (MLP) – only supported head
+            model = SingleTaskModel(
+                input_dim=input_dim,
+                output_type=task_type,
+                hidden_dims=hidden_dims,
+                dropout=dropout,
+            )
             print(f"   → Training independent {task_type} network …")
             train_single_task(
                 model,
@@ -325,7 +295,7 @@ def main():
 
         # ---------------- Evaluation -----------------------------
         print(model)
-        task_metrics = evaluate_single_task(model, eval_loader, output_type=task_type, device=device)
+        task_metrics = model.evaluate(eval_loader, output_type=task_type, device=device)
 
         metrics_all[task_name] = task_metrics
         hyperparams_all[task_name] = best_params

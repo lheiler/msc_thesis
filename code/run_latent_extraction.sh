@@ -1,24 +1,14 @@
 #!/bin/bash
-#PBS -lwalltime=02:00:00
-#PBS -lselect=1:ncpus=8:mem=16gb
-#PBS -o /rds/general/user/lrh24/home/thesis/code/job_output.log
-#PBS -e /rds/general/user/lrh24/home/thesis/code/job_error.log
+#SBATCH --job-name=latent_extraction
+#SBATCH --gres=gpu:1
+#SBATCH --partition=gpgpuB
+#SBATCH --cpus-per-gpu=16
+#SBATCH --mem-per-gpu=32G
 
-cd /rds/general/user/lrh24/home/thesis/code
 
-# Load required modules
+cd /homes/lrh24/thesis/code
 
-#module load Python  # Replace with correct version
-
-module load tools/dev
-
-# Activate your virtual environment (if needed)
-source ~/env_thesis/bin/activate
-#module load CUDA/12.1
-
-#pip uninstall -y pycatch22
-#pip install --no-cache-dir --no-binary=:all: pycatch22
-
+source /vol/bitbucket/lrh24/dlenv/bin/activate
 
 # Run your script
 python main.py

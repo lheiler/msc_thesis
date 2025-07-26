@@ -1,0 +1,1 @@
+{"input_dim": 418, "output_type": "classification", "hidden_dims": [64, 32, 16, 16], "dropout": 0.11421960472246423}
