@@ -3,7 +3,7 @@ from torch import nn
 # --- Additional utilities for validation split ---
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
-from typing import Tuple, Union
+from typing import Tuple, Union, Literal, Dict
 
 
 class SingleTaskModel(nn.Module):
@@ -75,6 +75,77 @@ class SingleTaskModel(nn.Module):
         else:
             return nn.MSELoss()
 
+    # -----------------------------------------------------------------
+    # Evaluation helper (moved from evaluation/single_task_evaluation.py)
+    # -----------------------------------------------------------------
+    def evaluate(
+        self,
+        dataloader: DataLoader,
+        output_type: Literal["classification", "regression"] | None = None,
+        device: Union[str, torch.device] = "cpu",
+    ) -> Dict[str, float]:
+        """Compute metrics on *dataloader* using *this* model.
+
+        Classification → BCE loss + accuracy (+ prediction counts).
+        Regression     → MSE + MAE + RMSE.
+
+        The implementation mirrors the former ``evaluate_single_task`` helper but
+        lives inside the model class to guarantee **one single source of truth**.
+        """
+
+        if output_type is None:
+            output_type = self.output_type
+
+        device = torch.device(device)
+        self.to(device)
+        self.eval()
+
+        criterion = (
+            nn.BCEWithLogitsLoss() if output_type == "classification" else nn.MSELoss()
+        )
+
+        total_loss = 0.0
+        total = 0
+
+        # Accumulators -------------------------------------------------
+        correct_cls = 0
+        mae_sum = 0.0
+        sqe_sum = 0.0
+        pred_positive = 0  # Number of times model predicts label 1 / "positive"
+
+        with torch.no_grad():
+            for x, y in dataloader:
+                x, y = x.to(device).float(), y.to(device).float()
+                y_pred = self(x).squeeze(-1)
+
+                loss = criterion(y_pred, y)
+                total_loss += loss.item() * x.size(0)
+                total += x.size(0)
+
+                if output_type == "classification":
+                    probs = torch.sigmoid(y_pred)
+                    preds = (probs >= 0.5).float()
+                    correct_cls += (preds == y).sum().item()
+                    pred_positive += preds.sum().item()
+                else:
+                    mae_sum += torch.abs(y_pred - y).sum().item()
+                    sqe_sum += ((y_pred - y) ** 2).sum().item()
+
+        metrics: Dict[str, float] = {"loss": total_loss / max(total, 1)}
+        if output_type == "classification":
+            metrics["accuracy"] = correct_cls / max(total, 1)
+            pred_negative = max(total, 0) - pred_positive
+            metrics["pred_counts"] = {
+                "label_0": int(pred_negative),
+                "label_1": int(pred_positive),
+            }
+            print("🔍 Prediction counts:", metrics["pred_counts"])
+        else:
+            metrics["mae"] = mae_sum / max(total, 1)
+            metrics["rmse"] = (sqe_sum / max(total, 1)) ** 0.5
+
+        return metrics
+
 
 # =====================================================================
 #                          Training helper
@@ -104,6 +175,7 @@ def train(
     device = torch.device(device)
     model.to(device)
 
+    print(f"Training model with checkpoint path: {checkpoint_path}")
     # -----------------------------------------------------------------
     # 0. Derive *internal* train / validation loaders ------------------
     # If a validation loader is provided externally we skip splitting.
@@ -230,16 +302,24 @@ def train(
             if model.output_type == "classification":
                 val_acc = val_correct_cls / max(val_total, 1)
                 msg += f" | val_loss = {val_loss:.4f}, val_acc = {val_acc:.2f}"
-                current_val_score = val_acc  # higher better for acc
-                plateau_metric = val_loss    # still use loss for early-stopping
+
+                # Use *accuracy* itself to drive best-model checkpointing & early-stopping.
+                # We invert the sign so that "lower" still means "better" relative to the
+                # original comparison (< best_metric).
+                current_val_score = val_acc          # human-readable (higher = better)
+                plateau_metric    = -val_acc         # lower negative → higher accuracy
             else:
                 msg += f" | val_loss = {val_loss:.4f}"
                 current_val_score = -val_loss  # lower loss ⇒ higher score
                 plateau_metric = val_loss
         else:
             val_loss = None
-            current_val_score = None
-            plateau_metric = epoch_loss
+            if model.output_type == "classification":
+                current_val_score = epoch_acc
+                plateau_metric    = -epoch_acc  # checkpoint when accuracy improves
+            else:
+                current_val_score = None
+                plateau_metric = epoch_loss
 
         if epoch % 1 == 0: print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
 
@@ -255,6 +335,8 @@ def train(
                 torch.save(best_state_dict, checkpoint_path)
         else:
             epochs_no_improve += 1
+            # if checkpoint_path is not None:
+            #     torch.save(best_state_dict, checkpoint_path)
 
         # Keep simple history record
         history.append({

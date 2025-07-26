@@ -1,10 +1,12 @@
+import os
+import json
+import shutil
 import torch
 from torch.utils.data import DataLoader
 from typing import Dict, Any, Literal
 import optuna
 
 from model_training.single_task_model import SingleTaskModel, train as train_single_task
-from evaluation.single_task_evaluation import evaluate_single_task
 
 __all__ = ["tune_hyperparameters"]
 
@@ -29,11 +31,23 @@ def tune_hyperparameters(
     device: str = "cpu",
     val_split: float = 0.2,
     early_stopping_patience: int = 10,
+    results_dir: str | None = None,
 ) -> Dict[str, Any]:
     """Run Optuna Bayesian optimisation for a *single* task.
 
     Returns a dict with ``best_params`` and the trained ``best_model``.
     """
+
+    # ------------------------------------------------------------------
+    # Prepare results directory & global trackers
+    # ------------------------------------------------------------------
+    if results_dir is None:
+        results_dir = os.getcwd()
+    os.makedirs(results_dir, exist_ok=True)
+
+    best_global_score: float = float("-inf")  # higher better (accuracy or -loss)
+    best_model_path = os.path.join(results_dir, "optuna_best_model.pth")
+    best_arch_path  = os.path.join(results_dir, "optuna_best_arch.json")
 
     def objective(trial: optuna.Trial):
         # ---------------- Hyper-parameter suggestions -----------------
@@ -44,6 +58,7 @@ def tune_hyperparameters(
         hidden_dims  = _suggest_hidden_dims(trial, input_dim)
 
         # ---------------- Model + training ---------------------------
+        checkpoint_trial_path = os.path.join(results_dir, f"trial_{trial.number}_best.pth")
         model = SingleTaskModel(
             input_dim=input_dim,
             output_type=output_type,
@@ -62,51 +77,75 @@ def tune_hyperparameters(
             scheduler=scheduler,
             val_split=val_split,
             early_stopping_patience=early_stopping_patience,
+            checkpoint_path=checkpoint_trial_path,
         )
 
         # 👇 Add this line to log current trial parameters
         print(f"[Trial {trial.number}] Params: lr={lr:.5f}, dropout={dropout:.2f}, weight_decay={weight_decay:.6f}, scheduler={scheduler}, hidden_dims={hidden_dims}")
         
-        # We aim to *minimise* validation loss (best_val_metric from train())
+        # --------------------------------------------------------------
+        # Track *global* best across ALL trials ------------------------
+        # --------------------------------------------------------------
         if output_type == "classification":
-            # maximise accuracy → minimise negative accuracy
-            val_acc = info.get("best_val_score")
-            if val_acc is None:
-                raise RuntimeError("Validation accuracy missing from training info.")
-            return -val_acc
+            current_score = info.get("best_val_score")  # accuracy (higher better)
+            objective_value = -current_score  # Optuna minimises → negative accuracy
         else:
-            # regression → minimise validation loss (MSE)
-            return info["best_val_metric"]
+            # For regression we minimise val_loss – convert to score by negating
+            current_score = -info["best_val_metric"]      # higher is better now
+            objective_value = info["best_val_metric"]     # keep loss for optimisation
+
+        nonlocal best_global_score
+        if current_score is not None and current_score > best_global_score:
+            best_global_score = current_score
+
+            # Copy checkpoint weights from this trial to global best path
+            shutil.copy(checkpoint_trial_path, best_model_path)
+
+            # Persist minimal architecture spec to rebuild model
+            arch_spec = {
+                "input_dim": input_dim,
+                "output_type": output_type,
+                "hidden_dims": hidden_dims,
+                "dropout": dropout,
+            }
+            with open(best_arch_path, "w") as f:
+                json.dump(arch_spec, f)
+
+            print(f"🏅 New global best found (score={current_score:.4f}) – model saved to {best_model_path}")
+
+        try:
+            os.remove(checkpoint_trial_path)
+        except FileNotFoundError:
+            print(f"Checkpoint file not found: {checkpoint_trial_path}")
+            pass
+
+        return objective_value
 
     study = optuna.create_study(direction="minimize")
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
-    best_params = study.best_params
+    # ------------------------------------------------------------------
+    #  Rebuild the globally best model from saved weights --------------
+    # ------------------------------------------------------------------
+    if not os.path.exists(best_model_path) or not os.path.exists(best_arch_path):
+        raise RuntimeError("Best model files were not created during Optuna search.")
 
-    # -------- Train final model with the best parameters -------------
-    # Re-initialise model with optimal hp and train once more (weights restored)
-    hidden_dims_best = _suggest_hidden_dims(study.best_trial, input_dim)
+    with open(best_arch_path, "r") as f:
+        arch_spec = json.load(f)
+
     model_best = SingleTaskModel(
-        input_dim=input_dim,
-        output_type=output_type,
-        hidden_dims=hidden_dims_best,
-        dropout=best_params["dropout"],
+        input_dim=arch_spec["input_dim"],
+        output_type=arch_spec["output_type"],
+        hidden_dims=tuple(arch_spec["hidden_dims"]),
+        dropout=arch_spec["dropout"],
     )
-    train_single_task(
-        model_best,
-        train_loader,
-        val_loader=val_loader,
-        n_epochs=100,
-        lr=best_params["lr"],
-        weight_decay=best_params["weight_decay"],
-        device=device,
-        scheduler=best_params["scheduler"],
-        val_split=val_split,
-        early_stopping_patience=early_stopping_patience,
-    )
+    model_best.load_state_dict(torch.load(best_model_path, map_location=device))
+
+    print(f"✅ Optuna search finished – best score={best_global_score:.4f}. Model reloaded from disk.")
 
     return {
-        "best_params": best_params,
+        "best_params": arch_spec,
         "study": study,
         "best_model": model_best,
+        "best_model_path": best_model_path,
     } 

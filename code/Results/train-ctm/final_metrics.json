@@ -1,25 +1,23 @@
 {
   "metrics_per_task": {
     "abnormal": {
-      "loss": 0.5474940361320109,
-      "accuracy": 0.7391304347826086,
+      "loss": 0.6524596123591714,
+      "accuracy": 0.605072463768116,
       "pred_counts": {
-        "label_0": 178,
-        "label_1": 98
+        "label_0": 183,
+        "label_1": 93
       }
     }
   },
   "hyperparams_per_task": {
     "abnormal": {
-      "input_dim": 418,
+      "input_dim": 9,
       "output_type": "classification",
       "hidden_dims": [
-        64,
-        32,
-        16,
-        16
+        128,
+        64
       ],
-      "dropout": 0.11421960472246423
+      "dropout": 0.11375821763798367
     }
   },
   "train_dataset_stats": {

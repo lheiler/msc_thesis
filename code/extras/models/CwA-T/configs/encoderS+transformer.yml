@@ -7,8 +7,8 @@ input_size: 12000
 n_channels: 19
 
 dataset:
-  train_data_dir: '/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train'
-  val_data_dir:   '/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval'
+  train_data_dir: '/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean/train'
+  val_data_dir:   '/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean/eval'
   classes:
     normal: 0
     abnormal: 1
