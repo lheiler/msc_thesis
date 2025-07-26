@@ -1,4 +1,0 @@
-/vol/bitbucket/lrh24/dlenv/lib/python3.12/site-packages/google/protobuf/runtime_version.py:98: UserWarning: Protobuf gencode version 5.28.1 is exactly one major version older than the runtime version 6.31.1 at api.proto. Please update the gencode to avoid compatibility violations in the next runtime release.
-  warnings.warn(
-[I 2025-07-24 20:31:39,646] A new study created in memory with name: cwat_tuning
-slurmstepd: error: *** JOB 185926 ON gpuvm03 CANCELLED AT 2025-07-24T20:32:10 ***

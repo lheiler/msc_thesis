@@ -1,0 +1,15 @@
+2025-07-26 16:53:27,034 [INFO] Pre-loading 2717 segments into memory …
+2025-07-26 16:54:00,915 [INFO] Done pre-loading dataset into RAM.
+2025-07-26 16:54:00,921 [INFO] Pre-loading 276 segments into memory …
+2025-07-26 16:54:04,459 [INFO] Done pre-loading dataset into RAM.
+2025-07-26 16:54:05,042 [INFO] Parameters initialised.
+2025-07-26 16:54:31,267 [INFO] Epoch 1/15 | Loss 0.8988 | Accuracy 0.5399 (149/276)
+2025-07-26 16:54:54,363 [INFO] Epoch 2/15 | Loss 0.6623 | Accuracy 0.6268 (173/276)
+2025-07-26 16:55:18,060 [INFO] Epoch 3/15 | Loss 0.6220 | Accuracy 0.5978 (165/276)
+2025-07-26 16:55:41,887 [INFO] Epoch 4/15 | Loss 0.5956 | Accuracy 0.7029 (194/276)
+2025-07-26 16:56:04,223 [INFO] Epoch 5/15 | Loss 0.5431 | Accuracy 0.6920 (191/276)
+2025-07-26 16:56:27,183 [INFO] Epoch 6/15 | Loss 0.4919 | Accuracy 0.6993 (193/276)
+2025-07-26 16:56:50,239 [INFO] Epoch 7/15 | Loss 0.4362 | Accuracy 0.6957 (192/276)
+2025-07-26 16:57:13,602 [INFO] Epoch 8/15 | Loss 0.3716 | Accuracy 0.6667 (184/276)
+2025-07-26 16:57:37,361 [INFO] Epoch 9/15 | Loss 0.3172 | Accuracy 0.6848 (189/276)
+2025-07-26 16:58:00,798 [INFO] Epoch 10/15 | Loss 0.2695 | Accuracy 0.6775 (187/276)

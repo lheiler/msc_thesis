@@ -1,0 +1,8 @@
+2025-07-26 22:09:39,629 [INFO] Pre-loading 2717 segments into memory …
+2025-07-26 22:10:13,268 [INFO] Done pre-loading dataset into RAM.
+2025-07-26 22:10:13,273 [INFO] Pre-loading 276 segments into memory …
+2025-07-26 22:10:16,693 [INFO] Done pre-loading dataset into RAM.
+2025-07-26 22:10:17,317 [INFO] Parameters initialised.
+2025-07-26 22:10:42,931 [INFO] Epoch 1/50 | Train Loss 0.7437 | Train Acc 0.4943 | Val Acc 0.5616 (155/276)
+2025-07-26 22:11:05,766 [INFO] Epoch 2/50 | Train Loss 0.6838 | Train Acc 0.5804 | Val Acc 0.5145 (142/276)
+2025-07-26 22:11:28,346 [INFO] Epoch 3/50 | Train Loss 0.6387 | Train Acc 0.6470 | Val Acc 0.4746 (131/276)

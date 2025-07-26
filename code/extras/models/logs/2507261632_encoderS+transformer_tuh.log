@@ -1,0 +1,5 @@
+2025-07-26 16:32:58,537 [INFO] Parameters initialised.
+2025-07-26 16:33:17,385 [INFO] Epoch 1/15 | Loss 1.9006 | Accuracy 0.5435 (150/276)
+2025-07-26 16:33:17,410 [INFO] New best accuracy 0.5435 (no weights saved)
+2025-07-26 16:33:33,023 [INFO] Epoch 2/15 | Loss 0.7614 | Accuracy 0.5435 (150/276)
+2025-07-26 16:33:48,479 [INFO] Epoch 3/15 | Loss 0.7434 | Accuracy 0.5435 (150/276)
