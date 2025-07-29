@@ -66,6 +66,9 @@ def tune_hyperparameters(
             dropout=dropout,
         )
 
+        # Each trial gets its own plot sub-folder ----------------------
+        plot_dir_trial = os.path.join(results_dir, f"trial_{trial.number}_plots")
+
         info = train_single_task(
             model,
             train_loader,
@@ -78,6 +81,7 @@ def tune_hyperparameters(
             val_split=val_split,
             early_stopping_patience=early_stopping_patience,
             checkpoint_path=checkpoint_trial_path,
+            plot_dir=plot_dir_trial,
         )
 
         # 👇 Add this line to log current trial parameters
@@ -98,8 +102,19 @@ def tune_hyperparameters(
         if current_score is not None and current_score > best_global_score:
             best_global_score = current_score
 
+            # ----------------------------------------------------------
+            # 1) Persist weights & architecture ------------------------
+            # ----------------------------------------------------------
             # Copy checkpoint weights from this trial to global best path
             shutil.copy(checkpoint_trial_path, best_model_path)
+            # 2) Copy plots -------------------------------------------
+            best_plot_dir = os.path.join(results_dir, "optuna_best_plots")
+            # Remove previous best plots dir (if any)
+            shutil.rmtree(best_plot_dir, ignore_errors=True)
+            try:
+                shutil.copytree(plot_dir_trial, best_plot_dir)
+            except FileExistsError:
+                pass  # shouldn't happen after rmtree
 
             # Persist minimal architecture spec to rebuild model
             arch_spec = {
@@ -113,6 +128,14 @@ def tune_hyperparameters(
 
             print(f"🏅 New global best found (score={current_score:.4f}) – model saved to {best_model_path}")
 
+        # Clean up: keep only plots of the best trial ------------------
+        if os.path.exists(plot_dir_trial):
+            # If this trial is NOT the best (i.e. current_score <= best_global_score)
+            # and wasn't just copied as best, we delete its plot dir to save space.
+            if current_score != best_global_score:
+                shutil.rmtree(plot_dir_trial, ignore_errors=True)
+
+        # Remove per-trial checkpoint (always) --------------------------
         try:
             os.remove(checkpoint_trial_path)
         except FileNotFoundError:

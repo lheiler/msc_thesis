@@ -1,0 +1,67 @@
+processing:
+  frequency: 100
+
+
+
+input_size: 6000
+n_channels: 19
+
+dataset:
+  #train_data_dir: '/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train'
+  #val_data_dir:   '/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval'
+  train_data_dir: '/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean/train'
+  val_data_dir: '/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean/eval'
+  classes:
+    normal: 0
+    abnormal: 1
+  num_workers: 6
+  shuffle: True
+  # mean: [...]   # optional
+  # std:  [...]   # optional
+
+model:
+  name: encoderL+transformer   # ‘L’ selects the large auto-encoder
+  d_model: 128
+  n_head: 4
+  n_layer: 2          # two transformer encoder layers
+  
+
+criterion:
+  name: ce
+
+optimizer:
+  name: adam
+  init_lr: 0.00011262129249142562
+  weight_decay: 0.00016385622479862325
+
+scheduler:
+  name: cosine
+  lr_gamma: 0.99
+  lr_min: 8.63240682351232e-05
+  warmup_steps: 500    # gradual ramp-up of LR
+
+warmup: 0
+
+train:
+  experiment: tuh_abnormal
+  warmup_steps: 500    # align with scheduler warm-up
+  n_epochs: 30         # allow LR to anneal fully
+  batch_size: 32
+  use_cuda: 1
+  gpu_id: 0
+  deterministic: 1
+  random_state: 42
+  log_interval: 200
+
+tensorboard:
+  runs_dir: '../runs/'
+
+checkpoint:
+  checkpoint_dir: "../weights/"
+  weights: "your_path.pth"
+  model_comment: ""
+  resume: True
+  restore_checkpoint: ""
+
+debug:
+  verbose: 1

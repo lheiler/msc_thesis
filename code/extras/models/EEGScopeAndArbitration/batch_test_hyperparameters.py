@@ -27,7 +27,7 @@ TUEG                 = [False]         # do not use TUEG for now
 N_TUAB               = [None]
 N_TUEG               = [None]
 N_LOAD               = [100]           # only used when LOAD_SAVED_* is True
-PRELOAD              = [False]
+PRELOAD              = [True]
 WINDOW_LEN_S         = [60]            # 1-min windows
 
 # Paths to raw datasets
@@ -43,9 +43,9 @@ LOAD_SAVED_DATA      = [False]
 LOAD_SAVED_WINDOWS   = [False]
 
 # Filtering / standardization
-BANDPASS_FILTER      = [True]
-LOW_CUT_HZ           = [1.]
-HIGH_CUT_HZ          = [40.]
+BANDPASS_FILTER      = [False]
+LOW_CUT_HZ           = [4.]
+HIGH_CUT_HZ          = [38.]
 
 STANDARDIZATION      = [True]
 FACTOR_NEW           = [1e-3]

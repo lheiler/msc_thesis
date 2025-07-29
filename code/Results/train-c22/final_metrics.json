@@ -1,11 +1,11 @@
 {
   "metrics_per_task": {
     "abnormal": {
-      "loss": 0.5474940361320109,
-      "accuracy": 0.7391304347826086,
+      "loss": 0.5235864908798881,
+      "accuracy": 0.7427536231884058,
       "pred_counts": {
-        "label_0": 178,
-        "label_1": 98
+        "label_0": 173,
+        "label_1": 103
       }
     }
   },
@@ -14,12 +14,10 @@
       "input_dim": 418,
       "output_type": "classification",
       "hidden_dims": [
-        64,
-        32,
-        16,
-        16
+        192,
+        96
       ],
-      "dropout": 0.11421960472246423
+      "dropout": 0.400523787126352
     }
   },
   "train_dataset_stats": {
@@ -67,5 +65,6 @@
       "70\u201380": 0,
       "80\u2013120": 0
     }
-  }
+  },
+  "global_independence_score": 0.010896979831159115
 }
