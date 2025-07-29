@@ -4,6 +4,8 @@ from torch import nn
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
 from typing import Tuple, Union, Literal, Dict
+import os
+import matplotlib.pyplot as plt  # For training curves
 
 
 class SingleTaskModel(nn.Module):
@@ -166,6 +168,7 @@ def train(
     early_stopping_patience: int = 10,
     min_delta: float = 0.0,
     checkpoint_path: str | None = None,
+    plot_dir: str | None = None,
 ):
     """Simple training loop for a single-task model.
 
@@ -243,6 +246,9 @@ def train(
     best_epoch = 0
 
     history = []  # store per-epoch metrics if caller is interested
+    # Keep separate lists for quick plotting
+    train_losses, val_losses = [], []
+    train_accs,  val_accs  = [], []  # may stay empty for regression
 
     for epoch in range(1, n_epochs + 1):
         model.train()
@@ -314,12 +320,7 @@ def train(
                 plateau_metric = val_loss
         else:
             val_loss = None
-            if model.output_type == "classification":
-                current_val_score = epoch_acc
-                plateau_metric    = -epoch_acc  # checkpoint when accuracy improves
-            else:
-                current_val_score = None
-                plateau_metric = epoch_loss
+            val_acc  = None
 
         if epoch % 1 == 0: print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
 
@@ -338,12 +339,17 @@ def train(
             # if checkpoint_path is not None:
             #     torch.save(best_state_dict, checkpoint_path)
 
-        # Keep simple history record
-        history.append({
-            "epoch": epoch,
-            "train_loss": epoch_loss,
-            "val_loss": val_loss,
-        })
+        # ---------------- History bookkeeping -------------------
+        entry = {"epoch": epoch, "train_loss": epoch_loss, "val_loss": val_loss}
+        train_losses.append(epoch_loss)
+        val_losses.append(val_loss)
+
+        if model.output_type == "classification":
+            entry.update({"train_acc": epoch_acc, "val_acc": val_acc})
+            train_accs.append(epoch_acc)
+            val_accs.append(val_acc)
+
+        history.append(entry)
 
         if early_stopping_patience and epochs_no_improve >= early_stopping_patience:
             print(
@@ -375,6 +381,43 @@ def train(
     # -----------------------------------------------------------------
     if best_state_dict is not None:
         model.load_state_dict(best_state_dict)
+
+    # -----------------------------------------------------------------
+    #  Post-training plots ---------------------------------------------
+    # -----------------------------------------------------------------
+    if plot_dir is not None:
+        os.makedirs(plot_dir, exist_ok=True)
+
+        epochs_range = list(range(1, len(train_losses) + 1))
+
+        # Loss curve ---------------------------------------------------
+        plt.figure(figsize=(6, 4))
+        plt.plot(epochs_range, train_losses, label="Train")
+        if any(v is not None for v in val_losses):
+            plt.plot(epochs_range, [v if v is not None else float('nan') for v in val_losses], label="Val")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.title("Training loss curve")
+        plt.legend()
+        plt.tight_layout()
+        loss_path = os.path.join(plot_dir, "loss_curve.png")
+        plt.savefig(loss_path)
+        plt.close()
+
+        # Accuracy curve (classification only) ------------------------
+        if model.output_type == "classification" and train_accs:
+            plt.figure(figsize=(6, 4))
+            plt.plot(epochs_range, train_accs, label="Train")
+            if any(v is not None for v in val_accs):
+                plt.plot(epochs_range, [v if v is not None else float('nan') for v in val_accs], label="Val")
+            plt.xlabel("Epoch")
+            plt.ylabel("Accuracy")
+            plt.title("Training accuracy curve")
+            plt.legend()
+            plt.tight_layout()
+            acc_path = os.path.join(plot_dir, "accuracy_curve.png")
+            plt.savefig(acc_path)
+            plt.close()
 
     # Optional: return basic info – keeps backward compatibility (None ignored by caller)
     return {

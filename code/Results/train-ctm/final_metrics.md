@@ -5,15 +5,15 @@
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.65246  |
-| Accuracy   | 0.605072 |
+| Loss (BCE) | 0.655501 |
+| Accuracy   | 0.634058 |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |     183 | 66.3% |
-| label_1 |      93 | 33.7% |
+| label_0 |     155 | 56.2% |
+| label_1 |     121 | 43.8% |
 
 ## Dataset statistics – train
 
@@ -85,6 +85,6 @@ Age distribution
 
 ## Latent-feature independence
 
-Global HSIC score: **n/a**
+Global HSIC score: **0.005894069094210863**
 
 (See `hsic_matrix.png` for full matrix.)

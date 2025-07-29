@@ -1,403 +1,386 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-"""
-Training script for the cleaned TUH Abnormal/Normal EEG dataset (60-second segments at 128 Hz).
-It mirrors the logic of `train.py`, but:
-  • Loads MNE `.fif` files written by `cleanup_real_eeg_tuh.py`
-  • Infers the label from the parent directory (`normal` ⇢ 0, `abnormal` ⇢ 1); no CSV is required.
-  • Uses the same model architecture, optimisation, logging and evaluation pipeline as `train.py`.
-
-Example usage
--------------
-$ python code/extras/models/CwA-T/train_tuh.py code/extras/models/CwA-T/configs/encoderS+transformer.yml
-"""
-
-# Standard lib
-import os
-import time
-import argparse
-import logging
-from datetime import datetime
+import tqdm
 from pathlib import Path
-from typing import List, Dict
-import math
-
-# Third-party
-import yaml
-import mne
-import torch
-from torch import nn, Tensor
-from torch.utils.data import Dataset, DataLoader, Subset
-from torch.utils.tensorboard import SummaryWriter
-
+import sys, os, time, logging, argparse, yaml, math, torch, shutil
+import multiprocessing
 import numpy as np
+from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils import clip_grad_norm_
+from torch import nn, Tensor
+from datetime import datetime
+from typing import List, Tuple
+from collections import OrderedDict
+import mne
+mne.set_log_level("WARNING")  
+# -----------------------------------------------------------------------------
+#  Make code/ directory importable so we can access the shared preprocessing util
+# -----------------------------------------------------------------------------
+THIS_DIR = Path(__file__).resolve()
+CODE_ROOT = THIS_DIR.parents[3]  # .../thesis/code
+sys.path.append(str(CODE_ROOT / "data_preprocessing"))
 
-# ——— Local imports (same as train.py) ———————————————————————————————
-from models.encoder import res_encoderS, res_encoderM, res_encoderL
-try:
-    from data_preprocessing.data_loading import load_data as load_tuh_data
-except ModuleNotFoundError:
-    # fallback when script is executed from project root
-    import sys
-    sys.path.append(str(Path(__file__).resolve().parents[3]))  # add project root to PYTHONPATH
-    from data_preprocessing.data_loading import load_data as load_tuh_data
-from models.classifier import transformer_classifier
+from data_loading import load_data  # noqa: E402
 
-# ————————————————————————————————————————————————————————————————
-# Utility
-# ————————————————————————————————————————————————————————————————
+# -----------------------------------------------------------------------------
+#  Model imports (same as original CwA-T train.py)
+# -----------------------------------------------------------------------------
+# Import all encoder variants so we can choose at runtime
+from models.encoder import res_encoderS, res_encoderM, res_encoderL  # noqa: E402
+from models.classifier import transformer_classifier  # noqa: E402
 
-def transform(data: Tensor) -> Tensor:
-    """Per-segment channel-wise z-score normalisation.
+logger = logging.getLogger("train_tuh")
+logger.setLevel(logging.INFO)
 
-    For each channel (column) compute mean & std across the 60-s segment and
-    normalise (x-μ)/σ.  Adds a small epsilon to avoid division by zero.
-    """
-    eps = 1e-8
-    mean = data.mean(dim=0, keepdim=True)
-    std = data.std(dim=0, unbiased=False, keepdim=True) + eps
+# Add automatic device selection ------------------------------------------------
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
+logger.info(f"Using device: {DEVICE}")
+
+# -----------------------------------------------------------------------------
+#  Simple normalisation helper (identical to original train.py)
+# -----------------------------------------------------------------------------
+
+def z_normalise(data: Tensor, mean: Tensor, std: Tensor):
+    """Apply channel-wise z-normalisation."""
     return (data - mean) / std
 
-# ————————————————————————————————————————————————————————————————
-# Dataset
-# ————————————————————————————————————————————————————————————————
+# -----------------------------------------------------------------------------
+#  Custom Dataset for TUH EEG .fif files
+# -----------------------------------------------------------------------------
 
-class RawListDataset(Dataset):
-    """Dataset that wraps list of (mne.Raw, sex, age, label).
+class TUHDataset(Dataset):
+    """Wraps the (raw, sex_code, abn) tuples returned by load_data().
 
-    Applies resampling → channel picking → normalisation, returning tensor + label.
+    The raw signal is converted to a float32 torch tensor of shape
+    (seq_len, n_channels) to match the original CwA-T pipeline. The dataset
+    does all on-the-fly cropping/resampling so we avoid storing temporary
+    files on disk.
     """
 
-    def __init__(self, raw_list: List[tuple], n_channels: int, target_sfreq: int, transform=None):
-        self.raw_list = raw_list
+    def __init__(
+        self,
+        tuples: List[Tuple["mne.io.Raw", int, int]],
+        *,
+        target_len: int,
+        target_sf: int,
+        n_channels: int,
+        mean: List[float] | None = None,
+        std: List[float] | None = None,
+    ) -> None:
+        super().__init__()
+        self.samples = tuples
+        self.target_len = target_len
+        self.target_sf = target_sf
         self.n_channels = n_channels
-        self.target_sfreq = target_sfreq
-        self.segment_len = target_sfreq * 60
-        self.transform = transform
-
-        # canonical channel list as before
-        self.canonical = [
-            "Fp1", "Fp2", "F3", "F4", "C3", "C4", "P3", "P4", "O1", "O2",
-            "F7", "F8", "T3", "T4", "T5", "T6", "Fz", "Cz", "Pz",
-        ]
+        self.mean = torch.tensor(mean) if mean is not None else None
+        self.std = torch.tensor(std) if std is not None else None
+        # Cache processed signals so we do not resample/crop every epoch.
+        self._cache: dict[int, tuple[Tensor, Tensor, str]] = {}
 
     def __len__(self):
-        return len(self.raw_list)
+        return len(self.samples)
+
+    def _process_raw(self, raw):
+        """Resample & crop raw to desired length, return np array (T, C)."""
+        # Resample if needed
+        if int(raw.info["sfreq"]) != self.target_sf:
+            raw = raw.copy().resample(self.target_sf)
+
+        data = raw.get_data(picks="eeg")  # (C, T)
+        # Ensure we only use the first n_channels
+        data = data[: self.n_channels, :]
+
+        # Crop/pad to target length (seconds * sf)
+        if data.shape[1] >= self.target_len:
+            data = data[:, : self.target_len]
+        else:
+            pad_width = self.target_len - data.shape[1]
+            data = np.pad(data, ((0, 0), (0, pad_width)), mode="constant")
+
+        # to (T, C)
+        return torch.tensor(data.T, dtype=torch.float32)
 
     def __getitem__(self, idx):
-        #print(f"[DEBUG] Fetching item {idx}")
-        raw, _, _, label = self.raw_list[idx]
+        # Return cached version if available in this worker
+        if idx in self._cache:
+            return self._cache[idx]
 
-        if abs(raw.info['sfreq'] - self.target_sfreq) > 1e-3:
-            raw = raw.copy().resample(self.target_sfreq, npad="auto", verbose=False)
+        #print(f"[DEBUG] Fetching item {self.samples[idx]}")
+        raw, _sex_code, _, abn = self.samples[idx]
+        signal = self._process_raw(raw)
 
-        # pick channels
-        picks = []
-        for ch in self.canonical:
-            for v in [ch, ch.upper(), ch.capitalize(), f"EEG {ch.upper()}-REF", f"EEG {ch.upper()}-LE", f"EEG {ch.upper()}-CAR"]:
-                if v in raw.ch_names:
-                    picks.append(v)
-                    break
-        data_np = raw.copy().pick_channels(picks).get_data()
-        tensor = torch.from_numpy(data_np.astype(np.float32).T)
+        if self.mean is not None and self.std is not None:
+            signal = z_normalise(signal, self.mean, self.std)
 
-        if tensor.shape[0] > self.segment_len:
-            tensor = tensor[: self.segment_len, :]
-        elif tensor.shape[0] < self.segment_len:
-            pad = self.segment_len - tensor.shape[0]
-            tensor = torch.cat([tensor, torch.zeros(pad, tensor.shape[1])], dim=0)
+        # Build a stable file identifier for per-case evaluation (filename stem)
+        fname = os.path.basename(raw.filenames[0]) if raw.filenames else f"sample_{idx}.fif"
 
-        if self.transform:
-            tensor = self.transform(tensor)
+        sample = (signal, torch.tensor(abn, dtype=torch.long), fname)
+        self._cache[idx] = sample
+        return sample
 
-        return tensor, torch.tensor(label), "raw"
+# -----------------------------------------------------------------------------
+#  Model wrapper (identical to original but renamed for clarity)
+# -----------------------------------------------------------------------------
 
-# ————————————————————————————————————————————————————————————————
-# Model wrapper (identical to train.py)
-# ————————————————————————————————————————————————————————————————
+class CwATModel(nn.Module):
+    """Wrapper that selects the Auto-Encoder depth (S/M/L) based on the config."""
 
-class Model(nn.Module):
-    def __init__(self, input_size: int, n_channels: int, model_hyp: dict, n_classes: int):
+    def __init__(
+        self,
+        *,
+        input_size: int,
+        n_channels: int,
+        hyp: dict,
+        num_classes: int,
+    ) -> None:
         super().__init__()
-        self.ae = res_encoderL(n_channels=n_channels, groups=n_channels, num_classes=n_classes, d_model=model_hyp["d_model"])
-        self.dropout = nn.Identity() if model_hyp.get("dropout", 0.0) == 0 else nn.Dropout(model_hyp.get("dropout", 0.0))
-        if model_hyp.get("classifier", "transformer") == "mlp_1l":
-            from models.classifier import MLP_1l
-            self.transformer_encoder = MLP_1l(n_channels, model_hyp["d_model"], n_classes)
-        elif model_hyp.get("classifier", "transformer") == "mlp_3l":
-            from models.classifier import MLP_3l
-            self.transformer_encoder = MLP_3l(n_channels, model_hyp["d_model"], n_classes)
-        else:
-            self.transformer_encoder = transformer_classifier(input_size, n_channels, model_hyp, n_classes)
-        self.reset_parameters()
 
-    # ------------------------------------------------------------- #
-    def reset_parameters(self):
+        # ------------------------------------------------------------------
+        # Select encoder variant
+        # ------------------------------------------------------------------
+        encoder_name: str = hyp.get("name", "encoderM")  # fallback if not provided
+        if "L" in encoder_name.upper():
+            encoder_fn = res_encoderL
+            print("Using encoderL")
+        elif "S" in encoder_name.upper():
+            encoder_fn = res_encoderS
+            print("Using encoderS")
+        else:
+            encoder_fn = res_encoderM  # default
+            print("Using encoderM")
+
+        self.encoder = encoder_fn(
+            n_channels=n_channels,
+            groups=n_channels,
+            num_classes=num_classes,
+            d_model=hyp["d_model"],
+        )
+
+        # Transformer head stays unchanged
+        self.transformer_head = transformer_classifier(input_size, n_channels, hyp, num_classes)
+        self._init_weights()
+
+    def _init_weights(self):
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
-        for m in self.modules():
-            if isinstance(m, nn.Conv1d):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-            elif isinstance(m, (nn.LayerNorm, nn.BatchNorm1d)):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-        logging.info("Parameters initialised.")
 
-    # ------------------------------------------------------------- #
-    def forward(self, x):
-        z = x.transpose(-1, -2)      # (B, C, T)
-        z = self.ae(z)
-        z = self.dropout(z)
-        y = self.transformer_encoder(z)
-        return y
+    def forward(self, x: Tensor):
+        # Original pipeline expects (B, T, C). Encoder needs (B, C, T)
+        z = self.encoder(x.transpose(-1, -2))
+        return self.transformer_head(z)
 
-# ————————————————————————————————————————————————————————————————
-# Scheduler & evaluation helpers (copied from train.py)
-# ————————————————————————————————————————————————————————————————
+# -----------------------------------------------------------------------------
+#  Training / Evaluation helpers (refactored from original train.py)
+# -----------------------------------------------------------------------------
 
-def poly_lr_scheduler(optimizer, init_lr, iter, lr_decay_iter=1, max_iter=0, power=0.9):
-    if max_iter == 0:
-        raise ValueError("max_iter cannot be zero!")
-    if iter % lr_decay_iter or iter > max_iter:
-        return optimizer
-    lr = init_lr * (1 - iter / max_iter) ** power
-    for param_group in optimizer.param_groups:
-        param_group["lr"] = lr
-    return optimizer.param_groups[0]["lr"]
+def poly_lr_scheduler(optimizer, init_lr, cur_iter, *, max_iter, power=0.9):
+    lr = init_lr * (1 - cur_iter / max_iter) ** power
+    for g in optimizer.param_groups:
+        g["lr"] = lr
+    return lr
 
-# ------------------------------------------------------------- #
 
-# Overall accuracy evaluation (per-segment)
+def accuracy(output: Tensor, target: Tensor):
+    pred = output.argmax(dim=1)
+    correct = pred.eq(target).sum().item()
+    return correct / target.size(0)
 
-def evaluate_model(model: nn.Module, dataloader: DataLoader, device: torch.device):
-    """Return overall accuracy along with correct and total sample counts."""
-    model.eval()
-    total = 0
-    correct = 0
 
-    with torch.no_grad():
-        for signals, labels, _ in dataloader:
-            signals = signals.to(device)
-            labels = labels.to(device)
-            outputs = model(signals)
-            preds = torch.argmax(outputs, dim=1)
-            correct += (preds == labels).sum().item()
-            total += labels.size(0)
-
-    acc = correct / total if total > 0 else 0.0
-    return acc, correct, total
-
-# ————————————————————————————————————————————————————————————————
-# Training entry-point
-# ————————————————————————————————————————————————————————————————
+# -----------------------------------------------------------------------------
+#  Main training loop
+# -----------------------------------------------------------------------------
 
 def train(cfg: dict):
-    print("[DEBUG] Entered train()")
-    device = torch.device("cuda" if torch.cuda.is_available() and cfg["train"].get("use_cuda", 1) else "cpu")
+    # Load data ----------------------------------------------------------------
+    logger.info("Loading TUH EEG dataset ...")
+    train_samples = load_data(cfg["dataset"]["train_data_dir"])
+    val_samples = load_data(cfg["dataset"]["val_data_dir"])
 
-    # Load raw lists using data_loading style
-    n_ch = cfg["n_channels"]
-    target_sfreq = cfg.get("processing", {}).get("frequency", 100)
+    input_size = cfg["input_size"]
+    sfreq = cfg["processing"]["frequency"]
+    n_channels = cfg["n_channels"]
 
-    train_raw_list = load_tuh_data(cfg["dataset"]["train_data_dir"])
-    val_raw_list = load_tuh_data(cfg["dataset"]["val_data_dir"])
-    print("[DEBUG] Loaded train and validation raw lists")
+    # --------------------------------------------------------------
+    # Resolve num_workers: if cfg sets -1, use all available cores
+    # (or the PyTorch-recommended maximum returned by multiprocessing).
+    # --------------------------------------------------------------
+    requested_workers = cfg["dataset"].get("num_workers", 0)
+    if requested_workers < 0:
+        requested_workers = multiprocessing.cpu_count()
 
-    train_set = RawListDataset(train_raw_list, n_channels=n_ch, target_sfreq=target_sfreq, transform=transform)
-    val_set = RawListDataset(val_raw_list, n_channels=n_ch, target_sfreq=target_sfreq, transform=transform)
-    print("[DEBUG] Created RawListDataset instances")
+    train_ds = TUHDataset(
+        train_samples,
+        target_len=input_size,
+        target_sf=sfreq,
+        n_channels=n_channels,
+        mean=cfg["dataset"].get("mean"),
+        std=cfg["dataset"].get("std"),
+    )
+    val_ds = TUHDataset(
+        val_samples,
+        target_len=input_size,
+        target_sf=sfreq,
+        n_channels=n_channels,
+        mean=cfg["dataset"].get("mean"),
+        std=cfg["dataset"].get("std"),
+    )
 
-    # Debug tiny-overfit mode: use only first N samples to check if model can overfit
-    debug_n = cfg.get("debug_overfit", 0)
-    if isinstance(debug_n, int) and debug_n > 0:
-        train_set = Subset(train_set, list(range(min(debug_n, len(train_set)))))
-        val_set = Subset(val_set, list(range(min(debug_n, len(val_set)))))  # keep small val for speed
-        logging.warning(f"Debug overfit mode ENABLED: using first {min(debug_n, len(train_set))} train and {min(debug_n, len(val_set))} val samples")
+    
+    persistent = cfg["dataset"]["num_workers"] > 0
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=cfg["train"]["batch_size"],
+        shuffle=cfg["dataset"]["shuffle"],
+        num_workers=requested_workers,
+        persistent_workers=persistent,
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=cfg["train"]["batch_size"],
+        shuffle=False,
+        num_workers=requested_workers,
+        persistent_workers=persistent,
+    )
 
-    train_loader = DataLoader(train_set,
-                              batch_size=cfg["train"]["batch_size"],
-                              shuffle=cfg["dataset"].get("shuffle", True),
-                              num_workers=cfg["dataset"].get("num_workers", 4),
-                              pin_memory=True)
-
-    val_loader = DataLoader(val_set,
-                            batch_size=cfg["train"].get("batch_size", 1),
-                            shuffle=False,
-                            num_workers= cfg["dataset"].get("num_workers", 4),
-                            pin_memory=True)
-    print("[DEBUG] DataLoaders initialized")
-
-    # Model
-    model_name = cfg["model"]["name"]
-    net = Model(cfg["input_size"], cfg["n_channels"], cfg["model"], len(cfg["dataset"]["classes"])).to(device)
-    print("[DEBUG] Model initialized")
-
-    # Optionally resume / load weights
-    ckpt_cfg = cfg["checkpoint"]
-    weight_path = ckpt_cfg.get("weights")
-    if weight_path and Path(weight_path).is_file():
-        logging.info(f"Loading pre-trained weights from {weight_path}")
-        net.load_state_dict(torch.load(weight_path, map_location=device))
-
-    # Optimiser & criterion
-    opt_cfg = cfg.get("optimizer", {})
-    opt_name = opt_cfg.get("name", "adam").lower()
-    lr = float(opt_cfg.get("init_lr", 1e-3))
-    wd = float(opt_cfg.get("weight_decay", 0.0))
-
-    if opt_name == "adamw":
-        # Exclude biases and norm layers from weight decay
-        no_decay_keys = ["bias", "LayerNorm.weight", "layer_norm.weight", "bn.weight", "batchnorm.weight"]
-        decay_params, no_decay_params = [], []
-        for n, p in net.named_parameters():
-            if any(k in n for k in no_decay_keys):
-                no_decay_params.append(p)
-            else:
-                decay_params.append(p)
-        param_groups = [
-            {"params": decay_params, "weight_decay": wd},
-            {"params": no_decay_params, "weight_decay": 0.0},
-        ]
-        betas = tuple(opt_cfg.get("betas", (0.9, 0.999)))
-        eps = float(opt_cfg.get("eps", 1e-8))
-        optim = torch.optim.AdamW(param_groups, lr=lr, betas=betas, eps=eps)
-    elif opt_name == "sgd":
-        momentum = float(opt_cfg.get("momentum", 0.9))
-        nesterov = bool(opt_cfg.get("nesterov", False))
-        optim = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum, weight_decay=wd, nesterov=nesterov)
-    else:  # default Adam
-        betas = tuple(opt_cfg.get("betas", (0.9, 0.999)))
-        eps = float(opt_cfg.get("eps", 1e-8))
-        optim = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=wd, betas=betas, eps=eps)
-    # ---- Scheduler wiring from config ----
-    sched_cfg = cfg.get("scheduler", {})
-    use_warmup = cfg.get("warmup", 0) == 1
-    warmup_steps = cfg.get("train", {}).get("warmup_steps", 0)
-
+    # --------------------------------------------------------------
+    # Scheduler will operate per *batch*, so we need the total number
+    # of optimisation steps.
+    # --------------------------------------------------------------
     steps_per_epoch = len(train_loader)
-    epochs = cfg["train"]["n_epochs"]
-    total_steps = epochs * steps_per_epoch
-    lr_init = float(cfg["optimizer"]["init_lr"])
-    lr_min = float(sched_cfg.get("lr_min", 0.0))
 
-    scheduler = None
-    if sched_cfg.get("name", "").lower() == "cosine":
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=total_steps, eta_min=lr_min)
-    elif sched_cfg.get("name", "").lower() == "cosine_restart":
-        T_0 = sched_cfg.get("T_0", 10)
-        T_mult = sched_cfg.get("T_mult", 1)
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optim, T_0=T_0, T_mult=T_mult, eta_min=lr_min
+    # ------------------------------------------------------------------
+    # Prepare checkpoint directory (clear previous run for same model)
+    # ------------------------------------------------------------------
+    ckpt_root = Path(cfg["checkpoint"]["checkpoint_dir"]).expanduser()
+    ckpt_dir = ckpt_root / cfg["model"]["name"]
+    if ckpt_dir.exists():
+        shutil.rmtree(ckpt_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build model --------------------------------------------------------------
+    model = CwATModel(
+        input_size=cfg["input_size"],
+        n_channels=n_channels,
+        hyp=cfg["model"],
+        num_classes=len(cfg["dataset"]["classes"]),
+    ).to(DEVICE)
+
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=cfg["optimizer"]["init_lr"],
+        weight_decay=cfg["optimizer"]["weight_decay"],
+    )
+
+    # ------------------------------------------------------------------
+    # Scheduler: use cosine annealing (with optional warm-up) so that the
+    # learning-rate follows the hyper-params specified in the config.
+    # ------------------------------------------------------------------
+    scheduler_name = cfg.get("scheduler", {}).get("name", "none").lower()
+    if scheduler_name == "cosine":
+        eta_min_val = float(cfg["scheduler"].get("lr_min", 0.0))
+        total_steps = cfg["train"]["n_epochs"] * steps_per_epoch
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=total_steps,
+            eta_min=eta_min_val,
         )
-    # else: leave scheduler as None (no scheduling)
-    criterion = nn.CrossEntropyLoss(label_smoothing=cfg.get("criterion", {}).get("label_smoothing", 0.0))
+    else:
+        scheduler = None  # fallback to constant LR if not requested
 
-    print("[DEBUG] Optimizer and scheduler set up")
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
-    # TensorBoard
-    tb_dir = Path(cfg["tensorboard"]["runs_dir"]) / f"{datetime.now().strftime('%y%m%d%H%M')}_{model_name}_tuh_board"
-    writer = SummaryWriter(str(tb_dir))
+    # Logging / TensorBoard ----------------------------------------------------
+    from torch.utils.tensorboard import SummaryWriter
 
-    # Training loop
+    runs_dir = Path(cfg["tensorboard"]["runs_dir"]).expanduser()
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    writer = SummaryWriter(runs_dir / f"{datetime.now().strftime('%y%m%d%H%M')}_{cfg['model']['name']}")
+
+    # Training loop -----------------------------------------------------------
     epochs = cfg["train"]["n_epochs"]
     global_step = 0
-
-    best_acc = 0.0  # tracked for info only; not used for saving
-    start_time = time.time()
-    patience_cfg = cfg["train"].get("early_stopping", {})
-    patience = patience_cfg.get("patience", 0)
-    if patience > 0:
-        wait = 0
-
+    best_acc = -float("inf")
     for epoch in range(epochs):
-        net.train()
-        running_loss = 0.0
-        train_correct = 0
-        train_total = 0
-        print(f"[DEBUG] Getting first batch from train_loader")
-        for batch_idx, (signals, labels, _) in enumerate(train_loader):
-            optim.zero_grad()
-            signals, labels = signals.to(device), labels.to(device)
-            outputs = net(signals)
-            loss = criterion(outputs, labels)
+        model.train()
+        train_loss = 0.0
+        train_acc = 0.0
+        for signals, targets, _ in train_loader:
+            signals, targets = signals.to(DEVICE), targets.to(DEVICE)
+            optimizer.zero_grad()
+            outputs = model(signals)
+            loss = criterion(outputs, targets)
             loss.backward()
-            optim.step()
-            # Move scheduler stepping outside the batch loop for epoch-based schedulers
-            # log lr occasionally
-            if scheduler is not None and global_step % 50 == 0:
-                writer.add_scalar("train/lr", optim.param_groups[0]["lr"], global_step)
-            running_loss += loss.item()
-            preds = torch.argmax(outputs, dim=1)
-            train_correct += (preds == labels).sum().item()
-            train_total += labels.size(0)
+            # Gradient clipping for training stabilisation
+            clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+            train_loss += loss.item()/len(train_loader)
+            train_acc += accuracy(outputs, targets)/len(train_loader)
+            # ------------------------------------------------------------------
+            # Per-batch LR scheduler step & logging
+            # ------------------------------------------------------------------
+            if scheduler is not None:
+                scheduler.step()
+                writer.add_scalar("train/lr", scheduler.get_last_lr()[0], global_step)
+
             writer.add_scalar("train/loss", loss.item(), global_step)
             global_step += 1
 
-        # Step scheduler per epoch for epoch-based schedulers
-        if scheduler is not None and sched_cfg.get("name", "").lower() in {"cosine_restart"}:
-            scheduler.step()
+        # LR is now stepped per batch; nothing to do here
 
-        epoch_loss = running_loss / len(train_loader)
-        train_acc = train_correct / train_total if train_total > 0 else 0.0
+        # Validation ----------------------------------------------------------
+        model.eval()
+        val_loss, val_acc = 0.0, 0.0
+        with torch.no_grad():
+            for signals, targets, _ in val_loader:
+                signals, targets = signals.to(DEVICE), targets.to(DEVICE)
+                outputs = model(signals)
+                val_loss += criterion(outputs, targets).item()
+                val_acc += accuracy(outputs, targets)
 
-        # Evaluation after each epoch
-        acc, correct, total = evaluate_model(net, val_loader, device)
-        logging.info(f"Epoch {epoch+1}/{epochs} | Train Loss {epoch_loss:.4f} | Train Acc {train_acc:.4f} | Val Acc {acc:.4f} ({correct}/{total})")
-        writer.add_hparams({"epoch": epoch+1}, {"train_loss": epoch_loss, "train_acc": train_acc, "val_acc": acc}, run_name=f"epoch_{epoch+1}")
+        val_loss /= len(val_loader)
+        val_acc /= len(val_loader)
+        writer.add_scalar("val/loss", val_loss, epoch)
+        writer.add_scalar("val/acc", val_acc, epoch)
 
-        # Checkpoint saving disabled as per user request
-        if acc > best_acc:
-            best_acc = acc
-            #logging.info(f"New best accuracy {best_acc:.4f} (no weights saved)")
-            wait = 0  # reset patience counter on improvement
-        else:
-            if patience > 0:
-                wait += 1
-                if wait >= patience:
-                    logging.info(f"Early stopping triggered at epoch {epoch+1} (no val improvement for {patience} epochs)")
-                    break
+        logger.info(
+            f"Epoch {epoch+1}/{epochs} - train_loss: {train_loss:.4f} - train_acc: {train_acc:.4f} - val_loss: {val_loss:.4f} - val_acc: {val_acc:.4f}"
+        )
 
-    # ----------------------------------------------------------------- #
-    elapsed = time.time() - start_time
-    hours = int(elapsed // 3600)
-    minutes = int((elapsed % 3600) // 60)
-    seconds = int(elapsed % 60)
-    logging.info(f"Training finished in {hours}h {minutes}m {seconds}s")
+        # Save checkpoint -----------------------------------------------------
+        if val_acc > best_acc:
+            best_acc = val_acc
+            #torch.save(model.state_dict(), ckpt_dir / "best.pth")
+            logger.info(f"New best model saved with val_acc={best_acc:.4f}")
+
     writer.close()
-    return best_acc
 
-# ————————————————————————————————————————————————————————————————
-# Main
-# ————————————————————————————————————————————————————————————————
+    # Return stats for hyper-parameter tuning frameworks (e.g. Optuna)
+    return best_acc, ckpt_dir / "best.pth"
+
+
+# -----------------------------------------------------------------------------
+#  Entrypoint -----------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train CwA-T on cleaned TUH EEG abnormality dataset")
-    parser.add_argument("config_file", type=str, help="Path to YAML config file")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config_file", metavar="FILE", help="YAML config file")
     args = parser.parse_args()
 
-    # Configuration
     with open(args.config_file, "r") as f:
         cfg = yaml.safe_load(f)
 
-    # Print configuration parameters once
-    print("===== Training Configuration =====")
-    print(yaml.dump(cfg, sort_keys=False))
-    print("===================================")
+    # Configure logging -------------------------------------------------------
+    logs_dir = (Path(__file__).resolve().parent / "../logs").resolve()
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    log_file = logs_dir / f"{datetime.now().strftime('%y%m%d%H%M')}_{cfg['model']['name']}.log"
 
-    # Logging setup
-    log_dir = Path("../logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
-    model_name = cfg["model"]["name"]
-    log_file = log_dir / f"{datetime.now().strftime('%y%m%d%H%M')}_{model_name}_tuh.log"
-    logging.basicConfig(level=logging.INFO, filename=str(log_file), filemode="w", format="%(asctime)s [%(levelname)s] %(message)s")
-    logging.getLogger().addHandler(logging.StreamHandler())  # also print to stdout
+    logging.basicConfig(filename=str(log_file), level=logging.INFO, filemode="w")
+    logger.addHandler(logging.StreamHandler())
 
-    train(cfg)
+    _best_acc, _best_path = train(cfg) 

@@ -276,7 +276,7 @@ def main():
                 dropout=dropout,
             )
             print(f"   → Training independent {task_type} network …")
-            train_single_task(
+            _info = train_single_task(
                 model,
                 train_loader,
                 val_loader=val_loader,
@@ -284,6 +284,7 @@ def main():
                 weight_decay=weight_decay,
                 scheduler=scheduler,
                 device=device,
+                plot_dir=results_path,
             )
             best_params = {
                 "dropout": dropout,
@@ -310,7 +311,7 @@ def main():
     eval_stats  = compute_dataset_stats(e_latent_features)
 
     xs_eval = torch.stack([sample[0].detach().clone().float() for sample in e_latent_features.dataset])
-    #independence_scores = eval.independence_of_features(xs_eval, save_path=results_path, device=device)
+    independence_scores = eval.independence_of_features(xs_eval, save_path=results_path, device=device)
 
     # 4. Collate and save final results --------------------------
     final_results = {
@@ -318,7 +319,7 @@ def main():
         "hyperparams_per_task": hyperparams_all,
         "train_dataset_stats": train_stats,
         "eval_dataset_stats": eval_stats,
-        #"global_independence_score": independence_scores["global_score"],
+        "global_independence_score": independence_scores["global_score"],
     }
 
     print("Saving results …")

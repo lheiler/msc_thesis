@@ -348,8 +348,20 @@ if __name__ == "__main__":
         configs = yaml.safe_load(file)
     model_name = configs['model']['name']
     logger = logging.getLogger(__name__)  # Use the current module's name
-    logging.basicConfig(filename=f'../logs/{datetime.now().strftime("%y%m%d%H%M")}_{model_name}.log', level=logging.INFO)
+
+    # Ensure that the ../logs directory exists relative to this file
+    log_dir = (Path(__file__).resolve().parent / "../logs").resolve()
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create a time‑stamped log file inside the logs directory
+    log_file = log_dir / f"{datetime.now().strftime('%y%m%d%H%M')}_{model_name}.log"
+
+    # Configure the root logger to write to the file and to overwrite on each run
+    logging.basicConfig(filename=str(log_file), level=logging.INFO, filemode='w')
+
+    # Also print logs to stdout
     handler = logging.StreamHandler()
     logger.addHandler(handler)
     
     train(Configs=configs)
+

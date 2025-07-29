@@ -1,11 +1,11 @@
-metrics_per_task.abnormal.loss: 0.6524596123591714
-metrics_per_task.abnormal.accuracy: 0.605072463768116
-metrics_per_task.abnormal.pred_counts.label_0: 183
-metrics_per_task.abnormal.pred_counts.label_1: 93
+metrics_per_task.abnormal.loss: 0.6555007324702498
+metrics_per_task.abnormal.accuracy: 0.6340579710144928
+metrics_per_task.abnormal.pred_counts.label_0: 155
+metrics_per_task.abnormal.pred_counts.label_1: 121
 hyperparams_per_task.abnormal.input_dim: 9
 hyperparams_per_task.abnormal.output_type: classification
-hyperparams_per_task.abnormal.hidden_dims: [128, 64]
-hyperparams_per_task.abnormal.dropout: 0.11375821763798367
+hyperparams_per_task.abnormal.hidden_dims: [192, 96]
+hyperparams_per_task.abnormal.dropout: 0.027334843109881712
 train_dataset_stats.n_samples: 2717    # Number of training samples
 train_dataset_stats.gender_counts.female(2): 1447
 train_dataset_stats.gender_counts.male(1): 1270
@@ -36,3 +36,4 @@ eval_dataset_stats.age_bin_counts.50–60: 0
 eval_dataset_stats.age_bin_counts.60–70: 0
 eval_dataset_stats.age_bin_counts.70–80: 0
 eval_dataset_stats.age_bin_counts.80–120: 0
+global_independence_score: 0.005894069094210863    # Mean off-diag HSIC of latent features (lower = more independent)

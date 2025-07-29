@@ -39,7 +39,7 @@ class MLP_1l(nn.Module):
         
         z = torch.flatten(x, 1)
         z = self.mlp(z)
-        return z
+        return y
 
     
 class MLP_3l(nn.Module):
@@ -57,4 +57,4 @@ class MLP_3l(nn.Module):
         
         z = torch.flatten(x, 1)
         z = self.mlp(z)
-        return z
+        return y

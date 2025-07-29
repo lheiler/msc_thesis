@@ -1,0 +1,32 @@
+INFO:train_tuh:Loading TUH EEG dataset ...
+INFO:train_tuh:Epoch 1/25 – val_loss: 0.6269 – val_acc: 0.6813
+INFO:train_tuh:New best model saved with val_acc=0.6813
+INFO:train_tuh:Epoch 2/25 – val_loss: 0.6557 – val_acc: 0.6494
+INFO:train_tuh:Epoch 3/25 – val_loss: 0.6577 – val_acc: 0.6562
+INFO:train_tuh:Epoch 4/25 – val_loss: 0.7451 – val_acc: 0.4513
+INFO:train_tuh:Epoch 5/25 – val_loss: 0.8918 – val_acc: 0.3937
+INFO:train_tuh:Epoch 6/25 – val_loss: 0.6079 – val_acc: 0.7425
+INFO:train_tuh:New best model saved with val_acc=0.7425
+INFO:train_tuh:Epoch 7/25 – val_loss: 0.6493 – val_acc: 0.6950
+INFO:train_tuh:Epoch 8/25 – val_loss: 0.5856 – val_acc: 0.7394
+INFO:train_tuh:Epoch 9/25 – val_loss: 0.5823 – val_acc: 0.7400
+INFO:train_tuh:Epoch 10/25 – val_loss: 0.5769 – val_acc: 0.7456
+INFO:train_tuh:New best model saved with val_acc=0.7456
+INFO:train_tuh:Epoch 11/25 – val_loss: 0.6090 – val_acc: 0.6975
+INFO:train_tuh:Epoch 12/25 – val_loss: 0.5783 – val_acc: 0.7244
+INFO:train_tuh:Epoch 13/25 – val_loss: 0.5656 – val_acc: 0.7519
+INFO:train_tuh:New best model saved with val_acc=0.7519
+INFO:train_tuh:Epoch 14/25 – val_loss: 0.5712 – val_acc: 0.7500
+INFO:train_tuh:Epoch 15/25 – val_loss: 0.5994 – val_acc: 0.7406
+INFO:train_tuh:Epoch 16/25 – val_loss: 0.5714 – val_acc: 0.7456
+INFO:train_tuh:Epoch 17/25 – val_loss: 0.5723 – val_acc: 0.7550
+INFO:train_tuh:New best model saved with val_acc=0.7550
+INFO:train_tuh:Epoch 18/25 – val_loss: 0.5788 – val_acc: 0.7394
+INFO:train_tuh:Epoch 19/25 – val_loss: 0.5813 – val_acc: 0.7456
+INFO:train_tuh:Epoch 20/25 – val_loss: 0.5896 – val_acc: 0.7550
+INFO:train_tuh:Epoch 21/25 – val_loss: 0.6008 – val_acc: 0.7494
+INFO:train_tuh:Epoch 22/25 – val_loss: 0.6335 – val_acc: 0.7037
+INFO:train_tuh:Epoch 23/25 – val_loss: 0.6344 – val_acc: 0.7588
+INFO:train_tuh:New best model saved with val_acc=0.7588
+INFO:train_tuh:Epoch 24/25 – val_loss: 0.6585 – val_acc: 0.7156
+INFO:train_tuh:Epoch 25/25 – val_loss: 0.6756 – val_acc: 0.7225
