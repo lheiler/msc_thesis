@@ -26,7 +26,9 @@ def main():
     # 0️⃣ Load configuration from YAML / CLI -------------------------------
     parser = argparse.ArgumentParser(description="EEG classification pipeline")
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to YAML configuration file")
+    parser.add_argument("--reset", action="store_true", help="Reset the pipeline")
     args = parser.parse_args()
+    reset = args.reset 
 
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
@@ -187,7 +189,7 @@ def main():
 
 
     for task_idx in range(num_tasks):
-        if task_idx != 2: continue
+        if task_idx == 1: continue
         # ---------------- Data preparation per task ----------------
         x_train, y_raw_train = [], []
         for sample in t_latent_features.dataset:
@@ -330,4 +332,6 @@ def main():
 
     
 if __name__ == "__main__":
+    
     main()
+    
