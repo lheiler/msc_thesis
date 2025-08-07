@@ -4,11 +4,9 @@
 from latent_extraction.cortico_thalamic import fit_ctm_from_raw
 from torch.utils.data import DataLoader
 from latent_extraction.c22 import extract_c22, extract_c22_psd
+from latent_extraction.ctm_nn.nn_ctm_parameters import ParameterRegressor
 
-from latent_extraction.ctm_nn.nn_ctm_parameters import (
-    EEGToTheta,
-    extract_theta,
-)
+from latent_extraction.ctm_nn.nn_ctm_parameters import infer_latent_parameters
 
 import mne
 import numpy as np
@@ -64,20 +62,10 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
     # --------------------------------------------------------------
     if method in {"ctm_nn"}:
         # Load weights (path can be overridden via env var)
-        weights_path = os.environ.get(
-            "CTM_NN_WEIGHTS", "latent_extraction/ctm_nn/theta_fitted.pt"
-        )
-
-        model = EEGToTheta(in_len=7680, out_dim=8).to(device)
-        if os.path.exists(weights_path):
-            state = torch.load(weights_path, map_location=device)
-            model.load_state_dict(state)
-            model.eval()
-        else:
-            raise FileNotFoundError(
-                f"Neural-CTM weight file not found: {weights_path}. "
-                "Please train the model first or set CTM_NN_WEIGHTS env var."
-            )
+        model_path = "/homes/lrh24/thesis/testing/amore/models/regressor_1e-4-8.pt"
+        model = ParameterRegressor()
+        model.load_state_dict(torch.load(model_path)["model_state"])
+        model.to(device)
     else:
         model = None
 
@@ -88,8 +76,7 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         elif method == "ctm_nn":
             # Neural CTM encoder → vector (19×8 -> flattened)
             try:
-                theta = extract_theta(model, x, device=device)
-                latent_feature = theta.flatten()
+                latent_feature = infer_latent_parameters(model, x, device=device)
             except Exception as e:
                 print(f"⚠️  Failed to extract CTM-NN features: {e}")
                 latent_feature = None

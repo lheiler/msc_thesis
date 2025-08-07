@@ -51,7 +51,7 @@ def tune_hyperparameters(
 
     def objective(trial: optuna.Trial):
         # ---------------- Hyper-parameter suggestions -----------------
-        lr           = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
+        lr           = trial.suggest_float("lr", 1e-5, 1e-2, log=True)
         dropout      = trial.suggest_float("dropout", 0.0, 0.5)
         weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
         scheduler     = trial.suggest_categorical("scheduler", ["plateau", "cosine", "none"])
@@ -129,11 +129,7 @@ def tune_hyperparameters(
             print(f"🏅 New global best found (score={current_score:.4f}) – model saved to {best_model_path}")
 
         # Clean up: keep only plots of the best trial ------------------
-        if os.path.exists(plot_dir_trial):
-            # If this trial is NOT the best (i.e. current_score <= best_global_score)
-            # and wasn't just copied as best, we delete its plot dir to save space.
-            if current_score != best_global_score:
-                shutil.rmtree(plot_dir_trial, ignore_errors=True)
+        if os.path.exists(plot_dir_trial): shutil.rmtree(plot_dir_trial, ignore_errors=True)
 
         # Remove per-trial checkpoint (always) --------------------------
         try:
