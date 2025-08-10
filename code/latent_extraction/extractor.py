@@ -5,6 +5,8 @@ from latent_extraction.cortico_thalamic import fit_ctm_from_raw
 from torch.utils.data import DataLoader
 from latent_extraction.c22 import extract_c22, extract_c22_psd
 from latent_extraction.ctm_nn.nn_ctm_parameters import ParameterRegressor
+from pathlib import Path
+import importlib.util
 
 from latent_extraction.ctm_nn.nn_ctm_parameters import infer_latent_parameters
 
@@ -15,6 +17,7 @@ import json
 import torch
 # For CwA-T we will lazily import to avoid unnecessary dependency cost when
 # other methods are used.  Import inside functions below.
+import os
 
 def clean_x(x):
     if 'A1' in x.ch_names:
@@ -46,19 +49,9 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         )
     )
 
-    # ------------------------------------------------------------------
-    # Pre-load heavy models that will be reused across the dataset
-    # ------------------------------------------------------------------
-    if method in {"cwat", "CwA-T", "cwa_t"}:
-        from latent_extraction.cwat_autoencoder import get_cwat_model, extract_cwat
-
-        _ = get_cwat_model(device=device)  # warm-up so subsequent calls are cheap
-
-    else:
-        extract_cwat = None  # type: ignore
 
     # --------------------------------------------------------------
-    # Pre-load **neural CTM encoder** once if requested
+    # Pre-load models once if requested
     # --------------------------------------------------------------
     if method in {"ctm_nn"}:
         # Load weights (path can be overridden via env var)
@@ -66,6 +59,49 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         model = ParameterRegressor()
         model.load_state_dict(torch.load(model_path)["model_state"])
         model.to(device)
+    elif method in {"eegnet"}:
+        # Hyphenated directory requires path-based import
+        this_dir = Path(__file__).resolve().parent
+        infer_path = this_dir / "EEGNet-AE" / "infer.py"
+        spec = importlib.util.spec_from_file_location("eegnet_ae_infer", str(infer_path))
+        assert spec and spec.loader, f"Could not load spec for {infer_path}"
+        eegnet_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(eegnet_mod)
+        # Load model once; keep extractor for later calls
+        model = eegnet_mod.get_eegnet_ae_model(device=device)
+        extract_eegnet_ae = eegnet_mod.extract_eegnet_ae  # type: ignore
+    elif method in {"conv_ae"}:
+
+        
+        # # Optional latent dim from env, else default 128
+        # latent_dim = int(os.environ.get("CONVAE_LATENT_DIM", "128"))
+        # model = conv_mod.get_conv_ae_model(
+        #     device=device,
+        #     model_path=conv_model_path,
+        #     n_channels=19,
+        #     input_window_samples=60 * 128,
+        #     latent_dim=latent_dim,
+        # )
+        extract_conv_ae = conv_mod.extract_conv_ae  # type: ignore
+    elif method in {"pca_psd"}:
+        # Lazy-load PCA runtime and prepare PSD parameters
+        from latent_extraction.pca.pca import FrozenPCATorch  # type: ignore
+        pca_model_path = "/homes/lrh24/thesis/code/latent_extraction/pca/models/pca_avg_psd_k8.npz"
+        try:
+            model = FrozenPCATorch(pca_model_path, device=device)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load PCA artifact at '{pca_model_path}'. "
+                f"Set PCA_MODEL_PATH or generate with latent_extraction/pca/pca.py. Error: {e}"
+            )
+
+        # PSD params (keep aligned with fitter defaults; overridable via env)
+        psd_fmin = 1.0
+        psd_fmax = 45.0
+        psd_n_per_seg = 512
+        psd_n_fft = 512
+        psd_log = True
+        psd_resample = None
     else:
         model = None
 
@@ -87,6 +123,17 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         elif method in {"cwat", "CwA-T", "cwa_t"}:
             # extract_cwat was imported above only if needed
             latent_feature = extract_cwat(x, device=device)[0]  # type: ignore
+        elif method in {"eegnet_ae", "EEGNet-AE", "eegnet-ae"}:
+            # Encoder output vector
+            latent_feature = extract_eegnet_ae(x, device=device, model=model)  # type: ignore
+        elif method in {"conv_ae", "convae", "ConvAE", "convAE"}:
+            latent_feature = extract_conv_ae(x, device=device, model=model)  # type: ignore
+        elif method in {"pca", "pca_psd", "pca_avg_psd"}:
+            psd = x.compute_psd(method="welch",fmin=psd_fmin,fmax=psd_fmax,n_per_seg=psd_n_per_seg, n_fft=psd_n_fft, verbose="ERROR")
+            psds, freqs = psd.get_data(return_freqs=True)
+            avg_psd = psds.mean(axis=0).astype(np.float32)
+            if psd_log: avg_psd = np.log10(np.maximum(avg_psd, 1e-12))
+            latent_feature = model.transform_vec(avg_psd)  # type: ignore
         else:
             raise ValueError(f"Unknown method: {method}")
         
