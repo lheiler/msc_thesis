@@ -93,7 +93,7 @@ raw.filter(l_freq=1.0, h_freq=40.0)
 
 # --- optimise to fit the EEG data -------------------------------
 
-spectrum = raw.compute_psd(method='welch', fmin=1, fmax=40, n_fft=128)
+spectrum = raw.compute_psd(method='welch', fmin=1, fmax=40, n_fft=512)
 psds = spectrum.get_data()
 freqs = spectrum.freqs
 mean_psd = psds.mean(axis=0)
@@ -176,4 +176,4 @@ plt.grid(True, which="both", linestyle='-', linewidth=0.5)
 plt.legend(loc='best')
 plt.xlim(1, 40)
 plt.tight_layout()
-plt.show()
+plt.savefig("results/cbm_eeg_psd_cmaes.png")

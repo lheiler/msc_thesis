@@ -1,4 +1,4 @@
-method: ctm_nn
+method: eegnet
 # Dataset corpus to use: 'tuh' or 'harvard'
 data_corp: tuh
 

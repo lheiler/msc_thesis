@@ -5,6 +5,7 @@ scikit-learn
 
 # Deep learning
 torch
+braindecode==0.7.1
 
 # EEG processing
 mne
