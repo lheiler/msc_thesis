@@ -1,72 +1,6 @@
-import torch
-from torch import nn
-import numpy as np
-from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
-from model_training.classification_model import ClassificationModel
 import os
+import numpy as np
 from typing import Dict, Any
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-
-
-def independence_of_features(xs: torch.Tensor, save_path, device: str = "cpu") -> Dict[str, torch.Tensor]:
-    """
-    Compute pair-wise dependence between latent dimensions using a
-    biased Hilbert-Schmidt Independence Criterion (HSIC).
-
-    * Each coordinate is z-scored.
-    * Bandwidth per coordinate = median non-zero pairwise distance
-      (“median heuristic”). Constant coordinates get HSIC = 0.
-    * Returns:
-        - 'hsic'  : (d,d) symmetric matrix (zeros on diagonal)
-        - 'global_score' : float, mean off-diagonal HSIC
-    """
-    xs = xs.float().to(device)
-    n, d = xs.shape
-
-    # 1. z-score each coordinate
-    xs_std = (xs - xs.mean(0, keepdim=True)) / xs.std(0, keepdim=True).clamp_min(1e-8)
-
-    H = torch.eye(n, device=device) - 1.0 / n          # centring matrix
-    Ks = []                                            # list of centred kernels
-
-    for j in range(d):
-        col = xs_std[:, j:j + 1]              # (n, 1)
-
-        if col.std() < 1e-6:                  # constant feature
-            Ks.append(torch.zeros(n, n, device=device))
-            continue
-
-        # --- fix: pair-wise squared distances (n × n) ---------------
-        d2 = (col - col.T).pow(2)             # ← broadcasting, shape (n,n)
-
-        # median of non-zero distances
-        nz = d2[d2 > 0]
-        sigma = torch.sqrt(0.5 * nz.median() + 1e-7) if nz.numel() else torch.tensor(1.0, device=device)
-
-        K = torch.exp(-d2 / (2 * sigma ** 2)) # (n,n)
-        Ks.append(H @ K @ H)
-    Ks = torch.stack(Ks)                               # (d,n,n)
-
-    # 2. biased HSIC
-    hsic = torch.zeros(d, d, device=device)
-    norm = (n - 1) ** 2
-    for i in range(d):
-        for j in range(i + 1, d):
-            val = (Ks[i] * Ks[j]).sum() / norm
-            hsic[i, j] = hsic[j, i] = val
-
-    # 3. global score (mean off-diagonal, ignore zeros from constant dims)
-    mask = hsic != 0
-    global_score = hsic[mask].mean().item() if mask.any() else 0.0
-    
-    
-    sns.heatmap(hsic.cpu(), vmin=0, vmax=0.05, square=True, cmap="mako")
-    plt.savefig(os.path.join(save_path, "hsic_matrix.png"))
-    plt.close()
-
-    return {"hsic": hsic.cpu(), "global_score": global_score}
 
     
 def _flatten_dict(d, parent_key="", sep="."):
@@ -90,24 +24,41 @@ def save_results(metrics, file_path: str):
     import os, numpy as _np
 
     _DESCR = {
-        "loss_g": "Binary-cross-entropy loss for gender head (lower is better)",
-        "loss_a": "MSE loss for age head after z-scaling", 
-        "loss_abn": "Binary-cross-entropy loss for abnormality head",
-        "total_loss": "Sum of all three task losses", 
-        "accuracy_g": "Classification accuracy for gender (proportion correct)",
-        "accuracy_abn": "Classification accuracy for abnormality",
-        "mae_a": "Mean absolute error for age prediction (years)",
-        "rmse_a": "Root-mean-square error for age prediction (years)",
-        "gender_confusion": "2×2 confusion matrix: rows=true, cols=predicted (gender)",
-        "abn_confusion": "2×2 confusion matrix: rows=true, cols=predicted (abnormality)",
-        "gender_precision_recall_f1.precision": "Gender-task precision (positive=males)",
-        "gender_precision_recall_f1.recall": "Gender-task recall",
-        "gender_precision_recall_f1.f1": "Gender-task F1-score",
-        "abn_precision_recall_f1.precision": "Abnormality precision (positive=abnormal)",
-        "abn_precision_recall_f1.recall": "Abnormality recall",
-        "abn_precision_recall_f1.f1": "Abnormality F1-score",
-        "global_independence_score": "Mean off-diag HSIC of latent features (lower = more independent)",
-        "age_bin_mae": "Dict: MAE per age bin (years)",
+        # Latent feature evaluation
+        "train.active_units": "Number of latent dimensions with variance > 1e-3 (train)",
+        "eval.active_units": "Number of latent dimensions with variance > 1e-3 (eval)",
+        "train.hsic_global_score": "Mean off-diagonal HSIC (lower = more independent) on train",
+        "eval.hsic_global_score": "Mean off-diagonal HSIC (lower = more independent) on eval",
+        "train.cluster.silhouette": "Silhouette score on KMeans(k=5) clusters (higher better)",
+        "train.cluster.davies_bouldin": "Davies–Bouldin index (lower better)",
+        "train.cluster.calinski_harabasz": "Calinski–Harabasz score (higher better)",
+        "eval.cluster.silhouette": "Silhouette score on KMeans(k=5) clusters (higher better)",
+        "eval.cluster.davies_bouldin": "Davies–Bouldin index (lower better)",
+        "eval.cluster.calinski_harabasz": "Calinski–Harabasz score (higher better)",
+        "train.geometry.trustworthiness": "Neighbourhood preservation in 2D PCA (train)",
+        "train.geometry.continuity": "Lost-neighbour score complement in 2D PCA (train)",
+        "train.geometry.dist_corr": "Correlation of pairwise distances in 2D PCA (train)",
+        "eval.geometry.trustworthiness": "Neighbourhood preservation in 2D PCA (eval)",
+        "eval.geometry.continuity": "Lost-neighbour score complement in 2D PCA (eval)",
+        "eval.geometry.dist_corr": "Correlation of pairwise distances in 2D PCA (eval)",
+        "pca.top5_ratio_sum": "Sum of first 5 explained variance ratios of PCA(Z)",
+
+        # Downstream classification/regression
+        "metrics_per_task.abnormal.accuracy": "Classification accuracy (abnormal)",
+        "metrics_per_task.abnormal.f1": "Binary F1-score (abnormal)",
+        "metrics_per_task.abnormal.f1_macro": "Macro-averaged F1 (abnormal)",
+        "metrics_per_task.abnormal.roc_auc": "ROC-AUC (abnormal)",
+        "metrics_per_task.abnormal.pr_auc": "Precision–Recall AUC (abnormal)",
+        "metrics_per_task.gender.accuracy": "Classification accuracy (gender)",
+        "metrics_per_task.gender.f1": "Binary F1-score (gender)",
+        "metrics_per_task.gender.f1_macro": "Macro-averaged F1 (gender)",
+        "metrics_per_task.gender.roc_auc": "ROC-AUC (gender)",
+        "metrics_per_task.gender.pr_auc": "Precision–Recall AUC (gender)",
+        "metrics_per_task.age.mae": "Mean absolute error (age)",
+        "metrics_per_task.age.rmse": "Root-mean-square error (age)",
+        "metrics_per_task.age.r2": "Coefficient of determination R² (age)",
+
+        # Dataset
         "train_dataset_stats.n_samples": "Number of training samples",
         "eval_dataset_stats.n_samples": "Number of evaluation samples",
     }

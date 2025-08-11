@@ -3,9 +3,19 @@ from torch import nn
 # --- Additional utilities for validation split ---
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
-from typing import Tuple, Union, Literal, Dict
+from typing import Tuple, Union, Literal, Dict, Any
 import os
+import numpy as np
 import matplotlib.pyplot as plt  # For training curves
+from sklearn.metrics import (
+    confusion_matrix,
+    precision_recall_fscore_support,
+    roc_auc_score,
+    average_precision_score,
+    r2_score,
+    roc_curve,
+    precision_recall_curve,
+)
 
 
 class SingleTaskModel(nn.Module):
@@ -85,7 +95,8 @@ class SingleTaskModel(nn.Module):
         dataloader: DataLoader,
         output_type: Literal["classification", "regression"] | None = None,
         device: Union[str, torch.device] = "cpu",
-    ) -> Dict[str, float]:
+        plot_dir: str | None = None,
+    ) -> Dict[str, Any]:
         """Compute metrics on *dataloader* using *this* model.
 
         Classification → BCE loss + accuracy (+ prediction counts).
@@ -115,6 +126,11 @@ class SingleTaskModel(nn.Module):
         sqe_sum = 0.0
         pred_positive = 0  # Number of times model predicts label 1 / "positive"
 
+        # For rich metrics/plots
+        y_true_all: list[float] = []
+        y_prob_all: list[float] = []
+        y_pred_all: list[float] = []
+
         with torch.no_grad():
             for x, y in dataloader:
                 x, y = x.to(device).float(), y.to(device).float()
@@ -129,11 +145,16 @@ class SingleTaskModel(nn.Module):
                     preds = (probs >= 0.5).float()
                     correct_cls += (preds == y).sum().item()
                     pred_positive += preds.sum().item()
+
+                    # collect for plots/metrics
+                    y_true_all.extend(y.detach().cpu().numpy().astype(float).tolist())
+                    y_prob_all.extend(probs.detach().cpu().numpy().astype(float).tolist())
+                    y_pred_all.extend(preds.detach().cpu().numpy().astype(float).tolist())
                 else:
                     mae_sum += torch.abs(y_pred - y).sum().item()
                     sqe_sum += ((y_pred - y) ** 2).sum().item()
 
-        metrics: Dict[str, float] = {"loss": total_loss / max(total, 1)}
+        metrics: Dict[str, Any] = {"loss": total_loss / max(total, 1)}
         if output_type == "classification":
             metrics["accuracy"] = correct_cls / max(total, 1)
             pred_negative = max(total, 0) - pred_positive
@@ -141,10 +162,127 @@ class SingleTaskModel(nn.Module):
                 "label_0": int(pred_negative),
                 "label_1": int(pred_positive),
             }
+
+            # Additional classification metrics
+            try:
+                y_true = np.asarray(y_true_all, dtype=float)
+                y_pred = np.asarray(y_pred_all, dtype=float)
+                y_prob = np.asarray(y_prob_all, dtype=float)
+
+                # precision/recall/f1 (binary)
+                prec, rec, f1, _ = precision_recall_fscore_support(
+                    y_true, y_pred, average="binary", zero_division=0
+                )
+                metrics["precision"] = float(prec)
+                metrics["recall"] = float(rec)
+                metrics["f1"] = float(f1)
+
+                # macro-F1 (if both classes present)
+                if len(np.unique(y_true)) == 2:
+                    _, _, f1_macro, _ = precision_recall_fscore_support(
+                        y_true, y_pred, average="macro", zero_division=0
+                    )
+                    metrics["f1_macro"] = float(f1_macro)
+
+                # ROC-AUC and PR-AUC when feasible
+                if len(np.unique(y_true)) == 2 and np.any(y_prob != y_prob[0]):
+                    try:
+                        metrics["roc_auc"] = float(roc_auc_score(y_true, y_prob))
+                    except Exception:
+                        pass
+                    try:
+                        metrics["pr_auc"] = float(average_precision_score(y_true, y_prob))
+                    except Exception:
+                        pass
+
+                # Confusion matrix
+                try:
+                    cm = confusion_matrix(y_true, y_pred)
+                    metrics["confusion"] = cm.tolist()
+                except Exception:
+                    pass
+
+                # Plots
+                if plot_dir is not None:
+                    os.makedirs(plot_dir, exist_ok=True)
+
+                    # Confusion matrix heatmap
+                    if "confusion" in metrics:
+                        plt.figure(figsize=(4, 4))
+                        plt.imshow(cm, interpolation="nearest", cmap="Blues")
+                        plt.title("Confusion matrix")
+                        plt.colorbar()
+                        tick_marks = np.arange(2)
+                        plt.xticks(tick_marks, [0, 1])
+                        plt.yticks(tick_marks, [0, 1])
+                        thresh = cm.max() / 2.0 if cm.size else 0.5
+                        for i in range(cm.shape[0]):
+                            for j in range(cm.shape[1]):
+                                plt.text(j, i, format(cm[i, j], "d"),
+                                         ha="center", va="center",
+                                         color="white" if cm[i, j] > thresh else "black")
+                        plt.ylabel("True label")
+                        plt.xlabel("Predicted label")
+                        plt.tight_layout()
+                        plt.savefig(os.path.join(plot_dir, "confusion_matrix.png"))
+                        plt.close()
+
+                    # ROC curve
+                    if "roc_auc" in metrics:
+                        try:
+                            fpr, tpr, _ = roc_curve(y_true, y_prob)
+                            plt.figure(figsize=(5, 4))
+                            plt.plot(fpr, tpr, label=f"ROC-AUC = {metrics['roc_auc']:.3f}")
+                            plt.plot([0, 1], [0, 1], "k--", alpha=0.5)
+                            plt.xlabel("False Positive Rate")
+                            plt.ylabel("True Positive Rate")
+                            plt.title("ROC curve")
+                            plt.legend(loc="lower right")
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(plot_dir, "roc_curve.png"))
+                            plt.close()
+                        except Exception:
+                            pass
+
+                    # Precision-Recall curve
+                    if "pr_auc" in metrics:
+                        try:
+                            precs, recs, _ = precision_recall_curve(y_true, y_prob)
+                            plt.figure(figsize=(5, 4))
+                            plt.plot(recs, precs, label=f"AP = {metrics['pr_auc']:.3f}")
+                            plt.xlabel("Recall")
+                            plt.ylabel("Precision")
+                            plt.title("Precision–Recall curve")
+                            plt.legend(loc="lower left")
+                            plt.tight_layout()
+                            plt.savefig(os.path.join(plot_dir, "pr_curve.png"))
+                            plt.close()
+                        except Exception:
+                            pass
+
+            except Exception:
+                # keep core metrics even if extras fail
+                pass
+
             print("🔍 Prediction counts:", metrics["pred_counts"])
         else:
             metrics["mae"] = mae_sum / max(total, 1)
             metrics["rmse"] = (sqe_sum / max(total, 1)) ** 0.5
+            # R^2 for regression when labels vary
+            try:
+                # Need to re-run pass to gather predictions for R^2 without duplicating lots of code
+                y_true_all_reg, y_pred_all_reg = [], []
+                with torch.no_grad():
+                    for xb, yb in dataloader:
+                        xb = xb.to(device).float()
+                        yb = yb.to(device).float()
+                        yhat = self(xb).squeeze(-1)
+                        y_true_all_reg.extend(yb.detach().cpu().numpy().astype(float).tolist())
+                        y_pred_all_reg.extend(yhat.detach().cpu().numpy().astype(float).tolist())
+                if len(y_true_all_reg) >= 2:
+                    metrics["r2"] = float(r2_score(y_true_all_reg, y_pred_all_reg))
+            except Exception:
+                pass
 
         return metrics
 
