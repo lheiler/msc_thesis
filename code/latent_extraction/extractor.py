@@ -123,7 +123,7 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         elif method in {"cwat", "CwA-T", "cwa_t"}:
             # extract_cwat was imported above only if needed
             latent_feature = extract_cwat(x, device=device)[0]  # type: ignore
-        elif method in {"eegnet_ae", "EEGNet-AE", "eegnet-ae"}:
+        elif method in {"eegnet"}:
             # Encoder output vector
             latent_feature = extract_eegnet_ae(x, device=device, model=model)  # type: ignore
         elif method in {"conv_ae", "convae", "ConvAE", "convAE"}:

@@ -1,5 +1,4 @@
 from data_preprocessing import data_loading as dl
-from model_training.single_task_model import SingleTaskModel, train as train_single_task
 from model_training.optuna_search import tune_hyperparameters
 import evaluation.evaluation as eval
 import latent_extraction.extractor as extractor
@@ -18,7 +17,11 @@ from utils.latent_loading import (
     load_latent_ae_parameters_array,)
 from utils.data_metrics import compute_dataset_stats
 from sklearn.model_selection import train_test_split
-
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+import glob
+import evaluation.metrix as metrics
+from pathlib import Path
 def main():
     """
     Main function to run the entire pipeline.
@@ -58,24 +61,11 @@ def main():
     
     print(f"Results will be saved to: {results_path}")
 
-    model_cfg   = cfg.get("model", {})  # kept for backwards compat
+    model_cfg   = cfg.get("model", {})
 
-    # ---------------- Optuna section (overrides manual h-params) ----------------
+    # ---------------- Optuna section (single path) ----------------
     optuna_cfg  = cfg.get("optuna", {})
-    use_optuna  = bool(optuna_cfg)
-
-    # Manual hyper-params (ignored if Optuna enabled)
     batch_size   = model_cfg.get("batch_size", 16)
-    num_epochs   = model_cfg.get("num_epochs", 20)
-    dropout      = model_cfg.get("dropout", 0.2)
-    hidden_dims  = model_cfg.get("hidden_dims", [512, 256, 128, 64])
-    if isinstance(hidden_dims, int):
-        hidden_dims = [hidden_dims]
-    if not hasattr(hidden_dims, "__iter__"):
-        raise ValueError("model.hidden_dims must be an int or a list of ints in config.yaml")
-    hidden_dims = tuple(int(h) for h in hidden_dims)
-    weight_decay = model_cfg.get("weight_decay", 0.0)
-    scheduler    = model_cfg.get("scheduler", "none")
 
     # No alternative classifier heads – we always use the MLP (SingleTaskModel).
 
@@ -87,21 +77,13 @@ def main():
     # If ``reset`` is True the latent feature files will be (re-)generated even
     # when they already exist. Otherwise the pipeline attempts to reuse cached
     # latents whenever their sample count matches the raw dataset.
-    reset = cfg.get("reset", False)
     
     # --------------------------------------------------------------------
-    # 1. Load raw EEG data (required for counts + potential extraction)
-    # --------------------------------------------------------------------
-    print("Loading raw EEG data …")
     if data_corp == "harvard":
-        t_data, e_data = dl.load_data_harvard(data_path_harvard)
+        n_train, n_eval = 0,0
     else:
-        t_data = dl.load_data(data_path_train)
-        e_data = dl.load_data(data_path_eval)
-        print(f"Loaded {len(t_data)} training samples and {len(e_data)} evaluation samples from tuh dataset")
-
-    n_train, n_eval = len(t_data), len(e_data)
-
+        n_train = sum(1 for _ in Path(data_path_train).rglob("*.fif"))
+        n_eval  = sum(1 for _ in Path(data_path_eval).rglob("*.fif"))
     # --------------------------------------------------------------------
     # 2. Decide whether to reuse cached latent features
     # --------------------------------------------------------------------
@@ -128,6 +110,17 @@ def main():
     # 3. If required, extract fresh latent representations
     # --------------------------------------------------------------------
     if not use_cache:
+         # --------------------------------------------------------------------
+        # Load raw EEG data (required for counts + potential extraction)
+        # --------------------------------------------------------------------
+        print("Loading raw EEG data …")
+        if data_corp == "harvard":
+            t_data, e_data = dl.load_data_harvard(data_path_harvard)
+        else:
+            t_data = dl.load_data(data_path_train)
+            e_data = dl.load_data(data_path_eval)
+            print(f"Loaded {len(t_data)} training samples and {len(e_data)} evaluation samples from tuh dataset")
+
         print("Extracting latent features …")
         t_latent_features = extractor.extract_latent_features(
             t_data,
@@ -152,13 +145,13 @@ def main():
     # --------------------------------------------------------------------
     # Safety check: ensure we have data before proceeding
     # --------------------------------------------------------------------
-    if len(t_latent_features.dataset) == 0 or len(e_latent_features.dataset) == 0:
-        msg = (
-            "❌ No training or evaluation samples were loaded. "
-            "Please verify the dataset paths and that preprocessing succeeded."
-        )
-        print(msg)
-        return
+    if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval: print( "❌ Not enough training or evaluation samples were loaded. ") ; return
+    
+    
+    # -------------------------------
+    # 4. Evaluate latent features
+    # -------------------------------
+    latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
     
 
     # ------------------------    # 2. Train **independent** models per task  ------------------------
@@ -178,7 +171,7 @@ def main():
     # Create *one* fixed train/val split (indices)
     # --------------------------------------------------
     all_indices = list(range(len(t_latent_features.dataset)))
-    val_split_frac = val_split_opt if use_optuna else 0.2
+    val_split_frac = val_split_opt
     train_indices_global, val_indices_global = train_test_split(
         all_indices,
         test_size=val_split_frac,
@@ -237,7 +230,6 @@ def main():
         train_loader = DataLoader(Subset(train_dataset_full, train_indices_global), batch_size=batch_size, shuffle=True)
         val_loader   = DataLoader(Subset(train_dataset_full, val_indices_global),   batch_size=batch_size, shuffle=True)
         
-        # print
 
         # Eval split ------------------------------------------------------
         x_eval, y_raw_eval = [], []
@@ -252,53 +244,34 @@ def main():
 
         assert X_eval.shape[0] == y_eval_tensor.shape[0], "Mismatch: features and labels have different lengths (eval)."
         eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=True)
-        # ---------------- Model + training -----------------------
-        if use_optuna:
-            print(f"   → Optuna search (n_trials={n_trials_opt}) for {task_type} …")
-            search_out = tune_hyperparameters(
-                train_loader,
-                val_loader,
-                input_dim=input_dim,
-                output_type=task_type,
-                n_trials=n_trials_opt,
-                device=device,
-                val_split=val_split_opt,
-                early_stopping_patience=patience_opt,
-                results_dir=results_path,
-            )
-            
-            model = search_out["best_model"]
-            best_params = search_out["best_params"]
-        else:
-            # SingleTaskModel (MLP) – only supported head
-            model = SingleTaskModel(
-                input_dim=input_dim,
-                output_type=task_type,
-                hidden_dims=hidden_dims,
-                dropout=dropout,
-            )
-            print(f"   → Training independent {task_type} network …")
-            _info = train_single_task(
-                model,
-                train_loader,
-                val_loader=val_loader,
-                n_epochs=num_epochs,
-                weight_decay=weight_decay,
-                scheduler=scheduler,
-                device=device,
-                plot_dir=results_path,
-            )
-            best_params = {
-                "dropout": dropout,
-                "weight_decay": weight_decay,
-                "scheduler": scheduler,
-                "n_epochs": num_epochs,
-                "hidden_dims": hidden_dims,
-            }
+        # ---------------- Model + training (Optuna only) ---------
+        print(f"   → Optuna search (n_trials={n_trials_opt}) for {task_type} …")
+        search_out = tune_hyperparameters(
+            train_loader,
+            val_loader,
+            input_dim=input_dim,
+            output_type=task_type,
+            n_trials=n_trials_opt,
+            device=device,
+            val_split=val_split_opt,
+            early_stopping_patience=patience_opt,
+            results_dir=results_path,
+        )
+        
+        model = search_out["best_model"]
+        best_params = search_out["best_params"]
 
         # ---------------- Evaluation -----------------------------
         print(model)
-        task_metrics = model.evaluate(eval_loader, output_type=task_type, device=device)
+        # Create per-task plot subdir
+        task_plot_dir = os.path.join(results_path, f"plots_{task_name}")
+        os.makedirs(task_plot_dir, exist_ok=True)
+        task_metrics = model.evaluate(
+            eval_loader,
+            output_type=task_type,
+            device=device,
+            plot_dir=task_plot_dir,
+        )
 
         metrics_all[task_name] = task_metrics
         hyperparams_all[task_name] = best_params
@@ -312,8 +285,6 @@ def main():
     train_stats = compute_dataset_stats(t_latent_features)
     eval_stats  = compute_dataset_stats(e_latent_features)
 
-    xs_eval = torch.stack([sample[0].detach().clone().float() for sample in e_latent_features.dataset])
-    independence_scores = eval.independence_of_features(xs_eval, save_path=results_path, device=device)
 
     # 4. Collate and save final results --------------------------
     final_results = {
@@ -321,7 +292,7 @@ def main():
         "hyperparams_per_task": hyperparams_all,
         "train_dataset_stats": train_stats,
         "eval_dataset_stats": eval_stats,
-        "global_independence_score": independence_scores["global_score"],
+        "latent": latent_metrics,
     }
 
     print("Saving results …")

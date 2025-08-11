@@ -28,7 +28,7 @@ model:
 
 # Hyper-parameter optimisation via Optuna (overrides manual settings)
 optuna:
-  n_trials: 20    # Number of optimisation trials per task
+  n_trials: 2    # Number of optimisation trials per task
   val_split: 0.2   # Fraction of training data reserved for validation
   patience: 7    # Early-stopping patience within each trial
 

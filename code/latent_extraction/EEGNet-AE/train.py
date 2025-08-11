@@ -123,7 +123,7 @@ def mixed_recon_loss(x_hat: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     Xh = torch.stft(x_hat_aligned.reshape(B * C, T), n_fft=256, hop_length=128, window=window, return_complex=True)
     X  = torch.stft(x_aligned.reshape(B * C, T),     n_fft=256, hop_length=128, window=window, return_complex=True)
     spec = nn.functional.mse_loss(torch.log1p(torch.abs(Xh)), torch.log1p(torch.abs(X)))
-    return 0.5 * mse + 0.5 * spec
+    return 0.0 * mse + 1.0 * spec
 
 
 def train(
@@ -192,7 +192,7 @@ def train(
             patience = 0
         else:
             patience += 1 if 'patience' in locals() else 1
-            if patience >= 10:
+            if patience >= 8:
                 print("Early stopping: no val improvement.")
                 break
 
@@ -206,9 +206,9 @@ def main():
     out_dir = Path("/homes/lrh24/thesis/code/latent_extraction/EEGNet-AE/")
     p.add_argument("--latent_dim", type=int, default=128)
     p.add_argument("--batch_size", type=int, default=16)
-    p.add_argument("--lr", type=float, default=1e-3)
-    p.add_argument("--epochs", type=int, default=100)
-    p.add_argument("--val_ratio", type=float, default=0.2)
+    p.add_argument("--lr", type=float, default=5e-3)
+    p.add_argument("--epochs", type=int, default=1000)
+    p.add_argument("--val_ratio", type=float, default=0.1)
     p.add_argument("--num_workers", type=int, default=4)
     args = p.parse_args()
 
