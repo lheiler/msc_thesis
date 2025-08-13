@@ -9,6 +9,7 @@ from pathlib import Path
 import importlib.util
 
 from latent_extraction.ctm_nn.nn_ctm_parameters import infer_latent_parameters
+from latent_extraction.hopf import fit_hopf_from_raw
 
 import mne
 import numpy as np
@@ -134,6 +135,8 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
             avg_psd = psds.mean(axis=0).astype(np.float32)
             if psd_log: avg_psd = np.log10(np.maximum(avg_psd, 1e-12))
             latent_feature = model.transform_vec(avg_psd)  # type: ignore
+        elif method in {"hopf"}:
+            latent_feature = fit_hopf_from_raw(x)
         else:
             raise ValueError(f"Unknown method: {method}")
         

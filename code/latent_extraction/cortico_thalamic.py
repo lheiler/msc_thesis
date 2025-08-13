@@ -174,6 +174,9 @@ def _loss_function(
     theta: np.ndarray,
     freqs: np.ndarray,
     real_psd: np.ndarray,
+    *,
+    normalize: bool = True,
+    normalization: str = 'mean',
 ) -> float:
     """Weighted MSE in log-space between model and empirical PSD."""
     p_full = dict(zip(_PARAM_KEYS, theta))
@@ -185,6 +188,21 @@ def _loss_function(
                            fill_value='extrapolate')
     model_resampled = interp_func(freqs)
 
+    # Optional normalization to compare shapes independent of scale
+    if normalize:
+        eps = 1e-12
+        if normalization == 'mean':
+            real_psd = real_psd / (np.mean(real_psd) + eps)
+            model_resampled = model_resampled / (np.mean(model_resampled) + eps)
+        elif normalization == 'sum':
+            real_psd = real_psd / (np.sum(real_psd) + eps)
+            model_resampled = model_resampled / (np.sum(model_resampled) + eps)
+        elif normalization == 'max':
+            real_psd = real_psd / (np.max(real_psd) + eps)
+            model_resampled = model_resampled / (np.max(model_resampled) + eps)
+        else:
+            raise ValueError("normalization must be one of {'mean','sum','max'}")
+
     log_model = np.log10(model_resampled + 1e-10)
     log_real = np.log10(real_psd + 1e-10)
 
@@ -194,12 +212,17 @@ def _loss_function(
 
 
 class LossFunction:
-    def __init__(self, freqs, psd):
+    def __init__(self, freqs, psd, *, normalize: bool = True, normalization: str = 'mean'):
         self.freqs = freqs
         self.psd = psd
+        self.normalize = normalize
+        self.normalization = normalization
 
     def __call__(self, x):
-        return _loss_function(np.asarray(x), self.freqs, self.psd)
+        return _loss_function(
+            np.asarray(x), self.freqs, self.psd,
+            normalize=self.normalize, normalization=self.normalization,
+        )
 
 
 def fit_parameters(
@@ -211,6 +234,8 @@ def fit_parameters(
     bounds: np.ndarray | None = None,
     cma_opts: dict | None = None,
     return_full: bool = False,
+    normalize: bool = True,
+    normalization: str = 'mean',
 ) -> dict[str, float] | tuple[dict[str, float], np.ndarray, float]:
     """Fit CTM parameters to a power spectrum using CMA-ES.
 
@@ -265,7 +290,7 @@ def fit_parameters(
 
     es = cma.CMAEvolutionStrategy(theta0.tolist(), sigma0, opts)
     
-    es.optimize(LossFunction(freqs, psd), n_jobs=-1)
+    es.optimize(LossFunction(freqs, psd, normalize=normalize, normalization=normalization), n_jobs=-1)
     theta_best = es.result.xbest
     best_params = dict(zip(_PARAM_KEYS, theta_best))
 

@@ -5,29 +5,29 @@
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.692979 |
-| Accuracy   | 0.518116 |
+| Loss (BCE) | 0.695476 |
+| Accuracy   | 0.507246 |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |      49 | 17.8% |
-| label_1 |     227 | 82.2% |
+| label_0 |      68 | 24.6% |
+| label_1 |     208 | 75.4% |
 
 ## Task: abnormal
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.597097 |
-| Accuracy   | 0.73913  |
+| Loss (BCE) | 0.48578  |
+| Accuracy   | 0.778986 |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |     148 | 53.6% |
-| label_1 |     128 | 46.4% |
+| label_0 |     151 | 54.7% |
+| label_1 |     125 | 45.3% |
 
 ## Dataset statistics – train
 

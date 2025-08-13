@@ -1,0 +1,43 @@
+{
+    "Encoder": [
+        "T"
+    ],
+    "Input_Embedding": [
+        "C"
+    ],
+    "Norm": false,
+    "Pos_Embedding": [
+        "Sin"
+    ],
+    "Pre_Training": "In-domain",
+    "Training_mode": "Rep-Learning",
+    "batch_size": 16,
+    "console": false,
+    "data_dir": "Dataset/Crowdsource",
+    "dim_ff": 256,
+    "dropout": 0.1,
+    "emb_size": 16,
+    "epochs": 1,
+    "fif_dataset_py": "/homes/lrh24/thesis/code/utils/gen_dataset.py",
+    "fif_root": "/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean/train",
+    "fif_segment_len": 60,
+    "fif_sfreq": 128.0,
+    "gpu": 0,
+    "key_metric": "loss",
+    "layers": 4,
+    "lr": 0.001,
+    "mask_ratio": 0.5,
+    "momentum": 0.99,
+    "num_heads": 8,
+    "output_dir": "Results/Rep-Learning/Dataset/Crowdsource/2025-08-12_13-46",
+    "patch_size": 8,
+    "pre_layers": 2,
+    "pred_dir": "Results/Rep-Learning/Dataset/Crowdsource/2025-08-12_13-46/predictions",
+    "print_interval": 10,
+    "problem": "Crowdsource",
+    "save_dir": "Results/Rep-Learning/Dataset/Crowdsource/2025-08-12_13-46/checkpoints",
+    "seed": 1234,
+    "tensorboard_dir": "Results/Rep-Learning/Dataset/Crowdsource/2025-08-12_13-46/tb_summaries",
+    "val_interval": 2,
+    "val_ratio": 0.2
+}
