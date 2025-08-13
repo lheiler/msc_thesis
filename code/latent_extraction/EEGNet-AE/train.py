@@ -7,12 +7,14 @@ from typing import Tuple
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, random_split
+from scipy.signal import welch
 
 from mne.io import read_raw_brainvision
 import mne
 import numpy as np
 import importlib.util
 import sys
+import matplotlib.pyplot as plt
 
 def _load_infer_module():
     this_dir = Path(__file__).resolve().parent
@@ -94,37 +96,51 @@ class TUHFIF60sDataset(torch.utils.data.Dataset):
         return torch.from_numpy(data)
 
 
+# add this helper above mixed_recon_loss
+def welch_psd_torch(x: torch.Tensor, fs: float = 128.0, nperseg: int = 256, noverlap: int = 128, eps: float = 1e-12):
+    # x: (B, C, T) → returns F: (freqs,), Pxx: (B, C, F)
+    B, C, T = x.shape
+    x = x.reshape(B * C, T)
+    hop = nperseg - noverlap
+    window = torch.hann_window(nperseg, device=x.device, dtype=x.dtype)
+    S = torch.stft(
+        x, n_fft=nperseg, hop_length=hop, win_length=nperseg,
+        window=window, center=False, return_complex=True
+    )  # (B*C, F, frames)
+    Pxx = (S.abs() ** 2).mean(dim=-1)  # Welch average over frames
+    scale = fs * (window.pow(2).sum() + eps)  # density-like scaling
+    Pxx = Pxx / scale
+    F = torch.linspace(0, fs / 2, Pxx.shape[1], device=x.device, dtype=x.dtype)
+    return F, Pxx.view(B, C, -1)
+
+# replace your mixed_recon_loss with this
 def mixed_recon_loss(x_hat: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-    """Reconstruction loss with time-length alignment.
-
-    Aligns x_hat to x along time by padding or truncating at the end if needed
-    to avoid shape mismatch due to convolutional boundary effects.
-    """
-    # Align time dimension
-    Ty = x_hat.shape[-1]
-    Tt = x.shape[-1]
+    """Differentiable spectral loss using Welch PSD; normalized; MSE weight 0.0."""
+    # Align time
+    Ty, Tt = x_hat.shape[-1], x.shape[-1]
     if Ty < Tt:
-        pad = Tt - Ty
-        x_hat_aligned = nn.functional.pad(x_hat, (0, pad))
-        x_aligned = x
+        x_hat = nn.functional.pad(x_hat, (0, Tt - Ty))
     elif Ty > Tt:
-        x_hat_aligned = x_hat[..., :Tt]
-        x_aligned = x
-    else:
-        x_hat_aligned = x_hat
-        x_aligned = x
+        x_hat = x_hat[..., :Tt]
 
-    # Time-domain MSE
-    mse = nn.functional.mse_loss(x_hat_aligned, x_aligned)
+    # Welch PSD
+    _, Xh_psd = welch_psd_torch(x_hat, fs=128.0, nperseg=256, noverlap=128)
+    _, X_psd  = welch_psd_torch(x,     fs=128.0, nperseg=256, noverlap=128)
 
-    # Spectral term (use aligned tensors)
-    B, C, T = x_aligned.shape
-    window = torch.hann_window(256, device=x_aligned.device, dtype=x_aligned.dtype)
-    Xh = torch.stft(x_hat_aligned.reshape(B * C, T), n_fft=256, hop_length=128, window=window, return_complex=True)
-    X  = torch.stft(x_aligned.reshape(B * C, T),     n_fft=256, hop_length=128, window=window, return_complex=True)
-    spec = nn.functional.mse_loss(torch.log1p(torch.abs(Xh)), torch.log1p(torch.abs(X)))
+    # Normalize each PSD so that the sum across frequencies is 1 for each (B, C)
+    Xh_psd = Xh_psd / (Xh_psd.sum(dim=-1, keepdim=True) + 1e-8)
+    X_psd  = X_psd  / (X_psd.sum(dim=-1, keepdim=True)  + 1e-8)
+
+    # Mean normalization (subtract mean and divide by std) for each (B, C)
+    Xh_psd = (Xh_psd - Xh_psd.mean(dim=-1, keepdim=True)) / (Xh_psd.std(dim=-1, keepdim=True) + 1e-8)
+    X_psd = (X_psd - X_psd.mean(dim=-1, keepdim=True)) / (X_psd.std(dim=-1, keepdim=True) + 1e-8)
+
+    # Spectral MSE in log space
+    spec = nn.functional.mse_loss(Xh_psd, X_psd)
+
+    # Time-domain term is disabled
+    mse = nn.functional.mse_loss(x_hat, x)
     return 0.0 * mse + 1.0 * spec
-
 
 def train(
     data_root: Path,
@@ -162,6 +178,8 @@ def train(
     models_dir.mkdir(parents=True, exist_ok=True)
     best_path = models_dir / "best.pth"
 
+    patience = 0
+
     for epoch in range(1, epochs + 1):
         model.train()
         total = 0.0
@@ -191,10 +209,30 @@ def train(
             torch.save({"model_state": model.state_dict()}, best_path)
             patience = 0
         else:
-            patience += 1 if 'patience' in locals() else 1
+            patience += 1
             if patience >= 8:
                 print("Early stopping: no val improvement.")
                 break
+            
+        #every 5 epochs save a plot of the psd of the original and reconstructed data
+        if epoch % 5 == 0:
+            # Compute mean PSD across batch and channels for plotting
+            x_np = x.detach().cpu().numpy()  # (B, C, T)
+            y_np = y.detach().cpu().numpy()  # (B, C, T)
+            window_np = np.hanning(256)
+            f, psd_x = welch(x_np, fs=128, nperseg=256, noverlap=128, window=window_np, axis=-1)
+            _, psd_y = welch(y_np, fs=128, nperseg=256, noverlap=128, window=window_np, axis=-1)
+            psd_x_mean = psd_x.mean(axis=(0, 1))  # (F,)
+            psd_y_mean = psd_y.mean(axis=(0, 1))  # (F,)
+            plt.figure(figsize=(10, 5))
+            plt.plot(f, psd_x_mean)
+            plt.plot(f, psd_y_mean)
+            plt.legend(["Original", "Reconstructed"])
+            plt.xlabel("Frequency (Hz)")
+            plt.ylabel("PSD")
+            plt.title(f"PSD of Original and Reconstructed Data at Epoch {epoch}")
+            plt.savefig(f"plots/psd_plot_{epoch}.png")
+            plt.close()
 
     print(f"Saved best model to {best_path}")
     return best_path
@@ -226,5 +264,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

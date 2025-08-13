@@ -8,13 +8,29 @@ from pathlib import Path
 from typing import Optional
 from torch.utils.data import DataLoader
 import sys
-from pathlib import Path
+import random
 
 # Add the utils directory to the Python path
 utils_path = Path(__file__).resolve().parent.parent.parent / "utils"
 sys.path.insert(0, str(utils_path))
 
 from gen_dataset import TUHFIF60sDataset
+
+SEED = 42
+
+def set_seed(seed: int = SEED) -> None:
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def get_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 def _compute_welch_psd(x: torch.Tensor, sfreq: float, *, n_fft: int = 256,
@@ -56,6 +72,10 @@ class PSDAE(nn.Module):
     def __init__(self, input_dim: int, latent_dim: int = 64):
         super().__init__()
         
+        assert input_dim // 4 >= latent_dim, (
+            f"latent_dim={latent_dim} must be <= input_dim//4={input_dim // 4} for the current architecture"
+        )
+        
         # Encoder: PSD -> latent
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, input_dim // 2),
@@ -89,8 +109,9 @@ class PSDAE(nn.Module):
 
 
 def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 100):
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
     criterion = nn.MSELoss()
+    model.to(device)
     model.train()
     for epoch in range(epochs):
         total_loss = 0.0
@@ -101,6 +122,10 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
             # treat each channel PSD as a separate input vector
             B, C, F = psd.shape
             inputs = psd.reshape(B * C, F).to(device)
+            # Per-vector normalization: zero mean, unit std
+            mu = inputs.mean(dim=1, keepdim=True)
+            std = inputs.std(dim=1, keepdim=True).clamp_min(1e-8)
+            inputs = (inputs - mu) / std
 
             optimizer.zero_grad()
             recon = model(inputs)
@@ -121,6 +146,9 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
                 psd, _ = _compute_welch_psd(batch, sfreq)
                 B, C, F = psd.shape
                 inputs = psd.reshape(B * C, F).to(device)
+                mu = inputs.mean(dim=1, keepdim=True)
+                std = inputs.std(dim=1, keepdim=True).clamp_min(1e-8)
+                inputs = (inputs - mu) / std
                 recon = model(inputs)
                 val_total += float(criterion(recon, inputs).item())
                 val_steps += 1
@@ -129,6 +157,8 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
         
 
 if __name__ == "__main__":
+    set_seed()
+    device = get_device()
     # Load dataset (time-domain segments)
     latent_dim = 8
     
@@ -142,15 +172,24 @@ if __name__ == "__main__":
         input_dim = int(psd_sample.shape[-1])
 
     # Create model for per-channel PSD vectors
-    model = PSDAE(input_dim=input_dim, latent_dim=latent_dim).to("cuda" if torch.cuda.is_available() else "cpu")
+    model = PSDAE(input_dim=input_dim, latent_dim=latent_dim).to(device)
 
-    # Train model: each batch is converted to per-channel PSD inputs inside train()
-    train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
-    val_loader = DataLoader(dataset, batch_size=16, shuffle=False)
+    from torch.utils.data import random_split
+    n = len(dataset)
+    n_val = max(1, int(0.1 * n))
+    train_ds, val_ds = random_split(
+        dataset, [n - n_val, n_val], generator=torch.Generator().manual_seed(SEED)
+    )
+    train_loader = DataLoader(train_ds, batch_size=16, shuffle=True, num_workers=4, pin_memory=(device == "cuda"))
+    val_loader   = DataLoader(val_ds,   batch_size=16, shuffle=False, num_workers=4, pin_memory=(device == "cuda"))
 
-    device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     train(model, train_loader, val_loader, device=device, sfreq=dataset.sfreq)
 
     # Save model
-    torch.save(model.state_dict(), f"models/psd_ae_{latent_dim}.pth")
-    
+    Path("models").mkdir(parents=True, exist_ok=True)
+    torch.save({
+        "state_dict": model.state_dict(),
+        "freqs": freqs.numpy(),
+        "latent_dim": latent_dim,
+        "input_dim": input_dim,
+    }, f"models/psd_ae_{latent_dim}.pth")
