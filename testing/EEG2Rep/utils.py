@@ -81,12 +81,14 @@ def Data_Loader(config):
 
 class dataset_class(Dataset):
 
-    def __init__(self, data, label, patch_size):
+    def __init__(self, data, label, patch_size, segment_len: int = 0, split: str = "train"):
         super(dataset_class, self).__init__()
 
         self.feature = data
         self.labels = label.astype(np.int32)
         self.patch_size = patch_size
+        self.segment_len = int(segment_len) if segment_len is not None else 0
+        self.split = split
         # self.__padding__()
 
     def __padding__(self):
@@ -98,6 +100,15 @@ class dataset_class(Dataset):
 
     def __getitem__(self, ind):
         x = self.feature[ind]
+        # Optional temporal cropping to segment_len
+        if self.segment_len and x.shape[-1] > self.segment_len:
+            total_len = x.shape[-1]
+            if self.split == 'train':
+                start = np.random.randint(0, total_len - self.segment_len + 1)
+            else:
+                start = (total_len - self.segment_len) // 2
+            end = start + self.segment_len
+            x = x[:, start:end]
         x = x.astype(np.float32)
         y = self.labels[ind]  # (num_labels,) array
 

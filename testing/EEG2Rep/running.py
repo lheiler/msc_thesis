@@ -83,14 +83,14 @@ def Rep_Learning(config, Data):
         pre_train_loader = train_loader
     else:
         if config['Pre_Training'] =='Cross-domain':
-            pre_train_dataset = dataset_class(Data['pre_train_data'], Data['pre_train_label'], config['patch_size'])
+            pre_train_dataset = dataset_class(Data['pre_train_data'], Data['pre_train_label'], config['patch_size'], segment_len=config.get('segment_len', 0), split='train')
         else:
-            pre_train_dataset = dataset_class(Data['All_train_data'], Data['All_train_label'], config['patch_size'])
+            pre_train_dataset = dataset_class(Data['All_train_data'], Data['All_train_label'], config['patch_size'], segment_len=config.get('segment_len', 0), split='train')
         pre_train_loader = DataLoader(dataset=pre_train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True, num_workers=config.get('num_workers', 0))
-        train_dataset = dataset_class(Data['All_train_data'], Data['All_train_label'], config['patch_size'])
+        train_dataset = dataset_class(Data['All_train_data'], Data['All_train_label'], config['patch_size'], segment_len=config.get('segment_len', 0), split='train')
         train_loader = DataLoader(dataset=train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True, num_workers=config.get('num_workers', 0))
         # For Linear Probing During the Pre-Training
-        test_dataset = dataset_class(Data['test_data'], Data['test_label'], config['patch_size'])
+        test_dataset = dataset_class(Data['test_data'], Data['test_label'], config['patch_size'], segment_len=config.get('segment_len', 0), split='test')
         test_loader = DataLoader(dataset=test_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True, num_workers=config.get('num_workers', 0))
     # --------------------------------------------------------------------------------------------------------------
     # -------------------------------------------- Build Model -----------------------------------------------------
@@ -132,9 +132,9 @@ def Rep_Learning(config, Data):
 
     # --------------------------------- Load Data -------------------------------------------------------------
     if not config.get('fif_root'):
-        train_dataset = dataset_class(Data['train_data'], Data['train_label'], config['patch_size'])
-        val_dataset = dataset_class(Data['val_data'], Data['val_label'], config['patch_size'])
-        test_dataset = dataset_class(Data['test_data'], Data['test_label'], config['patch_size'])
+        train_dataset = dataset_class(Data['train_data'], Data['train_label'], config['patch_size'], segment_len=config.get('segment_len', 0), split='train')
+        val_dataset = dataset_class(Data['val_data'], Data['val_label'], config['patch_size'], segment_len=config.get('segment_len', 0), split='val')
+        test_dataset = dataset_class(Data['test_data'], Data['test_label'], config['patch_size'], segment_len=config.get('segment_len', 0), split='test')
         train_loader = DataLoader(dataset=train_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True, num_workers=config.get('num_workers', 0))
         val_loader = DataLoader(dataset=val_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True, num_workers=config.get('num_workers', 0))
         test_loader = DataLoader(dataset=test_dataset, batch_size=config['batch_size'], shuffle=True, pin_memory=True, num_workers=config.get('num_workers', 0))

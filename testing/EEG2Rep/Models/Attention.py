@@ -272,7 +272,7 @@ class SublayerConnection(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.enable = enable_res_parameter
         if enable_res_parameter:
-            self.a = nn.Parameter(torch.tensor(1e-8))
+            self.a = nn.Parameter(torch.tensor(1.0))
 
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size."

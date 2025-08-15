@@ -19,7 +19,7 @@ parser.add_argument('--seed', default=1234, type=int, help='Seed used for splitt
 parser.add_argument('--data_dir', default='Dataset/Crowdsource', choices={'Dataset/Crowdsource', 'Dataset/DREAMER',
                                                                           'Dataset/STEW'}, help='Data directory')
 parser.add_argument('--fif_root', type=str, default=None, help='Root directory containing .fif files (enables FIF mode)')
-parser.add_argument('--fif_dataset_py', type=str, default='/homes/lrh24/thesis/code/utils/gen_dataset.py',
+parser.add_argument('--fif_dataset_py', type=str, default='/rds/general/user/lrh24/home/thesis/code/utils/gen_dataset.py',
                     help='Path to gen_dataset.py that defines TUHFIF60sDataset')
 parser.add_argument('--fif_segment_len', type=int, default=60, help='Segment length in seconds for FIF dataset')
 parser.add_argument('--fif_sfreq', type=float, default=128.0, help='Target sampling frequency for FIF dataset')
@@ -40,6 +40,7 @@ parser.add_argument('--early_stop_patience', type=int, default=0, help='Patience
 parser.add_argument('--early_stop_min_delta', type=float, default=0.0, help='Minimum improvement to reset patience')
 parser.add_argument('--grad_accum_steps', type=int, default=1, help='Accumulate gradients over N steps to emulate larger batch size')
 parser.add_argument('--num_workers', type=int, default=4, help='DataLoader workers for faster IO')
+parser.add_argument('--segment_len', type=int, default=1280, help='Crop EEG sequences to this many time steps (0 disables)')
 # -------------------------------------------------- EEG-JEPA ----------------------------------------------------------
 parser.add_argument('--Training_mode', default='Rep-Learning', choices={'Rep-Learning', 'Initialization', 'Supervised'})
 parser.add_argument('--Pre_Training', default='In-domain', choices={'In-domain', 'Cross-domain'})
