@@ -1,19 +1,33 @@
 # Model Evaluation Report
 
 
-## Task: abnormal
+## Task: gender
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.523586 |
-| Accuracy   | 0.742754 |
+| Loss (BCE) | 0.681814 |
+| Accuracy   | 0.557971 |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |     173 | 62.7% |
-| label_1 |     103 | 37.3% |
+| label_0 |     114 | 41.3% |
+| label_1 |     162 | 58.7% |
+
+## Task: abnormal
+
+| Metric     |    Value |
+|------------|----------|
+| Loss (BCE) | 0.575168 |
+| Accuracy   | 0.735507 |
+
+Model prediction distribution
+
+| Label   |   Count | %     |
+|---------|---------|-------|
+| label_0 |     179 | 64.9% |
+| label_1 |      97 | 35.1% |
 
 ## Dataset statistics – train
 
@@ -85,6 +99,6 @@ Age distribution
 
 ## Latent-feature independence
 
-Global HSIC score: **0.010896979831159115**
+Global HSIC score: **n/a**
 
 (See `hsic_matrix.png` for full matrix.)
