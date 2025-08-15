@@ -4,7 +4,7 @@ data_corp: tuh
 
 paths:
   # Path to TUH EEG training data (ignored for Harvard)
-  data_tuh: "/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean"
+  data_tuh: "~/thesis/Datasets/tuh-eeg-ab-clean"
   # Path to cleaned Harvard EEG BIDS root directory (ignored for TUH)
   data_harvard: "/rds/general/user/lrh24/ephemeral/harvard-eeg/EEG/bids_500_normal_abnormal_clean"
   # Directory where all results will be written

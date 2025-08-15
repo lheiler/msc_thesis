@@ -42,7 +42,8 @@ class TUHFIF60sDataset(torch.utils.data.Dataset):
         # Pick intersection with 19-channel set
         picks_19 = [ch for ch in self.EEG_CHANNELS_19 if ch in raw.ch_names]
         if picks_19:
-            raw.pick_channels(picks_19)
+            # mne.deprecates pick_channels; use Raw.pick
+            raw.pick(picks_19)
 
         # Crop first (works without preload) so we only load 60s
         sf = raw.info["sfreq"]
