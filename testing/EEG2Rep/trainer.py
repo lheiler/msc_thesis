@@ -79,6 +79,9 @@ class Self_Supervised_Trainer(BaseTrainer):
         self.model = self.model.train()
         epoch_loss = 0  # total loss of epoch
         total_samples = 0  # total samples in epoch
+        running_align_loss = 0.0
+        running_std_loss = 0.0
+        running_cov_loss = 0.0
         epoch_entropy_c = 0
         epoch_entropy_t = 0
         # read accumulation steps from config each epoch (so CLI flag is honored)
@@ -151,6 +154,10 @@ class Self_Supervised_Trainer(BaseTrainer):
 
             total_samples += 1
             epoch_loss += total_loss.item()
+            # accumulate per-batch components for epoch-level reporting
+            running_align_loss += float(align_loss.detach().cpu().item())
+            running_std_loss += float(std_loss.detach().cpu().item())
+            running_cov_loss += float(cov_loss.detach().cpu().item())
             # epoch_entropy_c += entropy_values_contex.item()
             # epoch_entropy_t += entropy_values_target.item()
         epoch_loss = epoch_loss / total_samples  # average loss per sample for whole epoch
@@ -158,9 +165,10 @@ class Self_Supervised_Trainer(BaseTrainer):
         # epoch_entropy_t = epoch_entropy_t / total_samples
         self.epoch_metrics['epoch'] = epoch_num
         self.epoch_metrics['loss'] = epoch_loss
-        self.epoch_metrics['align'] = align_loss
-        self.epoch_metrics['std'] = std_loss
-        self.epoch_metrics['cov'] = cov_loss
+        # report epoch means of individual components as floats
+        self.epoch_metrics['align'] = running_align_loss / total_samples
+        self.epoch_metrics['std'] = running_std_loss / total_samples
+        self.epoch_metrics['cov'] = running_cov_loss / total_samples
         # Linear probing removed for pure self-supervised training
 
         return self.epoch_metrics, self.model

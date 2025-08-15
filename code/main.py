@@ -151,7 +151,8 @@ def main():
     # -------------------------------
     # 4. Evaluate latent features
     # -------------------------------
-    latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
+    print("Evaluating latent features …")
+    #latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
     
 
     # ------------------------    # 2. Train **independent** models per task  ------------------------

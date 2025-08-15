@@ -1,4 +1,4 @@
-method: eegnet
+method: c22
 # Dataset corpus to use: 'tuh' or 'harvard'
 data_corp: tuh
 
@@ -10,25 +10,10 @@ paths:
   # Directory where all results will be written
   results_root: "Results"
 
-# -------------------------------------------------------------------
-# Model settings (MLP head only)
-# -------------------------------------------------------------------
-model:
-  batch_size: 16
-  # Hidden layer sizes for the task-specific MLP classifier (only used when
-  # Optuna is *disabled*). Provide a single int or a list – they will be used
-  # in order as [in → h1 → h2 → … → last].
-  hidden_dims: [64]
-
-  # Dropout probability applied after each hidden layer.
-  dropout: 0.1
-
-  # Number of training epochs per task (ignored during Optuna search).
-  num_epochs: 30
-
+# ----------------------------------------------------------------------------
 # Hyper-parameter optimisation via Optuna (overrides manual settings)
 optuna:
-  n_trials: 2    # Number of optimisation trials per task
+  n_trials: 10    # Number of optimisation trials per task
   val_split: 0.2   # Fraction of training data reserved for validation
   patience: 7    # Early-stopping patience within each trial
 

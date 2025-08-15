@@ -103,6 +103,68 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         psd_n_fft = 512
         psd_log = True
         psd_resample = None
+    elif method in {"psd_ae", "psd_ae_avg", "psd_ae_channel", "psd_ae_ch"}:
+        # Load PSD-AE model and extraction helpers
+        from latent_extraction.psd_ae.psd_ae import (
+            get_psd_ae_model,
+            extract_psd_ae_avg as _extract_psd_ae_avg,
+            extract_psd_ae_channel as _extract_psd_ae_channel,
+        )  # type: ignore
+        model = get_psd_ae_model(device=device)
+    elif method in {"gc_vase", "gcvase", "gc-vase"}:
+        # Lazy import GC-VASE infer helpers
+        this_dir = Path(__file__).resolve().parent
+        infer_path = this_dir / "gc_vase" / "infer.py"
+        spec = importlib.util.spec_from_file_location("gc_vase_infer", str(infer_path))
+        assert spec and spec.loader, f"Could not load spec for {infer_path}"
+        gcv_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gcv_mod)
+        # Build/load model once
+        in_channels = 19  # we pick EEG channels earlier via clean_x
+        # Resolve model checkpoint strictly: pick newest gcvase_*.pt; no fallbacks
+        base_dir = this_dir / "gc_vase" / "GC-VASE"
+        gcv_model_path = None
+        candidates = sorted(base_dir.glob("gcvase_*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if candidates:
+            gcv_model_path = str(candidates[0])
+        if gcv_model_path is None:
+            raise RuntimeError(
+                f"No GC-VASE checkpoint found in {base_dir}. Place a file named gcvase_*.pt with encoded hyperparameters."
+            )
+        # Parse hyperparameters from filename (required)
+        import re
+        fname = os.path.basename(gcv_model_path)
+        m = re.search(r"_c(\d+)_d(\d+)_L(\d+)_k(\d+)_", fname)
+        if not m:
+            raise RuntimeError(
+                "GC-VASE checkpoint filename must include _c{channels}_d{latent}_L{layers}_k{kernel}_ pattern"
+            )
+        gcv_channels = int(m.group(1))
+        gcv_latent_dim = int(m.group(2))
+        gcv_num_layers = int(m.group(3))
+        gcv_kernel_size = int(m.group(4))
+        model = gcv_mod.get_gc_vase_model(
+            in_channels=in_channels,
+            device=device,
+            model_path=gcv_model_path,
+            channels=gcv_channels,
+            latent_dim=gcv_latent_dim,
+            num_layers=gcv_num_layers,
+            kernel_size=gcv_kernel_size,
+        )
+        extract_gc_vase = gcv_mod.extract_gc_vase  # type: ignore
+        # Load dataset stats strictly from generic_data.pt next to the model; no fallbacks
+        model_dir = Path(gcv_model_path).parent
+        data_stats_path = model_dir / "generic_data.pt"
+        if not data_stats_path.exists():
+            raise RuntimeError(f"Dataset stats not found: {data_stats_path}")
+        _ds = torch.load(str(data_stats_path), map_location="cpu")
+        if not (isinstance(_ds, dict) and "data_mean" in _ds and "data_std" in _ds):
+            raise RuntimeError(f"Invalid dataset stats file: {data_stats_path}")
+        dm = _ds["data_mean"]
+        ds = _ds["data_std"]
+        gcv_data_mean = float(dm.detach().cpu().item() if hasattr(dm, "detach") else dm)
+        gcv_data_std = float(ds.detach().cpu().item() if hasattr(ds, "detach") else ds)
     else:
         model = None
 
@@ -129,7 +191,7 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
             latent_feature = extract_eegnet_ae(x, device=device, model=model)  # type: ignore
         elif method in {"conv_ae", "convae", "ConvAE", "convAE"}:
             latent_feature = extract_conv_ae(x, device=device, model=model)  # type: ignore
-        elif method in {"pca", "pca_psd", "pca_avg_psd"}:
+        elif method in {"pca"}:
             psd = x.compute_psd(method="welch",fmin=psd_fmin,fmax=psd_fmax,n_per_seg=psd_n_per_seg, n_fft=psd_n_fft, verbose="ERROR")
             psds, freqs = psd.get_data(return_freqs=True)
             avg_psd = psds.mean(axis=0).astype(np.float32)
@@ -137,6 +199,22 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
             latent_feature = model.transform_vec(avg_psd)  # type: ignore
         elif method in {"hopf"}:
             latent_feature = fit_hopf_from_raw(x)
+        elif method in {"psd_ae", "psd_ae_avg"}:
+            latent_feature = _extract_psd_ae_avg(x, device=device, model=model)
+        elif method in {"psd_ae_channel", "psd_ae_ch"}:
+            latent_feature = _extract_psd_ae_channel(x, device=device, model=model)
+        elif method in {"gc_vase", "gcvase", "gc-vase"}:
+            # GC-VASE subject-level vector: single 2s middle window (64-D latent)
+            latent_feature = extract_gc_vase(
+                x,
+                device=device,
+                model=model,
+                pooling="median",
+                return_dim="latent",
+                single_window="middle",
+                data_mean=gcv_data_mean,
+                data_std=gcv_data_std,
+            )  # type: ignore
         else:
             raise ValueError(f"Unknown method: {method}")
         
