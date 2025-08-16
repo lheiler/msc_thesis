@@ -1,35 +1,17 @@
 
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 import json
-from pathlib import Path
-from typing import Callable, Optional, Union, List, Iterable
+from typing import Optional, Union, List, Iterable
 
-import joblib
 import numpy as np
 import mne
 from sklearn.decomposition import PCA
-from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 import torch
+from utils.util import clean_raw_eeg
 
 
-# -----------------------------
 # Shared helpers / cleaning
-# -----------------------------
-EEG_19 = ['Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4',
-          'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6',
-          'Cz', 'Pz', 'Fz']
-
-def clean_x(raw: mne.io.BaseRaw) -> mne.io.BaseRaw:
-    """Drop A1/A2 if present, then pick the standard 19 EEG channels."""
-    if 'A1' in raw.ch_names:
-        raw.drop_channels(['A1'])
-    if 'A2' in raw.ch_names:
-        raw.drop_channels(['A2'])
-    raw.pick_channels(EEG_19)
-    return raw
 
 def iter_fif_files(root: Path) -> Iterable[Path]:
     """Yield all .fif files recursively under root."""

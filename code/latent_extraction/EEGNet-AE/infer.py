@@ -8,6 +8,7 @@ import mne
 import numpy as np
 import torch
 from torch import nn, Tensor
+from utils.util import preprocess_time_domain_input
 import os
 import torch.nn.functional as F
 
@@ -194,39 +195,8 @@ _EEG_CHANNELS_19 = [
 
 
 def _preprocess_raw(raw: mne.io.BaseRaw, *, target_sfreq: float = 128.0, segment_len_sec: int = 60) -> np.ndarray:
-    """Preprocess an MNE Raw to a normalised (C, T) np.ndarray suitable for the AE.
-
-    Steps: drop A1/A2 if present, pick the 19 standard EEG channels, bandpass 3–45 Hz,
-    resample to 128 Hz, crop/pad to 60 s, and z‑score across the entire segment.
-    """
-    x = raw.copy()
-    for ch in ("A1", "A2"):
-        if ch in x.ch_names:
-            x.drop_channels([ch])
-    # Only pick channels that actually exist
-    picks = [ch for ch in _EEG_CHANNELS_19 if ch in x.ch_names]
-    x.pick_channels(picks)
-    x.filter(3.0, 45.0, fir_design="firwin", verbose=False)
-    if abs(x.info["sfreq"] - target_sfreq) > 1e-3:
-        x.resample(target_sfreq, npad="auto")
-
-    sfreq = x.info["sfreq"]
-    tmax = min(segment_len_sec, x.times[-1])
-    x.crop(tmin=0.0, tmax=tmax - 1.0 / sfreq)
-    data = x.get_data().astype(np.float32)  # (C, T)
-
-    target_len = int(segment_len_sec * target_sfreq)
-    if data.shape[1] < target_len:
-        pad = target_len - data.shape[1]
-        data = np.pad(data, ((0, 0), (0, pad)), mode="constant")
-    elif data.shape[1] > target_len:
-        data = data[:, :target_len]
-
-    # Global z‑score
-    mean = float(data.mean())
-    std = float(data.std()) + 1e-8
-    data = (data - mean) / std
-    return data
+    """Preprocess Raw to (C, T) without redundant channel cleaning (handled in extractor)."""
+    return preprocess_time_domain_input(raw, target_sfreq=target_sfreq, segment_len_sec=segment_len_sec)
 
 
 def _this_dir() -> Path:

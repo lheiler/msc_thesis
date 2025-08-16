@@ -1,0 +1,39 @@
+metrics_per_task.abnormal.loss: 0.6555007324702498
+metrics_per_task.abnormal.accuracy: 0.6340579710144928
+metrics_per_task.abnormal.pred_counts.label_0: 155
+metrics_per_task.abnormal.pred_counts.label_1: 121
+hyperparams_per_task.abnormal.input_dim: 9
+hyperparams_per_task.abnormal.output_type: classification
+hyperparams_per_task.abnormal.hidden_dims: [192, 96]
+hyperparams_per_task.abnormal.dropout: 0.027334843109881712
+train_dataset_stats.n_samples: 2717    # Number of training samples
+train_dataset_stats.gender_counts.female(2): 1447
+train_dataset_stats.gender_counts.male(1): 1270
+train_dataset_stats.gender_counts.unknown(0): 0
+train_dataset_stats.abnormal_counts.abnormal(1): 1346
+train_dataset_stats.abnormal_counts.normal(0): 1371
+train_dataset_stats.age_bin_counts.0–10: 2717
+train_dataset_stats.age_bin_counts.10–20: 0
+train_dataset_stats.age_bin_counts.20–30: 0
+train_dataset_stats.age_bin_counts.30–40: 0
+train_dataset_stats.age_bin_counts.40–50: 0
+train_dataset_stats.age_bin_counts.50–60: 0
+train_dataset_stats.age_bin_counts.60–70: 0
+train_dataset_stats.age_bin_counts.70–80: 0
+train_dataset_stats.age_bin_counts.80–120: 0
+eval_dataset_stats.n_samples: 276    # Number of evaluation samples
+eval_dataset_stats.gender_counts.female(2): 148
+eval_dataset_stats.gender_counts.male(1): 128
+eval_dataset_stats.gender_counts.unknown(0): 0
+eval_dataset_stats.abnormal_counts.abnormal(1): 126
+eval_dataset_stats.abnormal_counts.normal(0): 150
+eval_dataset_stats.age_bin_counts.0–10: 276
+eval_dataset_stats.age_bin_counts.10–20: 0
+eval_dataset_stats.age_bin_counts.20–30: 0
+eval_dataset_stats.age_bin_counts.30–40: 0
+eval_dataset_stats.age_bin_counts.40–50: 0
+eval_dataset_stats.age_bin_counts.50–60: 0
+eval_dataset_stats.age_bin_counts.60–70: 0
+eval_dataset_stats.age_bin_counts.70–80: 0
+eval_dataset_stats.age_bin_counts.80–120: 0
+global_independence_score: 0.005894069094210863    # Mean off-diag HSIC of latent features (lower = more independent)

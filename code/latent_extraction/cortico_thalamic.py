@@ -29,6 +29,7 @@ import mne
 import matplotlib.pyplot as plt
 import os
 import re
+from utils.util import compute_psd_from_raw, normalize_psd
 mne.set_log_level('WARNING')  # Suppress MNE warnings
 
 # ---------------------------------------------------------------------
@@ -93,46 +94,6 @@ def _P_omega(p: dict[str, float]) -> np.ndarray:
     return P * _Δk
 
 
-# ---------------------------------------------------------------------
-# Public helper: compute PSD from an MNE Raw instance
-# ---------------------------------------------------------------------
-
-def compute_psd(
-    raw: mne.io.BaseRaw,
-    *,
-    channel: str | list[str] = 'O1..',
-    l_freq: float = 1.0,
-    h_freq: float = 40.0,
-    fmin: float = 1.0,
-    fmax: float = 40.0,
-    n_fft: int = 128,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return (freqs, mean_psd) for *raw*.
-
-    Parameters
-    ----------
-    raw
-        MNE Raw object with EEG data.
-    channel
-        Channel name(s) to select.  Accepts wildcards (see MNE).
-    l_freq, h_freq
-        Band-pass filter edges (Hz).
-    fmin, fmax
-        PSD frequency limits (Hz).
-    n_fft
-        FFT length for Welch estimation.
-
-    Notes
-    -----
-    A *copy* of the data is created internally; the original ``raw`` is
-    left untouched.
-    """
-    raw_copy = raw.copy().pick_channels([channel] if isinstance(channel, str) else channel)
-    spectrum = raw_copy.compute_psd(method='welch', fmin=fmin, fmax=fmax, n_fft=n_fft)
-    psds = spectrum.get_data()           # shape (n_sensors, n_freqs)
-    freqs = spectrum.freqs
-    mean_psd = psds.mean(axis=0)
-    return freqs, mean_psd
 
 
 # ---------------------------------------------------------------------
@@ -179,36 +140,11 @@ def _loss_function(
     normalization: str = 'mean',
 ) -> float:
     """Weighted MSE in log-space between model and empirical PSD."""
-    p_full = dict(zip(_PARAM_KEYS, theta))
-    gain = p_full.pop('gain')
-    model_psd = gain * _P_omega(p_full)
 
-    # Interpolate model to match empirical frequency grid
-    interp_func = interp1d(_f, model_psd, kind='linear', bounds_error=False,
-                           fill_value='extrapolate')
-    model_resampled = interp_func(freqs)
+    log_model = normalize_psd(model_psd)
+    log_real = normalize_psd(real_psd)
 
-    # Optional normalization to compare shapes independent of scale
-    if normalize:
-        eps = 1e-12
-        if normalization == 'mean':
-            real_psd = real_psd / (np.mean(real_psd) + eps)
-            model_resampled = model_resampled / (np.mean(model_resampled) + eps)
-        elif normalization == 'sum':
-            real_psd = real_psd / (np.sum(real_psd) + eps)
-            model_resampled = model_resampled / (np.sum(model_resampled) + eps)
-        elif normalization == 'max':
-            real_psd = real_psd / (np.max(real_psd) + eps)
-            model_resampled = model_resampled / (np.max(model_resampled) + eps)
-        else:
-            raise ValueError("normalization must be one of {'mean','sum','max'}")
-
-    log_model = np.log10(model_resampled + 1e-10)
-    log_real = np.log10(real_psd + 1e-10)
-
-    weights = 1.0 / (real_psd + 1e-10)  # data‑driven weighting
-
-    return np.mean(weights * (log_model - log_real) ** 2)
+    return np.mean((log_model - log_real) ** 2)
 
 
 class LossFunction:
@@ -323,12 +259,7 @@ def fit_parameters(
 # Convenience wrapper
 # ---------------------------------------------------------------------
 
-def fit_ctm_from_raw(
-    raw: mne.io.BaseRaw,
-    *,
-    channel: str | list[str] = 'O1..',
-    n_fft: int = 128,
-    as_vector: bool = False,
+def fit_ctm_average_from_raw(raw: mne.io.BaseRaw,
     **fit_kwargs,
 ) -> 'np.ndarray | dict[str, float]':
     """High-level helper: estimate PSD and fit CTM in one call.
@@ -336,62 +267,22 @@ def fit_ctm_from_raw(
     All keyword arguments not recognised by this function are forwarded
     to :func:`fit_parameters`.
     """
+    psd = compute_psd_from_raw(raw, calculate_average=True)
+    total_params = []
+    total_params.append(_dict_to_vector(fit_parameters(psd, **fit_kwargs)))
     
-    #for each channel, compute the PSD take average and then fit the parameters
-    psds = []
-    freqss = []
-    
-    zips = zip(raw.ch_names, raw.get_channel_types())
-    eeg_chs = [name for name, type_ in zips if type_ == 'eeg']
-    
-    for channel in eeg_chs:
-        try:
-            freqs, psd = compute_psd(
-                raw,
-                channel=channel,
-                n_fft=n_fft,
-            )
-        except Exception as e:
-            print(f"Error computing PSD for channel {channel}: {e}")
-            return None
-            continue
-        psds.append(psd)
-        freqss.append(freqs)
-    
-    # Average the PSDs across channels
-    psd = np.mean(psds, axis=0)
-    freqs = freqss[0]  # Assuming all channels have the same frequency grid
-        
-    params = fit_parameters(freqs, psd, **fit_kwargs)
-    # print first 5 decimals of each parameter but all in one line
-    print(" ".join([f"{key}: {value:.5f}" for key, value in params.items()]))
-    
-    # ---- Save PSD comparison plot (name includes EEG task) ----
-    # Attempt to infer the BIDS task from the raw file name
-    task = "unknown"
-    if hasattr(raw, "filenames") and raw.filenames:
-        fname = os.path.basename(raw.filenames[0])
-        match = re.search(r"task-([^_]+)", fname)
-        if match:
-            task = match.group(1)
+    return np.array(total_params).flatten()
 
-    model_psd = _P_omega(params)
-    interp_func = interp1d(_f, model_psd, kind='linear', bounds_error=False,
-                           fill_value='extrapolate')
-    model_resampled = interp_func(freqs)
+def fit_ctm_per_channel_from_raw(raw: mne.io.BaseRaw,
+    **fit_kwargs,
+) -> 'np.ndarray | dict[str, float]':
+    """High-level helper: estimate PSD and fit CTM in one call.
 
-    # plt.figure(figsize=(10, 6))
-    # plt.plot(freqs, psd, label='Empirical PSD', color='blue')
-    # plt.plot(freqs, model_resampled, label='Fitted CTM PSD', color='red', linestyle='--')
-    # plt.xscale('log')
-    # plt.yscale('log')
-    # plt.xlabel('Frequency (Hz)')
-    # plt.ylabel('Power Spectral Density')
-    # plt.title(f'CTM Fitting ({task}): Empirical vs Fitted PSD')
-    # plt.legend()
-    # plt.grid(True)
-    # plt.savefig(f'fitted_psd_{task}.png')
-    
-    if as_vector:
-        return _dict_to_vector(params)
-    return params
+    All keyword arguments not recognised by this function are forwarded
+    to :func:`fit_parameters`.
+    """
+    psd = compute_psd_from_raw(raw, calculate_average=False)
+    total_params = []
+    for psd in psd:
+        total_params.append(_dict_to_vector(fit_parameters(psd, **fit_kwargs)))
+    return np.array(total_params).flatten()

@@ -5,28 +5,30 @@ import latent_extraction.extractor as extractor
 import numpy as np
 import os
 import ast
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, Subset
 import re
 import json
 import torch
 import argparse
 import yaml
-from utils.latent_loading import (
-    load_latent_parameters_array,
-    load_latent_c22_parameters_array,
-    load_latent_ae_parameters_array,)
+from utils.latent_loading import load_latent_parameters_array
 from utils.data_metrics import compute_dataset_stats
 from sklearn.model_selection import train_test_split
-from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
-import glob
 import evaluation.metrix as metrics
 from pathlib import Path
+
+
+
+
 def main():
     """
     Main function to run the entire pipeline.
     """
-    # 0️⃣ Load configuration from YAML / CLI -------------------------------
+
+    # ------------------------------------------------------------------
+    # 1) Parse CLI arguments and load configuration
+    # ------------------------------------------------------------------
     parser = argparse.ArgumentParser(description="EEG classification pipeline")
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to YAML configuration file")
     parser.add_argument("--reset", action="store_true", help="Reset the pipeline")
@@ -36,141 +38,98 @@ def main():
     with open(args.config, "r") as f:
         cfg = yaml.safe_load(f)
 
-    # ------------------------  Parameters from config  ------------------------
-    method    = cfg.get("method", "ctm")
-    data_corp = cfg.get("data_corp", "harvard")
+    # ------------------------------------------------------------------
+    # 2) Core config and paths
+    # ------------------------------------------------------------------
+    method    = cfg.get("method")
+    data_corp = cfg.get("data_corp")
 
     paths_cfg = cfg.get("paths", {})
-    data_path_tuh   = paths_cfg.get("data_tuh", "")
-    data_path_train = os.path.join(data_path_tuh, "train")
-    data_path_eval = os.path.join(data_path_tuh, "eval")
-    data_path_harvard = paths_cfg.get("data_harvard", "")
-
+    data_path   = os.path.expanduser(paths_cfg.get("data_path", ""))
+    data_path_train = os.path.join(data_path, "train")
+    data_path_eval = os.path.join(data_path, "eval")
     results_root = paths_cfg.get("results_root", "Results")
-    # Derive an experiment‐specific identifier from the *actual* BIDS root that is being used. This
-    # avoids different source folders writing into the same results directory 
-    if data_corp == "harvard":
-        dataset_root = data_path_harvard
-    else:
-        # TUH or any other corpus: fall back to the training directory path (eval may be empty)
-        dataset_root = data_path_train or data_path_eval
-
-    dataset_id = os.path.basename(os.path.normpath(dataset_root)) or data_corp
-    results_path = os.path.join(results_root, f"{dataset_id}-{method}")
+    
+    results_path = os.path.join(results_root, f"{data_corp}-{method}")
     os.makedirs(results_path, exist_ok=True)
     
     print(f"Results will be saved to: {results_path}")
 
     model_cfg   = cfg.get("model", {})
 
-    # ---------------- Optuna section (single path) ----------------
+    # ------------------------------------------------------------------
+    # 3) Optuna and training hyperparameters
+    # ------------------------------------------------------------------
     optuna_cfg  = cfg.get("optuna", {})
-    batch_size   = model_cfg.get("batch_size", 16)
-
-    # No alternative classifier heads – we always use the MLP (SingleTaskModel).
-
-    # Optuna parameters ---------------------------------------------------------
     n_trials_opt   = optuna_cfg.get("n_trials", 30)
     val_split_opt  = optuna_cfg.get("val_split", 0.2)
     patience_opt   = optuna_cfg.get("patience", 10)
+    batch_size   = optuna_cfg.get("batch_size", 64)
     
-    # If ``reset`` is True the latent feature files will be (re-)generated even
-    # when they already exist. Otherwise the pipeline attempts to reuse cached
-    # latents whenever their sample count matches the raw dataset.
+    n_train = sum(1 for _ in Path(data_path_train).rglob("*.fif"))
+    n_eval  = sum(1 for _ in Path(data_path_eval).rglob("*.fif"))
     
-    # --------------------------------------------------------------------
-    if data_corp == "harvard":
-        n_train, n_eval = 0,0
-    else:
-        n_train = sum(1 for _ in Path(data_path_train).rglob("*.fif"))
-        n_eval  = sum(1 for _ in Path(data_path_eval).rglob("*.fif"))
-    # --------------------------------------------------------------------
-    # 2. Decide whether to reuse cached latent features
-    # --------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # 4) Latent feature loading: cache or compute
+    # ------------------------------------------------------------------
     def _latent_loader(split: str):
-        path_stem = os.path.join(results_path, f"temp_latent_features_{split}")
-        return load_latent_ae_parameters_array(path_stem, batch_size=batch_size)
-
-    use_cache = not reset
-    if use_cache:
-        cache_exists = (
-            os.path.exists(os.path.join(results_path, "temp_latent_features_train.json")) and
-            os.path.exists(os.path.join(results_path, "temp_latent_features_eval.json"))
+        return load_latent_parameters_array(
+            os.path.join(results_path, f"temp_latent_features_{split}"),
+            batch_size=batch_size,
         )
-        if cache_exists:
-            t_latent_features = _latent_loader("train")
-            e_latent_features = _latent_loader("eval")
-            if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval:
-                print("⚠️  Cached latent features do not match dataset size – regenerating …")
-                use_cache = False
-        else:
-            use_cache = False
 
-    # --------------------------------------------------------------------
-    # 3. If required, extract fresh latent representations
-    # --------------------------------------------------------------------
-    if not use_cache:
-         # --------------------------------------------------------------------
-        # Load raw EEG data (required for counts + potential extraction)
-        # --------------------------------------------------------------------
+
+    train_cache = os.path.join(results_path, "temp_latent_features_train.json")
+    eval_cache  = os.path.join(results_path, "temp_latent_features_eval.json")
+    use_cache = (not reset and os.path.exists(train_cache) and os.path.exists(eval_cache))
+    if use_cache:
+        t_latent_features = _latent_loader("train")
+        e_latent_features = _latent_loader("eval")
+        if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval:
+            print("⚠️  Cached latent features do not match dataset size – regenerating …")
+            use_cache = False
+        else: print("Cached latent features loaded successfully.")
+
+    else:
         print("Loading raw EEG data …")
-        if data_corp == "harvard":
-            t_data, e_data = dl.load_data_harvard(data_path_harvard)
-        else:
-            t_data = dl.load_data(data_path_train)
-            e_data = dl.load_data(data_path_eval)
-            print(f"Loaded {len(t_data)} training samples and {len(e_data)} evaluation samples from tuh dataset")
+        t_data, e_data = dl.load_data(data_path_train), dl.load_data(data_path_eval)
+        print(f"Loaded {len(t_data)} training samples and {len(e_data)} evaluation samples from tuh dataset")
 
         print("Extracting latent features …")
-        t_latent_features = extractor.extract_latent_features(
-            t_data,
-            batch_size=batch_size,
-            save_path=os.path.join(results_path, "temp_latent_features_train.json"),
-            method=method,
-        )
-        e_latent_features = extractor.extract_latent_features(
-            e_data,
-            batch_size=batch_size,
-            save_path=os.path.join(results_path, "temp_latent_features_eval.json"),
-            method=method,
-        )
-    else:
-        print("Cached latent features loaded successfully.")
+        t_latent_features = extractor.extract_latent_features(t_data, batch_size=batch_size, save_path=os.path.join(results_path, "temp_latent_features_train.json"), method=method)
+        e_latent_features = extractor.extract_latent_features(e_data, batch_size=batch_size, save_path=os.path.join(results_path, "temp_latent_features_eval.json"), method=method)
+    
         
 
     features_train = torch.stack([sample[0] for sample in t_latent_features.dataset])
     features_eval  = torch.stack([sample[0] for sample in e_latent_features.dataset])
 
 
-    # --------------------------------------------------------------------
-    # Safety check: ensure we have data before proceeding
-    # --------------------------------------------------------------------
-    if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval: print( "❌ Not enough training or evaluation samples were loaded. ") ; return
-    
-    
-    # -------------------------------
-    # 4. Evaluate latent features
-    # -------------------------------
+    # ------------------------------------------------------------------
+    # 5) Safety check: ensure expected sample counts
+    # ------------------------------------------------------------------
+    if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval:
+        print("❌ Not enough training or evaluation samples were loaded.")
+        return
+
+    # ------------------------------------------------------------------
+    # 6) Latent evaluation (disabled)
+    # ------------------------------------------------------------------
     print("Evaluating latent features …")
     #latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
-    
+    latent_metrics = None
 
-    # ------------------------    # 2. Train **independent** models per task  ------------------------
-
-    print("Detecting tasks from dataset …")
-    sample0 = t_latent_features.dataset[0]
-    latent_vec = sample0[0].detach().clone()  # convert once for dimensionality
-    input_dim = latent_vec.numel()
-    num_tasks = len(sample0) - 1
-    print(f"📈 Found {num_tasks} prediction task(s) – training separate networks for each.")
-
+    # ------------------------------------------------------------------
+    # 7) Training – separate models per task
+    # ------------------------------------------------------------------
+    print("Training models for each task")
+    input_dim = t_latent_features.dataset[0][0].numel()
+    num_tasks = len(t_latent_features.dataset[0]) - 1
     metrics_all = {}
     hyperparams_all = {}
     device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 
-    # --------------------------------------------------
-    # Create *one* fixed train/val split (indices)
-    # --------------------------------------------------
+    # Fixed global train/val index split
     all_indices = list(range(len(t_latent_features.dataset)))
     val_split_frac = val_split_opt
     train_indices_global, val_indices_global = train_test_split(
@@ -180,72 +139,45 @@ def main():
         shuffle=True,
     )
 
+    # Hard-coded tasks: 0) gender (clf), 1) age (regr), 2) abnormal (clf)
+    task_map = {
+        0: ("classification", "gender"),
+        1: ("regression", "age"),
+        2: ("classification", "abnormal"),
+    }
 
+    def build_xy(dataset, task_index):
+        X = torch.stack([s[0].detach().clone().float() for s in dataset])
+        y = torch.tensor([float(s[task_index + 1]) for s in dataset], dtype=torch.float32)
+        return X, y
+
+    def map_class_labels(y_tensor):
+        return (y_tensor == 2).float() if torch.all((y_tensor == 1) | (y_tensor == 2)) else y_tensor
 
     for task_idx in range(num_tasks):
-        if task_idx == 1: continue
-        # ---------------- Data preparation per task ----------------
-        x_train, y_raw_train = [], []
-        for sample in t_latent_features.dataset:
-            x_train.append(sample[0].detach().clone().float())
-            y_raw_train.append(float(sample[task_idx + 1]))
+        # Resolve task type/name and announce
+        task_type, task_name = task_map.get(task_idx, ("classification", f"task_{task_idx+1}"))
+        print(f"🔹 Task {task_idx+1}: hardcoded as {task_type} → '{task_name}'")
 
-        # ------------- Determine task type (simple heuristic) -------------
-        uniq_vals = torch.unique(torch.tensor(y_raw_train))
-        if uniq_vals.numel() <= 10 and torch.all((uniq_vals == 0) | (uniq_vals == 1) | (uniq_vals == 2)):
-            task_type = "classification"
-        else:
-            task_type = "regression"
-
-        # ----------- Infer human-readable task name ----------------------
-        if task_type == "regression":
-            task_name = "age"
-        else:  # classification
-            label_set = set(uniq_vals.tolist())
-            # Abnormality annotations are 0/1 only. Gender uses 1/2 (optionally 0=unknown).
-            if label_set.issubset({0.0, 1.0}):
-                task_name = "abnormal"
-            else:
-                task_name = "gender"
-
-        print(
-            f"🔹 Task {task_idx+1}: detected as {task_type} → '{task_name}' "
-            f"(unique values: {uniq_vals.tolist()})"
-        )
-
-        # 🗂  Finalise tensors & loaders ----------------------------------
-        X_train = torch.stack(x_train)
-        y_train_tensor = torch.tensor(y_raw_train, dtype=torch.float32)
-
-        # For classification tasks with labels ∈ {1,2}, map → {0,1}
+        # Build train tensors
+        X_train, y_train_tensor = build_xy(t_latent_features.dataset, task_idx)
         if task_type == "classification":
-            if torch.all((y_train_tensor == 1) | (y_train_tensor == 2)):
-                y_train_tensor = (y_train_tensor == 2).float()
-
+            y_train_tensor = map_class_labels(y_train_tensor)
         assert X_train.shape[0] == y_train_tensor.shape[0], "Mismatch: features and labels have different lengths (train)."
-        # Build loaders using **global** split
+
+        # Datasets and loaders (global split)
         train_dataset_full = TensorDataset(X_train, y_train_tensor)
         val_dataset_full   = TensorDataset(X_train.clone(), y_train_tensor.clone())
-
-        from torch.utils.data import Subset
         train_loader = DataLoader(Subset(train_dataset_full, train_indices_global), batch_size=batch_size, shuffle=True)
         val_loader   = DataLoader(Subset(train_dataset_full, val_indices_global),   batch_size=batch_size, shuffle=True)
-        
 
-        # Eval split ------------------------------------------------------
-        x_eval, y_raw_eval = [], []
-        for sample in e_latent_features.dataset:
-            x_eval.append(sample[0].detach().clone().float())
-            y_raw_eval.append(float(sample[task_idx + 1]))
-        X_eval = torch.stack(x_eval)
-        y_eval_tensor = torch.tensor(y_raw_eval, dtype=torch.float32)
+        # Build eval tensors
+        X_eval, y_eval_tensor = build_xy(e_latent_features.dataset, task_idx)
         if task_type == "classification":
-            if torch.all((y_eval_tensor == 1) | (y_eval_tensor == 2)):
-                y_eval_tensor = (y_eval_tensor == 2).float()
-
+            y_eval_tensor = map_class_labels(y_eval_tensor)
         assert X_eval.shape[0] == y_eval_tensor.shape[0], "Mismatch: features and labels have different lengths (eval)."
         eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=True)
-        # ---------------- Model + training (Optuna only) ---------
+
         print(f"   → Optuna search (n_trials={n_trials_opt}) for {task_type} …")
         search_out = tune_hyperparameters(
             train_loader,
@@ -262,9 +194,6 @@ def main():
         model = search_out["best_model"]
         best_params = search_out["best_params"]
 
-        # ---------------- Evaluation -----------------------------
-        print(model)
-        # Create per-task plot subdir
         task_plot_dir = os.path.join(results_path, f"plots_{task_name}")
         os.makedirs(task_plot_dir, exist_ok=True)
         task_metrics = model.evaluate(
@@ -277,17 +206,16 @@ def main():
         metrics_all[task_name] = task_metrics
         hyperparams_all[task_name] = best_params
 
-        # Persist model weights
-        #torch.save(model.state_dict(), os.path.join(results_path, f"task_{task_idx}_model.pth"))
 
-    # ------------------------------------------------------------
-    # 3. Dataset descriptive statistics & latent-space independence
-    # ------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # 8) Dataset statistics
+    # ------------------------------------------------------------------
     train_stats = compute_dataset_stats(t_latent_features)
     eval_stats  = compute_dataset_stats(e_latent_features)
 
-
-    # 4. Collate and save final results --------------------------
+    # ------------------------------------------------------------------
+    # 9) Collate and persist results
+    # ------------------------------------------------------------------
     final_results = {
         "metrics_per_task": metrics_all,
         "hyperparams_per_task": hyperparams_all,
@@ -304,6 +232,5 @@ def main():
 
     
 if __name__ == "__main__":
-    
     main()
     

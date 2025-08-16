@@ -1,0 +1,309 @@
+2025-08-16 18:04:12,056 | INFO : Stored configuration file in 'Results/Rep-Learning/Dataset/Crowdsource/2025-08-16_18-04'
+2025-08-16 18:04:12,273 | INFO : Using device: cuda
+2025-08-16 18:04:12,273 | INFO : Loading Data ...
+2025-08-16 18:04:14,212 | INFO : Pre-Training Self Supervised model ...
+2025-08-16 18:04:14,332 | INFO : Model:
+EEG2Rep(
+  (InputEmbedding): InputEmbedding(
+    (depthwise_conv): Conv2d(1, 64, kernel_size=(19, 1), stride=(1, 1))
+    (spatial_padding): ReflectionPad2d((3, 3, 0, 0))
+    (spatialwise_conv1): Conv2d(1, 1, kernel_size=(1, 7), stride=(1, 1))
+    (spatialwise_conv2): Conv2d(1, 1, kernel_size=(1, 7), stride=(1, 1))
+    (SiLU): SiLU(inplace=True)
+    (maxpool): MaxPool2d(kernel_size=(1, 2), stride=(1, 2), padding=0, dilation=1, ceil_mode=False)
+  )
+  (PositionalEncoding): PositionalEmbedding()
+  (contex_encoder): Encoder(
+    (TRMs): ModuleList(
+      (0-3): 4 x TransformerBlock(
+        (attn): MultiHeadAttention(
+          (linear_layers): ModuleList(
+            (0-2): 3 x Linear(in_features=64, out_features=64, bias=True)
+          )
+          (output_linear): Linear(in_features=64, out_features=64, bias=True)
+          (attention): Attention()
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (ffn): PointWiseFeedForward(
+          (linear1): Linear(in_features=64, out_features=256, bias=True)
+          (linear2): Linear(in_features=256, out_features=64, bias=True)
+          (activation): GELU(approximate='none')
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (skipconnect1): SublayerConnection(
+          (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (skipconnect2): SublayerConnection(
+          (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (target_encoder): Encoder(
+    (TRMs): ModuleList(
+      (0-3): 4 x TransformerBlock(
+        (attn): MultiHeadAttention(
+          (linear_layers): ModuleList(
+            (0-2): 3 x Linear(in_features=64, out_features=64, bias=True)
+          )
+          (output_linear): Linear(in_features=64, out_features=64, bias=True)
+          (attention): Attention()
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (ffn): PointWiseFeedForward(
+          (linear1): Linear(in_features=64, out_features=256, bias=True)
+          (linear2): Linear(in_features=256, out_features=64, bias=True)
+          (activation): GELU(approximate='none')
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (skipconnect1): SublayerConnection(
+          (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (skipconnect2): SublayerConnection(
+          (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (Predictor): Predictor(
+    (layers): ModuleList(
+      (0-1): 2 x CrossAttnTRMBlock(
+        (attn): MultiHeadAttention(
+          (linear_layers): ModuleList(
+            (0-2): 3 x Linear(in_features=64, out_features=64, bias=True)
+          )
+          (output_linear): Linear(in_features=64, out_features=64, bias=True)
+          (attention): Attention()
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (ffn): PointWiseFeedForward(
+          (linear1): Linear(in_features=64, out_features=256, bias=True)
+          (linear2): Linear(in_features=256, out_features=64, bias=True)
+          (activation): GELU(approximate='none')
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (skipconnect1): SublayerConnection(
+          (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+        (skipconnect2): SublayerConnection(
+          (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+  )
+  (predict_head): Linear(in_features=64, out_features=1, bias=True)
+  (Norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+  (Norm2): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+  (gap): AdaptiveAvgPool1d(output_size=1)
+)
+2025-08-16 18:04:14,333 | INFO : Total number of parameters: 501541
+2025-08-16 18:04:34,660 | INFO : Self-Supervised training...
+Training Epoch:   0%|          | 0/200 [00:00<?, ?it/s]2025-08-16 18:05:00,646 | INFO : Epoch 1 Training Summary: epoch: 1.000000 | loss: 2.325869 | align: 1.365903 | std: 0.959965 | cov: 0.000035 | 
+Training Epoch:   0%|          | 1/200 [00:25<1:26:09, 25.98s/it]2025-08-16 18:05:22,858 | INFO : Epoch 2 Training Summary: epoch: 2.000000 | loss: 2.314673 | align: 1.355277 | std: 0.959396 | cov: 0.000038 | 
+Training Epoch:   1%|          | 2/200 [00:48<1:18:24, 23.76s/it]2025-08-16 18:05:47,288 | INFO : Epoch 3 Training Summary: epoch: 3.000000 | loss: 2.310096 | align: 1.350901 | std: 0.959195 | cov: 0.000039 | 
+Training Epoch:   2%|▏         | 3/200 [01:12<1:19:01, 24.07s/it]2025-08-16 18:06:06,544 | INFO : Epoch 4 Training Summary: epoch: 4.000000 | loss: 2.301818 | align: 1.342817 | std: 0.959001 | cov: 0.000039 | 
+Training Epoch:   2%|▏         | 4/200 [01:31<1:12:24, 22.17s/it]2025-08-16 18:06:23,477 | INFO : Epoch 5 Training Summary: epoch: 5.000000 | loss: 2.277013 | align: 1.318880 | std: 0.958133 | cov: 0.000043 | 
+Training Epoch:   2%|▎         | 5/200 [01:48<1:05:54, 20.28s/it]2025-08-16 18:06:40,717 | INFO : Epoch 6 Training Summary: epoch: 6.000000 | loss: 2.252778 | align: 1.295904 | std: 0.956873 | cov: 0.000052 | 
+Training Epoch:   3%|▎         | 6/200 [02:06<1:02:13, 19.25s/it]2025-08-16 18:06:58,495 | INFO : Epoch 7 Training Summary: epoch: 7.000000 | loss: 2.219758 | align: 1.264287 | std: 0.955470 | cov: 0.000072 | 
+Training Epoch:   4%|▎         | 7/200 [02:23<1:00:21, 18.77s/it]2025-08-16 18:07:17,901 | INFO : Epoch 8 Training Summary: epoch: 8.000000 | loss: 2.173378 | align: 1.219698 | std: 0.953680 | cov: 0.000085 | 
+Training Epoch:   4%|▍         | 8/200 [02:43<1:00:42, 18.97s/it]2025-08-16 18:07:37,968 | INFO : Epoch 9 Training Summary: epoch: 9.000000 | loss: 2.094834 | align: 1.143520 | std: 0.951313 | cov: 0.000119 | 
+Training Epoch:   4%|▍         | 9/200 [03:03<1:01:28, 19.31s/it]2025-08-16 18:07:58,766 | INFO : Epoch 10 Training Summary: epoch: 10.000000 | loss: 1.966359 | align: 1.016771 | std: 0.949586 | cov: 0.000184 | 
+Training Epoch:   5%|▌         | 10/200 [03:24<1:02:36, 19.77s/it]2025-08-16 18:08:17,521 | INFO : Epoch 11 Training Summary: epoch: 11.000000 | loss: 1.791738 | align: 0.842129 | std: 0.949608 | cov: 0.000188 | 
+Training Epoch:   6%|▌         | 11/200 [03:42<1:01:18, 19.46s/it]2025-08-16 18:08:36,160 | INFO : Epoch 12 Training Summary: epoch: 12.000000 | loss: 1.620244 | align: 0.670984 | std: 0.949258 | cov: 0.000245 | 
+Training Epoch:   6%|▌         | 12/200 [04:01<1:00:11, 19.21s/it]2025-08-16 18:08:54,879 | INFO : Epoch 13 Training Summary: epoch: 13.000000 | loss: 1.504347 | align: 0.561402 | std: 0.942939 | cov: 0.000610 | 
+Training Epoch:   6%|▋         | 13/200 [04:20<59:24, 19.06s/it]  2025-08-16 18:09:14,932 | INFO : Epoch 14 Training Summary: epoch: 14.000000 | loss: 1.470673 | align: 0.548207 | std: 0.922433 | cov: 0.003311 | 
+Training Epoch:   7%|▋         | 14/200 [04:40<1:00:01, 19.36s/it]2025-08-16 18:09:33,001 | INFO : Epoch 15 Training Summary: epoch: 15.000000 | loss: 1.524817 | align: 0.665089 | std: 0.859259 | cov: 0.046885 | 
+Training Epoch:   8%|▊         | 15/200 [04:58<58:29, 18.97s/it]  2025-08-16 18:09:50,788 | INFO : Epoch 16 Training Summary: epoch: 16.000000 | loss: 1.621628 | align: 0.884752 | std: 0.731375 | cov: 0.550017 | 
+Training Epoch:   8%|▊         | 16/200 [05:16<57:05, 18.62s/it]2025-08-16 18:10:11,416 | INFO : Epoch 17 Training Summary: epoch: 17.000000 | loss: 1.686228 | align: 1.075985 | std: 0.582793 | cov: 2.745047 | 
+Training Epoch:   8%|▊         | 17/200 [05:36<58:37, 19.22s/it]2025-08-16 18:10:30,905 | INFO : Epoch 18 Training Summary: epoch: 18.000000 | loss: 1.687610 | align: 1.148438 | std: 0.471733 | cov: 6.743873 | 
+Training Epoch:   9%|▉         | 18/200 [05:56<58:32, 19.30s/it]2025-08-16 18:10:50,531 | INFO : Epoch 19 Training Summary: epoch: 19.000000 | loss: 1.661822 | align: 1.129217 | std: 0.448907 | cov: 8.369885 | 
+Training Epoch:  10%|▉         | 19/200 [06:15<58:31, 19.40s/it]2025-08-16 18:11:10,432 | INFO : Epoch 20 Training Summary: epoch: 20.000000 | loss: 1.597673 | align: 1.063615 | std: 0.446651 | cov: 8.740658 | 
+Training Epoch:  10%|█         | 20/200 [06:35<58:38, 19.55s/it]2025-08-16 18:11:29,456 | INFO : Epoch 21 Training Summary: epoch: 21.000000 | loss: 1.528362 | align: 0.978538 | std: 0.484342 | cov: 6.548155 | 
+Training Epoch:  10%|█         | 21/200 [06:54<57:51, 19.39s/it]2025-08-16 18:11:49,495 | INFO : Epoch 22 Training Summary: epoch: 22.000000 | loss: 1.451576 | align: 0.911138 | std: 0.461304 | cov: 7.913430 | 
+Training Epoch:  11%|█         | 22/200 [07:14<58:06, 19.59s/it]2025-08-16 18:12:11,495 | INFO : Epoch 23 Training Summary: epoch: 23.000000 | loss: 1.368425 | align: 0.832242 | std: 0.457172 | cov: 7.901043 | 
+Training Epoch:  12%|█▏        | 23/200 [07:36<59:54, 20.31s/it]2025-08-16 18:12:30,711 | INFO : Epoch 24 Training Summary: epoch: 24.000000 | loss: 1.282660 | align: 0.743957 | std: 0.464201 | cov: 7.450200 | 
+Training Epoch:  12%|█▏        | 24/200 [07:56<58:36, 19.98s/it]2025-08-16 18:12:50,705 | INFO : Epoch 25 Training Summary: epoch: 25.000000 | loss: 1.198042 | align: 0.655351 | std: 0.475403 | cov: 6.728847 | 
+Training Epoch:  12%|█▎        | 25/200 [08:16<58:17, 19.99s/it]2025-08-16 18:13:10,198 | INFO : Epoch 26 Training Summary: epoch: 26.000000 | loss: 1.126418 | align: 0.595565 | std: 0.455244 | cov: 7.560876 | 
+Training Epoch:  13%|█▎        | 26/200 [08:35<57:31, 19.84s/it]2025-08-16 18:13:28,520 | INFO : Epoch 27 Training Summary: epoch: 27.000000 | loss: 1.095723 | align: 0.574174 | std: 0.442087 | cov: 7.946084 | 
+Training Epoch:  14%|█▎        | 27/200 [08:53<55:53, 19.38s/it]2025-08-16 18:13:47,034 | INFO : Epoch 28 Training Summary: epoch: 28.000000 | loss: 1.069767 | align: 0.549402 | std: 0.438684 | cov: 8.168057 | 
+Training Epoch:  14%|█▍        | 28/200 [09:12<54:49, 19.12s/it]2025-08-16 18:14:05,903 | INFO : Epoch 29 Training Summary: epoch: 29.000000 | loss: 1.051905 | align: 0.540568 | std: 0.422523 | cov: 8.881459 | 
+Training Epoch:  14%|█▍        | 29/200 [09:31<54:16, 19.05s/it]2025-08-16 18:14:26,931 | INFO : Epoch 30 Training Summary: epoch: 30.000000 | loss: 1.050369 | align: 0.542462 | std: 0.419180 | cov: 8.872711 | 
+Training Epoch:  15%|█▌        | 30/200 [09:52<55:38, 19.64s/it]2025-08-16 18:14:52,015 | INFO : Epoch 31 Training Summary: epoch: 31.000000 | loss: 1.066152 | align: 0.561050 | std: 0.408502 | cov: 9.659992 | 
+Training Epoch:  16%|█▌        | 31/200 [10:17<59:55, 21.27s/it]2025-08-16 18:15:16,689 | INFO : Epoch 32 Training Summary: epoch: 32.000000 | loss: 1.083248 | align: 0.583932 | std: 0.398794 | cov: 10.052281 | 
+Training Epoch:  16%|█▌        | 32/200 [10:42<1:02:25, 22.29s/it]2025-08-16 18:15:36,514 | INFO : Epoch 33 Training Summary: epoch: 33.000000 | loss: 1.111039 | align: 0.615404 | std: 0.392095 | cov: 10.354045 | 
+Training Epoch:  16%|█▋        | 33/200 [11:01<59:59, 21.55s/it]  2025-08-16 18:15:58,062 | INFO : Epoch 34 Training Summary: epoch: 34.000000 | loss: 1.125585 | align: 0.638182 | std: 0.375277 | cov: 11.212538 | 
+Training Epoch:  17%|█▋        | 34/200 [11:23<59:37, 21.55s/it]2025-08-16 18:16:17,554 | INFO : Epoch 35 Training Summary: epoch: 35.000000 | loss: 1.157714 | align: 0.678187 | std: 0.367547 | cov: 11.197987 | 
+Training Epoch:  18%|█▊        | 35/200 [11:42<57:34, 20.93s/it]2025-08-16 18:16:39,806 | INFO : Epoch 36 Training Summary: epoch: 36.000000 | loss: 1.187027 | align: 0.714920 | std: 0.343700 | cov: 12.840632 | 
+Training Epoch:  18%|█▊        | 36/200 [12:05<58:18, 21.33s/it]2025-08-16 18:17:00,864 | INFO : Epoch 37 Training Summary: epoch: 37.000000 | loss: 1.204937 | align: 0.740361 | std: 0.328847 | cov: 13.572854 | 
+Training Epoch:  18%|█▊        | 37/200 [12:26<57:43, 21.25s/it]2025-08-16 18:17:19,167 | INFO : Epoch 38 Training Summary: epoch: 38.000000 | loss: 1.221777 | align: 0.763012 | std: 0.325291 | cov: 13.347400 | 
+Training Epoch:  19%|█▉        | 38/200 [12:44<54:59, 20.36s/it]2025-08-16 18:17:37,967 | INFO : Epoch 39 Training Summary: epoch: 39.000000 | loss: 1.210577 | align: 0.751971 | std: 0.320390 | cov: 13.821545 | 
+Training Epoch:  20%|█▉        | 39/200 [13:03<53:23, 19.90s/it]2025-08-16 18:17:59,362 | INFO : Epoch 40 Training Summary: epoch: 40.000000 | loss: 1.213644 | align: 0.755271 | std: 0.318338 | cov: 14.003476 | 
+Training Epoch:  20%|██        | 40/200 [13:24<54:15, 20.35s/it]2025-08-16 18:18:19,938 | INFO : Epoch 41 Training Summary: epoch: 41.000000 | loss: 1.219605 | align: 0.763108 | std: 0.319597 | cov: 13.690045 | 
+Training Epoch:  20%|██        | 41/200 [13:45<54:05, 20.41s/it]2025-08-16 18:18:40,912 | INFO : Epoch 42 Training Summary: epoch: 42.000000 | loss: 1.245189 | align: 0.788474 | std: 0.326602 | cov: 13.011334 | 
+Training Epoch:  21%|██        | 42/200 [14:06<54:12, 20.58s/it]2025-08-16 18:19:00,834 | INFO : Epoch 43 Training Summary: epoch: 43.000000 | loss: 1.197155 | align: 0.742215 | std: 0.318160 | cov: 13.678071 | 
+Training Epoch:  22%|██▏       | 43/200 [14:26<53:20, 20.38s/it]2025-08-16 18:19:26,174 | INFO : Epoch 44 Training Summary: epoch: 44.000000 | loss: 1.195188 | align: 0.739381 | std: 0.331104 | cov: 12.470366 | 
+Training Epoch:  22%|██▏       | 44/200 [14:51<56:51, 21.87s/it]2025-08-16 18:19:46,254 | INFO : Epoch 45 Training Summary: epoch: 45.000000 | loss: 1.177102 | align: 0.728113 | std: 0.324430 | cov: 12.455904 | 
+Training Epoch:  22%|██▎       | 45/200 [15:11<55:06, 21.33s/it]2025-08-16 18:20:05,098 | INFO : Epoch 46 Training Summary: epoch: 46.000000 | loss: 1.110931 | align: 0.660813 | std: 0.329039 | cov: 12.107928 | 
+Training Epoch:  23%|██▎       | 46/200 [15:30<52:50, 20.59s/it]2025-08-16 18:20:25,501 | INFO : Epoch 47 Training Summary: epoch: 47.000000 | loss: 1.125964 | align: 0.675853 | std: 0.336761 | cov: 11.334882 | 
+Training Epoch:  24%|██▎       | 47/200 [15:50<52:21, 20.53s/it]2025-08-16 18:20:44,549 | INFO : Epoch 48 Training Summary: epoch: 48.000000 | loss: 1.088471 | align: 0.638105 | std: 0.328288 | cov: 12.207917 | 
+Training Epoch:  24%|██▍       | 48/200 [16:09<50:53, 20.09s/it]2025-08-16 18:21:02,643 | INFO : Epoch 49 Training Summary: epoch: 49.000000 | loss: 1.093734 | align: 0.642492 | std: 0.335646 | cov: 11.559580 | 
+Training Epoch:  24%|██▍       | 49/200 [16:27<49:02, 19.49s/it]2025-08-16 18:21:22,098 | INFO : Epoch 50 Training Summary: epoch: 50.000000 | loss: 1.097551 | align: 0.647666 | std: 0.336953 | cov: 11.293263 | 
+Training Epoch:  25%|██▌       | 50/200 [16:47<48:41, 19.48s/it]2025-08-16 18:21:43,468 | INFO : Epoch 51 Training Summary: epoch: 51.000000 | loss: 1.084742 | align: 0.637423 | std: 0.331355 | cov: 11.596344 | 
+Training Epoch:  26%|██▌       | 51/200 [17:08<49:49, 20.06s/it]2025-08-16 18:22:04,485 | INFO : Epoch 52 Training Summary: epoch: 52.000000 | loss: 1.080568 | align: 0.632954 | std: 0.331891 | cov: 11.572339 | 
+Training Epoch:  26%|██▌       | 52/200 [17:29<50:10, 20.34s/it]2025-08-16 18:22:24,204 | INFO : Epoch 53 Training Summary: epoch: 53.000000 | loss: 1.100861 | align: 0.652138 | std: 0.332751 | cov: 11.597212 | 
+Training Epoch:  26%|██▋       | 53/200 [17:49<49:21, 20.15s/it]2025-08-16 18:22:46,190 | INFO : Epoch 54 Training Summary: epoch: 54.000000 | loss: 1.095385 | align: 0.654638 | std: 0.333473 | cov: 10.727316 | 
+Training Epoch:  27%|██▋       | 54/200 [18:11<50:21, 20.70s/it]2025-08-16 18:23:07,410 | INFO : Epoch 55 Training Summary: epoch: 55.000000 | loss: 1.064728 | align: 0.628043 | std: 0.321988 | cov: 11.469713 | 
+Training Epoch:  28%|██▊       | 55/200 [18:32<50:25, 20.87s/it]2025-08-16 18:23:24,829 | INFO : Epoch 56 Training Summary: epoch: 56.000000 | loss: 1.078350 | align: 0.638152 | std: 0.336186 | cov: 10.401163 | 
+Training Epoch:  28%|██▊       | 56/200 [18:50<47:34, 19.82s/it]2025-08-16 18:23:45,224 | INFO : Epoch 57 Training Summary: epoch: 57.000000 | loss: 1.035799 | align: 0.594339 | std: 0.335885 | cov: 10.557433 | 
+Training Epoch:  28%|██▊       | 57/200 [19:10<47:40, 20.00s/it]2025-08-16 18:24:04,414 | INFO : Epoch 58 Training Summary: epoch: 58.000000 | loss: 1.043882 | align: 0.593393 | std: 0.357797 | cov: 9.269278 | 
+Training Epoch:  29%|██▉       | 58/200 [19:29<46:44, 19.75s/it]2025-08-16 18:24:23,444 | INFO : Epoch 59 Training Summary: epoch: 59.000000 | loss: 1.036660 | align: 0.591711 | std: 0.344272 | cov: 10.067749 | 
+Training Epoch:  30%|██▉       | 59/200 [19:48<45:54, 19.53s/it]2025-08-16 18:24:41,782 | INFO : Epoch 60 Training Summary: epoch: 60.000000 | loss: 1.036993 | align: 0.593024 | std: 0.345517 | cov: 9.845165 | 
+Training Epoch:  30%|███       | 60/200 [20:07<44:44, 19.17s/it]2025-08-16 18:24:59,558 | INFO : Epoch 61 Training Summary: epoch: 61.000000 | loss: 1.035457 | align: 0.596109 | std: 0.337043 | cov: 10.230544 | 
+Training Epoch:  30%|███       | 61/200 [20:24<43:28, 18.77s/it]2025-08-16 18:25:19,918 | INFO : Epoch 62 Training Summary: epoch: 62.000000 | loss: 1.016151 | align: 0.569920 | std: 0.349684 | cov: 9.654752 | 
+Training Epoch:  31%|███       | 62/200 [20:45<44:15, 19.24s/it]2025-08-16 18:25:41,653 | INFO : Epoch 63 Training Summary: epoch: 63.000000 | loss: 1.036168 | align: 0.590047 | std: 0.355206 | cov: 9.091511 | 
+Training Epoch:  32%|███▏      | 63/200 [21:06<45:37, 19.98s/it]2025-08-16 18:26:00,403 | INFO : Epoch 64 Training Summary: epoch: 64.000000 | loss: 1.022264 | align: 0.580028 | std: 0.335864 | cov: 10.637130 | 
+Training Epoch:  32%|███▏      | 64/200 [21:25<44:27, 19.61s/it]2025-08-16 18:26:19,270 | INFO : Epoch 65 Training Summary: epoch: 65.000000 | loss: 1.021202 | align: 0.576396 | std: 0.345331 | cov: 9.947630 | 
+Training Epoch:  32%|███▎      | 65/200 [21:44<43:37, 19.39s/it]2025-08-16 18:26:41,933 | INFO : Epoch 66 Training Summary: epoch: 66.000000 | loss: 1.018677 | align: 0.571705 | std: 0.356432 | cov: 9.053960 | 
+Training Epoch:  33%|███▎      | 66/200 [22:07<45:29, 20.37s/it]2025-08-16 18:27:02,707 | INFO : Epoch 67 Training Summary: epoch: 67.000000 | loss: 1.019021 | align: 0.570544 | std: 0.354842 | cov: 9.363532 | 
+Training Epoch:  34%|███▎      | 67/200 [22:28<45:25, 20.49s/it]2025-08-16 18:27:21,442 | INFO : Epoch 68 Training Summary: epoch: 68.000000 | loss: 1.008192 | align: 0.556711 | std: 0.358799 | cov: 9.268191 | 
+Training Epoch:  34%|███▍      | 68/200 [22:46<43:56, 19.97s/it]2025-08-16 18:27:41,831 | INFO : Epoch 69 Training Summary: epoch: 69.000000 | loss: 1.009297 | align: 0.565845 | std: 0.350272 | cov: 9.317931 | 
+Training Epoch:  34%|███▍      | 69/200 [23:07<43:51, 20.09s/it]2025-08-16 18:28:00,910 | INFO : Epoch 70 Training Summary: epoch: 70.000000 | loss: 1.007948 | align: 0.565708 | std: 0.345546 | cov: 9.669324 | 
+Training Epoch:  35%|███▌      | 70/200 [23:26<42:53, 19.80s/it]2025-08-16 18:28:18,824 | INFO : Epoch 71 Training Summary: epoch: 71.000000 | loss: 1.011193 | align: 0.564757 | std: 0.353298 | cov: 9.313816 | 
+Training Epoch:  36%|███▌      | 71/200 [23:44<41:19, 19.22s/it]2025-08-16 18:28:37,939 | INFO : Epoch 72 Training Summary: epoch: 72.000000 | loss: 1.023425 | align: 0.584517 | std: 0.339670 | cov: 9.923785 | 
+Training Epoch:  36%|███▌      | 72/200 [24:03<40:56, 19.19s/it]2025-08-16 18:28:55,681 | INFO : Epoch 73 Training Summary: epoch: 73.000000 | loss: 1.022495 | align: 0.579251 | std: 0.352189 | cov: 9.105544 | 
+Training Epoch:  36%|███▋      | 73/200 [24:21<39:41, 18.75s/it]2025-08-16 18:29:11,139 | INFO : Epoch 74 Training Summary: epoch: 74.000000 | loss: 1.038058 | align: 0.600157 | std: 0.338414 | cov: 9.948658 | 
+Training Epoch:  37%|███▋      | 74/200 [24:36<37:18, 17.77s/it]2025-08-16 18:29:29,447 | INFO : Epoch 75 Training Summary: epoch: 75.000000 | loss: 1.023570 | align: 0.577148 | std: 0.360570 | cov: 8.585090 | 
+Training Epoch:  38%|███▊      | 75/200 [24:54<37:21, 17.93s/it]2025-08-16 18:29:51,351 | INFO : Epoch 76 Training Summary: epoch: 76.000000 | loss: 1.027332 | align: 0.588000 | std: 0.347518 | cov: 9.181409 | 
+Training Epoch:  38%|███▊      | 76/200 [25:16<39:31, 19.12s/it]2025-08-16 18:30:08,985 | INFO : Epoch 77 Training Summary: epoch: 77.000000 | loss: 0.991550 | align: 0.549179 | std: 0.347964 | cov: 9.440694 | 
+Training Epoch:  38%|███▊      | 77/200 [25:34<38:18, 18.69s/it]2025-08-16 18:30:27,076 | INFO : Epoch 78 Training Summary: epoch: 78.000000 | loss: 1.003010 | align: 0.557754 | std: 0.357814 | cov: 8.744277 | 
+Training Epoch:  39%|███▉      | 78/200 [25:52<37:36, 18.50s/it]2025-08-16 18:30:42,999 | INFO : Epoch 79 Training Summary: epoch: 79.000000 | loss: 1.005818 | align: 0.569597 | std: 0.333575 | cov: 10.264600 | 
+Training Epoch:  40%|███▉      | 79/200 [26:08<35:44, 17.72s/it]2025-08-16 18:30:59,512 | INFO : Epoch 80 Training Summary: epoch: 80.000000 | loss: 0.990901 | align: 0.556055 | std: 0.340341 | cov: 9.450422 | 
+Training Epoch:  40%|████      | 80/200 [26:24<34:44, 17.37s/it]2025-08-16 18:31:15,989 | INFO : Epoch 81 Training Summary: epoch: 81.000000 | loss: 0.990901 | align: 0.551832 | std: 0.347463 | cov: 9.160616 | 
+Training Epoch:  40%|████      | 81/200 [26:41<33:53, 17.09s/it]2025-08-16 18:31:33,904 | INFO : Epoch 82 Training Summary: epoch: 82.000000 | loss: 0.974432 | align: 0.534412 | std: 0.349223 | cov: 9.079606 | 
+Training Epoch:  41%|████      | 82/200 [26:59<34:07, 17.35s/it]2025-08-16 18:31:50,603 | INFO : Epoch 83 Training Summary: epoch: 83.000000 | loss: 0.986535 | align: 0.544220 | std: 0.359279 | cov: 8.303631 | 
+Training Epoch:  42%|████▏     | 83/200 [27:15<33:25, 17.14s/it]2025-08-16 18:32:14,555 | INFO : Epoch 84 Training Summary: epoch: 84.000000 | loss: 0.959779 | align: 0.525105 | std: 0.343867 | cov: 9.080676 | 
+Training Epoch:  42%|████▏     | 84/200 [27:39<37:06, 19.20s/it]2025-08-16 18:32:35,801 | INFO : Epoch 85 Training Summary: epoch: 85.000000 | loss: 0.962800 | align: 0.522466 | std: 0.351818 | cov: 8.851641 | 
+Training Epoch:  42%|████▎     | 85/200 [28:01<37:57, 19.80s/it]2025-08-16 18:32:53,019 | INFO : Epoch 86 Training Summary: epoch: 86.000000 | loss: 0.972102 | align: 0.526691 | std: 0.361464 | cov: 8.394741 | 
+Training Epoch:  43%|████▎     | 86/200 [28:18<36:08, 19.03s/it]2025-08-16 18:33:10,202 | INFO : Epoch 87 Training Summary: epoch: 87.000000 | loss: 0.959575 | align: 0.523109 | std: 0.344902 | cov: 9.156417 | 
+Training Epoch:  44%|████▎     | 87/200 [28:35<34:48, 18.49s/it]2025-08-16 18:33:26,512 | INFO : Epoch 88 Training Summary: epoch: 88.000000 | loss: 0.955495 | align: 0.511998 | std: 0.361800 | cov: 8.169807 | 
+Training Epoch:  44%|████▍     | 88/200 [28:51<33:16, 17.83s/it]2025-08-16 18:33:41,781 | INFO : Epoch 89 Training Summary: epoch: 89.000000 | loss: 0.970209 | align: 0.532363 | std: 0.356972 | cov: 8.087279 | 
+Training Epoch:  44%|████▍     | 89/200 [29:07<31:32, 17.05s/it]2025-08-16 18:33:58,896 | INFO : Epoch 90 Training Summary: epoch: 90.000000 | loss: 0.970732 | align: 0.531992 | std: 0.354689 | cov: 8.404990 | 
+Training Epoch:  45%|████▌     | 90/200 [29:24<31:17, 17.07s/it]2025-08-16 18:34:20,995 | INFO : Epoch 91 Training Summary: epoch: 91.000000 | loss: 0.955110 | align: 0.518695 | std: 0.352764 | cov: 8.365036 | 
+Training Epoch:  46%|████▌     | 91/200 [29:46<33:46, 18.59s/it]2025-08-16 18:34:43,214 | INFO : Epoch 92 Training Summary: epoch: 92.000000 | loss: 0.977294 | align: 0.539525 | std: 0.354572 | cov: 8.319742 | 
+Training Epoch:  46%|████▌     | 92/200 [30:08<35:24, 19.67s/it]2025-08-16 18:35:01,136 | INFO : Epoch 93 Training Summary: epoch: 93.000000 | loss: 0.970343 | align: 0.531734 | std: 0.357969 | cov: 8.063981 | 
+Training Epoch:  46%|████▋     | 93/200 [30:26<34:08, 19.14s/it]2025-08-16 18:35:15,298 | INFO : Epoch 94 Training Summary: epoch: 94.000000 | loss: 0.976946 | align: 0.546049 | std: 0.344906 | cov: 8.599133 | 
+Training Epoch:  47%|████▋     | 94/200 [30:40<31:10, 17.65s/it]2025-08-16 18:35:31,524 | INFO : Epoch 95 Training Summary: epoch: 95.000000 | loss: 0.974605 | align: 0.547307 | std: 0.332697 | cov: 9.460027 | 
+Training Epoch:  48%|████▊     | 95/200 [30:56<30:08, 17.22s/it]2025-08-16 18:35:49,773 | INFO : Epoch 96 Training Summary: epoch: 96.000000 | loss: 0.971657 | align: 0.544033 | std: 0.336812 | cov: 9.081247 | 
+Training Epoch:  48%|████▊     | 96/200 [31:15<30:23, 17.53s/it]2025-08-16 18:36:07,927 | INFO : Epoch 97 Training Summary: epoch: 97.000000 | loss: 0.966176 | align: 0.535926 | std: 0.346740 | cov: 8.351116 | 
+Training Epoch:  48%|████▊     | 97/200 [31:33<30:24, 17.72s/it]2025-08-16 18:36:24,684 | INFO : Epoch 98 Training Summary: epoch: 98.000000 | loss: 0.955097 | align: 0.519485 | std: 0.355004 | cov: 8.060750 | 
+Training Epoch:  49%|████▉     | 98/200 [31:50<29:39, 17.44s/it]2025-08-16 18:36:42,629 | INFO : Epoch 99 Training Summary: epoch: 99.000000 | loss: 0.969829 | align: 0.536851 | std: 0.347942 | cov: 8.503675 | 
+Training Epoch:  50%|████▉     | 99/200 [32:07<29:35, 17.58s/it]2025-08-16 18:36:58,945 | INFO : Epoch 100 Training Summary: epoch: 100.000000 | loss: 0.965258 | align: 0.540352 | std: 0.337441 | cov: 8.746513 | 
+Training Epoch:  50%|█████     | 100/200 [32:24<28:40, 17.20s/it]2025-08-16 18:37:14,575 | INFO : Epoch 101 Training Summary: epoch: 101.000000 | loss: 0.967027 | align: 0.543095 | std: 0.335353 | cov: 8.857937 | 
+Training Epoch:  50%|█████     | 101/200 [32:39<27:36, 16.73s/it]2025-08-16 18:37:31,209 | INFO : Epoch 102 Training Summary: epoch: 102.000000 | loss: 0.975001 | align: 0.552307 | std: 0.337039 | cov: 8.565594 | 
+Training Epoch:  51%|█████     | 102/200 [32:56<27:16, 16.70s/it]2025-08-16 18:37:46,873 | INFO : Epoch 103 Training Summary: epoch: 103.000000 | loss: 0.960010 | align: 0.542273 | std: 0.329625 | cov: 8.811169 | 
+Training Epoch:  52%|█████▏    | 103/200 [33:12<26:29, 16.39s/it]2025-08-16 18:38:02,273 | INFO : Epoch 104 Training Summary: epoch: 104.000000 | loss: 0.982015 | align: 0.563024 | std: 0.332111 | cov: 8.687992 | 
+Training Epoch:  52%|█████▏    | 104/200 [33:27<25:44, 16.09s/it]2025-08-16 18:38:20,706 | INFO : Epoch 105 Training Summary: epoch: 105.000000 | loss: 0.976657 | align: 0.554689 | std: 0.334944 | cov: 8.702417 | 
+Training Epoch:  52%|█████▎    | 105/200 [33:46<26:35, 16.79s/it]2025-08-16 18:38:42,695 | INFO : Epoch 106 Training Summary: epoch: 106.000000 | loss: 0.976594 | align: 0.567024 | std: 0.314841 | cov: 9.472919 | 
+Training Epoch:  53%|█████▎    | 106/200 [34:08<28:45, 18.35s/it]2025-08-16 18:39:05,282 | INFO : Epoch 107 Training Summary: epoch: 107.000000 | loss: 0.966074 | align: 0.552762 | std: 0.322224 | cov: 9.108792 | 
+Training Epoch:  54%|█████▎    | 107/200 [34:30<30:24, 19.62s/it]2025-08-16 18:39:27,089 | INFO : Epoch 108 Training Summary: epoch: 108.000000 | loss: 0.978164 | align: 0.559458 | std: 0.334540 | cov: 8.416522 | 
+Training Epoch:  54%|█████▍    | 108/200 [34:52<31:05, 20.28s/it]2025-08-16 18:39:45,542 | INFO : Epoch 109 Training Summary: epoch: 109.000000 | loss: 0.980590 | align: 0.568774 | std: 0.316565 | cov: 9.525036 | 
+Training Epoch:  55%|█████▍    | 109/200 [35:10<29:55, 19.73s/it]2025-08-16 18:39:59,755 | INFO : Epoch 110 Training Summary: epoch: 110.000000 | loss: 0.972366 | align: 0.557139 | std: 0.325887 | cov: 8.933977 | 
+Training Epoch:  55%|█████▌    | 110/200 [35:25<27:06, 18.08s/it]2025-08-16 18:40:13,359 | INFO : Epoch 111 Training Summary: epoch: 111.000000 | loss: 0.982214 | align: 0.574133 | std: 0.313995 | cov: 9.408580 | 
+Training Epoch:  56%|█████▌    | 111/200 [35:38<24:49, 16.73s/it]2025-08-16 18:40:30,377 | INFO : Epoch 112 Training Summary: epoch: 112.000000 | loss: 0.978370 | align: 0.564230 | std: 0.326859 | cov: 8.728107 | 
+Training Epoch:  56%|█████▌    | 112/200 [35:55<24:40, 16.82s/it]2025-08-16 18:40:49,172 | INFO : Epoch 113 Training Summary: epoch: 113.000000 | loss: 0.965317 | align: 0.550467 | std: 0.325886 | cov: 8.896446 | 
+Training Epoch:  56%|█████▋    | 113/200 [36:14<25:14, 17.41s/it]2025-08-16 18:41:07,601 | INFO : Epoch 114 Training Summary: epoch: 114.000000 | loss: 0.966996 | align: 0.564030 | std: 0.307051 | cov: 9.591467 | 
+Training Epoch:  57%|█████▋    | 114/200 [36:32<25:23, 17.72s/it]2025-08-16 18:41:24,415 | INFO : Epoch 115 Training Summary: epoch: 115.000000 | loss: 0.963164 | align: 0.554834 | std: 0.319708 | cov: 8.862116 | 
+Training Epoch:  57%|█████▊    | 115/200 [36:49<24:42, 17.45s/it]2025-08-16 18:41:39,968 | INFO : Epoch 116 Training Summary: epoch: 116.000000 | loss: 0.966443 | align: 0.556682 | std: 0.323072 | cov: 8.668897 | 
+Training Epoch:  58%|█████▊    | 116/200 [37:05<23:37, 16.88s/it]2025-08-16 18:41:55,230 | INFO : Epoch 117 Training Summary: epoch: 117.000000 | loss: 0.964504 | align: 0.549240 | std: 0.334604 | cov: 8.066015 | 
+Training Epoch:  58%|█████▊    | 117/200 [37:20<22:40, 16.39s/it]2025-08-16 18:42:10,147 | INFO : Epoch 118 Training Summary: epoch: 118.000000 | loss: 0.974129 | align: 0.563369 | std: 0.323769 | cov: 8.699115 | 
+Training Epoch:  59%|█████▉    | 118/200 [37:35<21:47, 15.95s/it]2025-08-16 18:42:25,179 | INFO : Epoch 119 Training Summary: epoch: 119.000000 | loss: 0.959338 | align: 0.546372 | std: 0.325764 | cov: 8.720203 | 
+Training Epoch:  60%|█████▉    | 119/200 [37:50<21:09, 15.67s/it]2025-08-16 18:42:40,189 | INFO : Epoch 120 Training Summary: epoch: 120.000000 | loss: 0.959418 | align: 0.552272 | std: 0.315898 | cov: 9.124744 | 
+Training Epoch:  60%|██████    | 120/200 [38:05<20:38, 15.48s/it]2025-08-16 18:42:58,316 | INFO : Epoch 121 Training Summary: epoch: 121.000000 | loss: 0.953572 | align: 0.542618 | std: 0.325961 | cov: 8.499346 | 
+Training Epoch:  60%|██████    | 121/200 [38:23<21:26, 16.28s/it]2025-08-16 18:43:21,319 | INFO : Epoch 122 Training Summary: epoch: 122.000000 | loss: 0.954412 | align: 0.544089 | std: 0.325041 | cov: 8.528323 | 
+Training Epoch:  61%|██████    | 122/200 [38:46<23:46, 18.29s/it]2025-08-16 18:43:42,765 | INFO : Epoch 123 Training Summary: epoch: 123.000000 | loss: 0.958387 | align: 0.549354 | std: 0.322202 | cov: 8.683197 | 
+Training Epoch:  62%|██████▏   | 123/200 [39:08<24:41, 19.23s/it]2025-08-16 18:43:58,455 | INFO : Epoch 124 Training Summary: epoch: 124.000000 | loss: 0.967850 | align: 0.562457 | std: 0.314525 | cov: 9.086810 | 
+Training Epoch:  62%|██████▏   | 124/200 [39:23<23:01, 18.17s/it]2025-08-16 18:44:12,959 | INFO : Epoch 125 Training Summary: epoch: 125.000000 | loss: 0.959205 | align: 0.550895 | std: 0.320260 | cov: 8.805029 | 
+Training Epoch:  62%|██████▎   | 125/200 [39:38<21:20, 17.07s/it]2025-08-16 18:44:27,638 | INFO : Epoch 126 Training Summary: epoch: 126.000000 | loss: 0.958266 | align: 0.549934 | std: 0.323274 | cov: 8.505810 | 
+Training Epoch:  63%|██████▎   | 126/200 [39:52<20:10, 16.35s/it]2025-08-16 18:44:43,441 | INFO : Epoch 127 Training Summary: epoch: 127.000000 | loss: 0.961859 | align: 0.555703 | std: 0.320472 | cov: 8.568318 | 
+Training Epoch:  64%|██████▎   | 127/200 [40:08<19:41, 16.19s/it]2025-08-16 18:45:01,685 | INFO : Epoch 128 Training Summary: epoch: 128.000000 | loss: 0.956535 | align: 0.547325 | std: 0.324241 | cov: 8.496936 | 
+Training Epoch:  64%|██████▍   | 128/200 [40:27<20:09, 16.80s/it]2025-08-16 18:45:19,918 | INFO : Epoch 129 Training Summary: epoch: 129.000000 | loss: 0.960465 | align: 0.555564 | std: 0.316328 | cov: 8.857282 | 
+Training Epoch:  64%|██████▍   | 129/200 [40:45<20:23, 17.23s/it]2025-08-16 18:45:39,356 | INFO : Epoch 130 Training Summary: epoch: 130.000000 | loss: 0.963177 | align: 0.553598 | std: 0.322438 | cov: 8.714084 | 
+Training Epoch:  65%|██████▌   | 130/200 [41:04<20:52, 17.89s/it]2025-08-16 18:45:58,172 | INFO : Epoch 131 Training Summary: epoch: 131.000000 | loss: 0.954891 | align: 0.546928 | std: 0.322057 | cov: 8.590638 | 
+Training Epoch:  66%|██████▌   | 131/200 [41:23<20:53, 18.17s/it]2025-08-16 18:46:14,610 | INFO : Epoch 132 Training Summary: epoch: 132.000000 | loss: 0.955657 | align: 0.546469 | std: 0.326129 | cov: 8.305916 | 
+Training Epoch:  66%|██████▌   | 132/200 [41:39<20:00, 17.65s/it]2025-08-16 18:46:30,814 | INFO : Epoch 133 Training Summary: epoch: 133.000000 | loss: 0.951859 | align: 0.547894 | std: 0.314818 | cov: 8.914624 | 
+Training Epoch:  66%|██████▋   | 133/200 [41:56<19:14, 17.23s/it]2025-08-16 18:46:50,129 | INFO : Epoch 134 Training Summary: epoch: 134.000000 | loss: 0.954456 | align: 0.549766 | std: 0.314189 | cov: 9.050206 | 
+Training Epoch:  67%|██████▋   | 134/200 [42:15<19:37, 17.84s/it]2025-08-16 18:47:07,299 | INFO : Epoch 135 Training Summary: epoch: 135.000000 | loss: 0.954749 | align: 0.545926 | std: 0.324401 | cov: 8.442185 | 
+Training Epoch:  68%|██████▊   | 135/200 [42:32<19:06, 17.64s/it]2025-08-16 18:47:30,620 | INFO : Epoch 136 Training Summary: epoch: 136.000000 | loss: 0.953660 | align: 0.546075 | std: 0.321815 | cov: 8.576929 | 
+Training Epoch:  68%|██████▊   | 136/200 [42:55<20:38, 19.35s/it]2025-08-16 18:47:53,171 | INFO : Epoch 137 Training Summary: epoch: 137.000000 | loss: 0.957899 | align: 0.547935 | std: 0.324108 | cov: 8.585538 | 
+Training Epoch:  68%|██████▊   | 137/200 [43:18<21:19, 20.31s/it]2025-08-16 18:48:10,438 | INFO : Epoch 138 Training Summary: epoch: 138.000000 | loss: 0.957011 | align: 0.547080 | std: 0.325441 | cov: 8.448982 | 
+Training Epoch:  69%|██████▉   | 138/200 [43:35<20:02, 19.39s/it]2025-08-16 18:48:26,242 | INFO : Epoch 139 Training Summary: epoch: 139.000000 | loss: 0.961059 | align: 0.548448 | std: 0.328840 | cov: 8.377119 | 
+Training Epoch:  70%|██████▉   | 139/200 [43:51<18:37, 18.32s/it]2025-08-16 18:48:50,260 | INFO : Epoch 140 Training Summary: epoch: 140.000000 | loss: 0.959858 | align: 0.553247 | std: 0.320512 | cov: 8.609907 | 
+Training Epoch:  70%|███████   | 140/200 [44:15<20:01, 20.03s/it]2025-08-16 18:49:13,646 | INFO : Epoch 141 Training Summary: epoch: 141.000000 | loss: 0.960360 | align: 0.556238 | std: 0.316574 | cov: 8.754844 | 
+Training Epoch:  70%|███████   | 141/200 [44:38<20:41, 21.04s/it]2025-08-16 18:49:29,415 | INFO : Epoch 142 Training Summary: epoch: 142.000000 | loss: 0.966514 | align: 0.557881 | std: 0.324397 | cov: 8.423602 | 
+Training Epoch:  71%|███████   | 142/200 [44:54<18:48, 19.46s/it]2025-08-16 18:49:47,533 | INFO : Epoch 143 Training Summary: epoch: 143.000000 | loss: 0.962315 | align: 0.555980 | std: 0.320741 | cov: 8.559456 | 
+Training Epoch:  72%|███████▏  | 143/200 [45:12<18:06, 19.05s/it]2025-08-16 18:50:05,360 | INFO : Epoch 144 Training Summary: epoch: 144.000000 | loss: 0.967933 | align: 0.566215 | std: 0.313460 | cov: 8.825785 | 
+Training Epoch:  72%|███████▏  | 144/200 [45:30<17:26, 18.69s/it]2025-08-16 18:50:22,392 | INFO : Epoch 145 Training Summary: epoch: 145.000000 | loss: 0.966403 | align: 0.560631 | std: 0.319745 | cov: 8.602773 | 
+Training Epoch:  72%|███████▎  | 145/200 [45:47<16:40, 18.19s/it]2025-08-16 18:50:40,529 | INFO : Epoch 146 Training Summary: epoch: 146.000000 | loss: 0.968826 | align: 0.560093 | std: 0.325595 | cov: 8.313826 | 
+Training Epoch:  73%|███████▎  | 146/200 [46:05<16:21, 18.17s/it]2025-08-16 18:50:54,964 | INFO : Epoch 147 Training Summary: epoch: 147.000000 | loss: 0.969431 | align: 0.565181 | std: 0.317949 | cov: 8.630119 | 
+Training Epoch:  74%|███████▎  | 147/200 [46:20<15:03, 17.05s/it]2025-08-16 18:51:09,705 | INFO : Epoch 148 Training Summary: epoch: 148.000000 | loss: 0.968659 | align: 0.567208 | std: 0.313832 | cov: 8.761933 | 
+Training Epoch:  74%|███████▍  | 148/200 [46:35<14:10, 16.36s/it]2025-08-16 18:51:24,427 | INFO : Epoch 149 Training Summary: epoch: 149.000000 | loss: 0.988895 | align: 0.569156 | std: 0.338849 | cov: 8.089040 | 
+Training Epoch:  74%|███████▍  | 149/200 [46:49<13:29, 15.87s/it]2025-08-16 18:51:39,727 | INFO : Epoch 150 Training Summary: epoch: 150.000000 | loss: 0.948599 | align: 0.524076 | std: 0.346613 | cov: 7.790952 | 
+Training Epoch:  75%|███████▌  | 150/200 [47:05<13:05, 15.71s/it]2025-08-16 18:51:56,800 | INFO : Epoch 151 Training Summary: epoch: 151.000000 | loss: 0.961995 | align: 0.551940 | std: 0.327328 | cov: 8.272664 | 
+Training Epoch:  76%|███████▌  | 151/200 [47:22<13:09, 16.11s/it]2025-08-16 18:52:19,086 | INFO : Epoch 152 Training Summary: epoch: 152.000000 | loss: 0.976665 | align: 0.564741 | std: 0.328243 | cov: 8.368170 | 
+Training Epoch:  76%|███████▌  | 152/200 [47:44<14:22, 17.96s/it]2025-08-16 18:52:39,353 | INFO : Epoch 153 Training Summary: epoch: 153.000000 | loss: 0.976016 | align: 0.568841 | std: 0.319499 | cov: 8.767671 | 
+Training Epoch:  76%|███████▋  | 153/200 [48:04<14:36, 18.65s/it]2025-08-16 18:52:56,689 | INFO : Epoch 154 Training Summary: epoch: 154.000000 | loss: 0.975174 | align: 0.574557 | std: 0.312456 | cov: 8.816041 | 
+Training Epoch:  77%|███████▋  | 154/200 [48:22<13:59, 18.26s/it]2025-08-16 18:53:15,184 | INFO : Epoch 155 Training Summary: epoch: 155.000000 | loss: 0.975406 | align: 0.575222 | std: 0.311929 | cov: 8.825576 | 
+Training Epoch:  78%|███████▊  | 155/200 [48:40<13:44, 18.33s/it]2025-08-16 18:53:32,345 | INFO : Epoch 156 Training Summary: epoch: 156.000000 | loss: 0.979479 | align: 0.579106 | std: 0.313287 | cov: 8.708727 | 
+Training Epoch:  78%|███████▊  | 156/200 [48:57<13:11, 17.98s/it]2025-08-16 18:53:49,301 | INFO : Epoch 157 Training Summary: epoch: 157.000000 | loss: 0.975761 | align: 0.575615 | std: 0.313056 | cov: 8.708963 | 
+Training Epoch:  78%|███████▊  | 157/200 [49:14<12:39, 17.67s/it]2025-08-16 18:54:05,657 | INFO : Epoch 158 Training Summary: epoch: 158.000000 | loss: 0.979518 | align: 0.579544 | std: 0.311465 | cov: 8.850859 | 
+Training Epoch:  79%|███████▉  | 158/200 [49:30<12:05, 17.28s/it]2025-08-16 18:54:21,067 | INFO : Epoch 159 Training Summary: epoch: 159.000000 | loss: 0.975013 | align: 0.575851 | std: 0.311082 | cov: 8.807935 | 
+Training Epoch:  80%|███████▉  | 159/200 [49:46<11:25, 16.72s/it]2025-08-16 18:54:36,659 | INFO : Epoch 160 Training Summary: epoch: 160.000000 | loss: 0.979141 | align: 0.576911 | std: 0.315960 | cov: 8.627098 | 
+Training Epoch:  80%|████████  | 160/200 [50:01<10:55, 16.38s/it]2025-08-16 18:54:51,966 | INFO : Epoch 161 Training Summary: epoch: 161.000000 | loss: 0.980439 | align: 0.577842 | std: 0.317275 | cov: 8.532118 | 
+Training Epoch:  80%|████████  | 161/200 [50:17<10:26, 16.06s/it]2025-08-16 18:55:09,148 | INFO : Epoch 162 Training Summary: epoch: 162.000000 | loss: 0.978365 | align: 0.576163 | std: 0.317076 | cov: 8.512612 | 
+Training Epoch:  81%|████████  | 162/200 [50:34<10:23, 16.39s/it]2025-08-16 18:55:26,918 | INFO : Epoch 163 Training Summary: epoch: 163.000000 | loss: 0.976528 | align: 0.575271 | std: 0.315664 | cov: 8.559276 | 
+Training Epoch:  82%|████████▏ | 163/200 [50:52<10:21, 16.81s/it]2025-08-16 18:55:42,824 | INFO : Epoch 164 Training Summary: epoch: 164.000000 | loss: 0.984735 | align: 0.579608 | std: 0.317749 | cov: 8.737830 | 
+Training Epoch:  82%|████████▏ | 164/200 [51:08<09:55, 16.54s/it]2025-08-16 18:56:05,682 | INFO : Epoch 165 Training Summary: epoch: 165.000000 | loss: 0.986374 | align: 0.583486 | std: 0.316901 | cov: 8.598672 | 
+Training Epoch:  82%|████████▎ | 165/200 [51:31<10:45, 18.43s/it]2025-08-16 18:56:25,587 | INFO : Epoch 166 Training Summary: epoch: 166.000000 | loss: 0.986749 | align: 0.586187 | std: 0.312461 | cov: 8.810061 | 
+Training Epoch:  83%|████████▎ | 166/200 [51:50<10:41, 18.87s/it]2025-08-16 18:56:41,481 | INFO : Epoch 167 Training Summary: epoch: 167.000000 | loss: 0.981068 | align: 0.579568 | std: 0.316176 | cov: 8.532368 | 
+Training Epoch:  84%|████████▎ | 167/200 [52:06<09:53, 17.98s/it]2025-08-16 18:56:57,366 | INFO : Epoch 168 Training Summary: epoch: 168.000000 | loss: 0.981459 | align: 0.574585 | std: 0.322623 | cov: 8.425125 | 
+Training Epoch:  84%|████████▍ | 168/200 [52:22<09:15, 17.35s/it]2025-08-16 18:57:13,048 | INFO : Epoch 169 Training Summary: epoch: 169.000000 | loss: 0.980520 | align: 0.576294 | std: 0.319234 | cov: 8.499212 | 
+Training Epoch:  84%|████████▍ | 169/200 [52:38<08:42, 16.85s/it]2025-08-16 18:57:28,716 | INFO : Epoch 170 Training Summary: epoch: 170.000000 | loss: 0.975514 | align: 0.576425 | std: 0.312459 | cov: 8.663057 | 
+Training Epoch:  85%|████████▌ | 170/200 [52:54<08:14, 16.50s/it]2025-08-16 18:57:50,000 | INFO : Epoch 171 Training Summary: epoch: 171.000000 | loss: 0.979956 | align: 0.577768 | std: 0.316507 | cov: 8.568045 | 
+Training Epoch:  86%|████████▌ | 171/200 [53:15<08:40, 17.93s/it]2025-08-16 18:58:13,256 | INFO : Epoch 172 Training Summary: epoch: 172.000000 | loss: 0.981872 | align: 0.575969 | std: 0.321782 | cov: 8.412024 | 
+Training Epoch:  86%|████████▌ | 172/200 [53:38<09:06, 19.53s/it]2025-08-16 18:58:32,105 | INFO : Epoch 173 Training Summary: epoch: 173.000000 | loss: 0.984558 | align: 0.580097 | std: 0.321420 | cov: 8.304160 | 
+Training Epoch:  86%|████████▋ | 173/200 [53:57<08:41, 19.33s/it]2025-08-16 18:58:48,655 | INFO : Epoch 174 Training Summary: epoch: 174.000000 | loss: 0.981811 | align: 0.576070 | std: 0.322729 | cov: 8.301250 | 
+Training Epoch:  87%|████████▋ | 174/200 [54:13<08:00, 18.49s/it]2025-08-16 18:59:07,599 | INFO : Epoch 175 Training Summary: epoch: 175.000000 | loss: 0.980480 | align: 0.574284 | std: 0.325268 | cov: 8.092866 | 
+Training Epoch:  88%|████████▊ | 175/200 [54:32<07:45, 18.63s/it]2025-08-16 18:59:23,890 | INFO : Epoch 176 Training Summary: epoch: 176.000000 | loss: 0.982300 | align: 0.574915 | std: 0.323988 | cov: 8.339629 | 
+Training Epoch:  88%|████████▊ | 176/200 [54:49<07:10, 17.93s/it]2025-08-16 18:59:41,862 | INFO : Epoch 177 Training Summary: epoch: 177.000000 | loss: 0.982034 | align: 0.576843 | std: 0.319404 | cov: 8.578690 | 
+Training Epoch:  88%|████████▊ | 177/200 [55:07<06:52, 17.94s/it]2025-08-16 18:59:59,506 | INFO : Epoch 178 Training Summary: epoch: 178.000000 | loss: 0.980859 | align: 0.579819 | std: 0.316644 | cov: 8.439590 | 
+Training Epoch:  89%|████████▉ | 178/200 [55:24<06:32, 17.85s/it]2025-08-16 19:00:14,903 | INFO : Epoch 179 Training Summary: epoch: 179.000000 | loss: 0.980164 | align: 0.581349 | std: 0.312642 | cov: 8.617426 | 
+Training Epoch:  90%|████████▉ | 179/200 [55:40<05:59, 17.12s/it]2025-08-16 19:00:34,082 | INFO : Epoch 180 Training Summary: epoch: 180.000000 | loss: 0.983801 | align: 0.582458 | std: 0.315186 | cov: 8.615741 | 
+Training Epoch:  90%|█████████ | 180/200 [55:59<05:54, 17.73s/it]2025-08-16 19:00:49,692 | INFO : Epoch 181 Training Summary: epoch: 181.000000 | loss: 0.988173 | align: 0.585362 | std: 0.316280 | cov: 8.653140 | 
+Training Epoch:  90%|█████████ | 181/200 [56:15<05:24, 17.10s/it]2025-08-16 19:01:07,564 | INFO : Epoch 182 Training Summary: epoch: 182.000000 | loss: 0.987067 | align: 0.585225 | std: 0.317744 | cov: 8.409872 | 
+Training Epoch:  91%|█████████ | 182/200 [56:32<05:11, 17.33s/it]2025-08-16 19:01:22,979 | INFO : Epoch 183 Training Summary: epoch: 183.000000 | loss: 0.986058 | align: 0.584887 | std: 0.317250 | cov: 8.392016 | 
+Training Epoch:  92%|█████████▏| 183/200 [56:48<04:44, 16.76s/it]2025-08-16 19:01:39,015 | INFO : Epoch 184 Training Summary: epoch: 184.000000 | loss: 0.984429 | align: 0.580941 | std: 0.318595 | cov: 8.489310 | 
+Training Epoch:  92%|█████████▏| 184/200 [57:04<04:24, 16.54s/it]2025-08-16 19:02:02,199 | INFO : Epoch 185 Training Summary: epoch: 185.000000 | loss: 0.984676 | align: 0.581194 | std: 0.318944 | cov: 8.453862 | 
+Training Epoch:  92%|█████████▎| 185/200 [57:27<04:37, 18.53s/it]2025-08-16 19:02:26,962 | INFO : Epoch 186 Training Summary: epoch: 186.000000 | loss: 0.984779 | align: 0.582125 | std: 0.318143 | cov: 8.451132 | 
+Training Epoch:  93%|█████████▎| 186/200 [57:52<04:45, 20.40s/it]2025-08-16 19:02:43,735 | INFO : Epoch 187 Training Summary: epoch: 187.000000 | loss: 0.984185 | align: 0.580379 | std: 0.317733 | cov: 8.607326 | 
+Training Epoch:  94%|█████████▎| 187/200 [58:09<04:11, 19.31s/it]2025-08-16 19:02:58,342 | INFO : Epoch 188 Training Summary: epoch: 188.000000 | loss: 0.985589 | align: 0.582294 | std: 0.319337 | cov: 8.395754 | 
+Training Epoch:  94%|█████████▍| 188/200 [58:23<03:34, 17.90s/it]2025-08-16 19:03:14,761 | INFO : Epoch 189 Training Summary: epoch: 189.000000 | loss: 0.983076 | align: 0.581369 | std: 0.316842 | cov: 8.486476 | 
+Training Epoch:  94%|█████████▍| 189/200 [58:40<03:12, 17.46s/it]2025-08-16 19:03:31,509 | INFO : Epoch 190 Training Summary: epoch: 190.000000 | loss: 0.987639 | align: 0.585203 | std: 0.317396 | cov: 8.503946 | 
+Training Epoch:  95%|█████████▌| 190/200 [58:56<02:52, 17.24s/it]2025-08-16 19:03:54,157 | INFO : Epoch 191 Training Summary: epoch: 191.000000 | loss: 0.986732 | align: 0.580974 | std: 0.321569 | cov: 8.418812 | 
+Training Epoch:  96%|█████████▌| 191/200 [59:19<02:49, 18.87s/it]2025-08-16 19:04:19,378 | INFO : Epoch 192 Training Summary: epoch: 192.000000 | loss: 0.985625 | align: 0.583355 | std: 0.318415 | cov: 8.385513 | 
+Training Epoch:  96%|█████████▌| 192/200 [59:44<02:46, 20.77s/it]2025-08-16 19:04:38,305 | INFO : Epoch 193 Training Summary: epoch: 193.000000 | loss: 0.985787 | align: 0.581008 | std: 0.319412 | cov: 8.536711 | 
+Training Epoch:  96%|█████████▋| 193/200 [1:00:03<02:21, 20.22s/it]2025-08-16 19:04:54,818 | INFO : Epoch 194 Training Summary: epoch: 194.000000 | loss: 0.984571 | align: 0.579593 | std: 0.320322 | cov: 8.465618 | 
+Training Epoch:  97%|█████████▋| 194/200 [1:00:20<01:54, 19.11s/it]2025-08-16 19:05:11,349 | INFO : Epoch 195 Training Summary: epoch: 195.000000 | loss: 0.981517 | align: 0.577424 | std: 0.320302 | cov: 8.379075 | 
+Training Epoch:  98%|█████████▊| 195/200 [1:00:36<01:31, 18.33s/it]2025-08-16 19:05:25,639 | INFO : Epoch 196 Training Summary: epoch: 196.000000 | loss: 0.981285 | align: 0.577750 | std: 0.318118 | cov: 8.541732 | 
+Training Epoch:  98%|█████████▊| 196/200 [1:00:50<01:08, 17.12s/it]2025-08-16 19:05:43,949 | INFO : Epoch 197 Training Summary: epoch: 197.000000 | loss: 0.983977 | align: 0.578673 | std: 0.321031 | cov: 8.427284 | 
+Training Epoch:  98%|█████████▊| 197/200 [1:01:09<00:52, 17.48s/it]2025-08-16 19:05:59,995 | INFO : Epoch 198 Training Summary: epoch: 198.000000 | loss: 0.983804 | align: 0.577036 | std: 0.322716 | cov: 8.405282 | 
+Training Epoch:  99%|█████████▉| 198/200 [1:01:25<00:34, 17.05s/it]2025-08-16 19:06:18,039 | INFO : Epoch 199 Training Summary: epoch: 199.000000 | loss: 0.984537 | align: 0.580137 | std: 0.319609 | cov: 8.479057 | 
+Training Epoch: 100%|█████████▉| 199/200 [1:01:43<00:17, 17.35s/it]2025-08-16 19:06:35,275 | INFO : Epoch 200 Training Summary: epoch: 200.000000 | loss: 0.979496 | align: 0.577437 | std: 0.317365 | cov: 8.469407 | 
+Training Epoch: 100%|██████████| 200/200 [1:02:00<00:00, 17.31s/it]                                                                   2025-08-16 19:06:35,276 | INFO : Train Time: 1.0 hours, 2.0 minutes, 0.6155331134796143 seconds
+
+2025-08-16 19:06:35,404 | INFO : Starting Fine_Tuning...
