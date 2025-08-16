@@ -1,0 +1,173 @@
+************************
+           FIF          
+************************
+Best validation loss: 1.0953397049623377
+Saving best model for epoch: 51
+
+Best validation loss: 1.0858139430775362
+Saving best model for epoch: 55
+
+Best validation loss: 1.0808504960116219
+Saving best model for epoch: 243
+
+Best validation loss: 1.0784673480426563
+Saving best model for epoch: 248
+
+Best validation loss: 1.0695262305876787
+Saving best model for epoch: 250
+
+Best validation loss: 1.0661673195221846
+Saving best model for epoch: 251
+
+Best validation loss: 1.0619677164975334
+Saving best model for epoch: 260
+
+Best validation loss: 1.0574211653541117
+Saving best model for epoch: 261
+
+Best validation loss: 1.0538123425315409
+Saving best model for epoch: 262
+
+Best validation loss: 1.0530646197936113
+Saving best model for epoch: 270
+
+Best validation loss: 1.045229715459487
+Saving best model for epoch: 271
+
+Best validation loss: 1.0442410426981308
+Saving best model for epoch: 273
+
+Best validation loss: 1.0442114787943222
+Saving best model for epoch: 274
+
+Best validation loss: 1.0385856908910416
+Saving best model for epoch: 275
+
+Best validation loss: 1.038559598081252
+Saving best model for epoch: 277
+
+Best validation loss: 1.0312180939842672
+Saving best model for epoch: 278
+
+Best validation loss: 1.0271699498681461
+Saving best model for epoch: 279
+
+Best validation loss: 1.0167013441815096
+Saving best model for epoch: 280
+
+Best validation loss: 1.0164225557271171
+Saving best model for epoch: 294
+
+Best validation loss: 1.0125011205673218
+Saving best model for epoch: 295
+
+Best validation loss: 1.0111712673131157
+Saving best model for epoch: 297
+
+Best validation loss: 1.009476644151351
+Saving best model for epoch: 301
+
+Best validation loss: 1.0074933031026054
+Saving best model for epoch: 309
+
+Best validation loss: 1.0073926939683802
+Saving best model for epoch: 310
+
+Best validation loss: 0.9940902730997871
+Saving best model for epoch: 313
+
+Best validation loss: 0.9887933625894434
+Saving best model for epoch: 315
+
+Best validation loss: 0.9849045276641846
+Saving best model for epoch: 324
+
+Best validation loss: 0.9821369823287515
+Saving best model for epoch: 331
+
+Best validation loss: 0.9805676446241491
+Saving best model for epoch: 335
+
+Best validation loss: 0.9753953604137197
+Saving best model for epoch: 338
+
+Best validation loss: 0.9713808964280521
+Saving best model for epoch: 339
+
+Best validation loss: 0.9699313710717594
+Saving best model for epoch: 347
+
+Best validation loss: 0.9648504853248596
+Saving best model for epoch: 348
+
+Best validation loss: 0.9634780953912174
+Saving best model for epoch: 354
+
+Best validation loss: 0.956563041490667
+Saving best model for epoch: 359
+
+Best validation loss: 0.9555587453000686
+Saving best model for epoch: 373
+
+Best validation loss: 0.9541567423764397
+Saving best model for epoch: 379
+
+Best validation loss: 0.950559700236601
+Saving best model for epoch: 384
+
+Best validation loss: 0.9504068143227521
+Saving best model for epoch: 385
+
+Best validation loss: 0.9494461206828847
+Saving best model for epoch: 392
+
+Best validation loss: 0.9458753326359917
+Saving best model for epoch: 399
+
+Best validation loss: 0.9407349439228282
+Saving best model for epoch: 400
+
+Best validation loss: 0.932100821943844
+Saving best model for epoch: 404
+
+Best validation loss: 0.9291608684203204
+Saving best model for epoch: 420
+
+Best validation loss: 0.9252229718601003
+Saving best model for epoch: 447
+
+Best validation loss: 0.9225805612171397
+Saving best model for epoch: 465
+
+Best validation loss: 0.9200791541267844
+Saving best model for epoch: 476
+
+Best validation loss: 0.9190521029865041
+Saving best model for epoch: 486
+
+Best validation loss: 0.915578281178194
+Saving best model for epoch: 487
+
+Best validation loss: 0.9146964514956755
+Saving best model for epoch: 513
+
+Best validation loss: 0.9126780559034908
+Saving best model for epoch: 514
+
+Best validation loss: 0.9123992779675651
+Saving best model for epoch: 583
+
+Loaded model from Results/Rep-Learning/Dataset/Crowdsource/2025-08-15_20-37/checkpoints/FIFmodel_last.pth. Epoch: 583
+************************
+           FIF          
+************************
+Best Model Test Summary: loss: None | 
+
+====================================
+CPU Time used: 12:30:24
+CPU Percent: 391%
+Memory usage: 2277272kb
+Approx Power usage: 0.15
+Walltime usage: 03:22:14
+
+====================================

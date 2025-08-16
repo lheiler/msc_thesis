@@ -4,17 +4,14 @@ import torch
 from torch import Tensor
 import mne
 from scipy.signal import welch
-# Model constants
-FREQ_MIN = 1.0  # Hz
-FREQ_MAX = 45.0  # Hz
-N_FREQS = 513  # grid resolution
-FREQS = np.linspace(FREQ_MIN, FREQ_MAX, N_FREQS)
 
+
+from utils.util import normalize_psd, PSD_CALCULATION_PARAMS
 
 class ParameterRegressor(torch.nn.Module):
     """Simple feedforward network that maps a PSD to CTM parameters."""
 
-    def __init__(self, in_dim: int = N_FREQS, hidden_dims=(512, 256), out_dim: int = 8):
+    def __init__(self, in_dim: int = PSD_CALCULATION_PARAMS["n_fft"], hidden_dims=(512, 256), out_dim: int = 8):
         super().__init__()
         layers = []
         prev = in_dim
@@ -31,10 +28,6 @@ class ParameterRegressor(torch.nn.Module):
         return self.net(x)
 
 
-def _normalise(psd: np.ndarray) -> np.ndarray:
-    """Log-transform & mean-centre to capture *shape* not absolute magnitude."""
-    log_psd = np.log10(psd + 1e-12)
-    return log_psd - log_psd.mean()
 
 
 def smooth_psd(psd: np.ndarray) -> np.ndarray:
@@ -42,7 +35,7 @@ def smooth_psd(psd: np.ndarray) -> np.ndarray:
     return np.convolve(psd, np.ones(10)/10, mode='same')
 
 
-def infer_latent_parameters(model, x: mne.io.Raw, device: str = "cuda") -> np.ndarray:
+def infer_latent_parameters(model, psds: np.ndarray, device: str = "cuda") -> np.ndarray:
     """
     Load the trained model and perform inference to get latent parameters.
     
@@ -60,34 +53,12 @@ def infer_latent_parameters(model, x: mne.io.Raw, device: str = "cuda") -> np.nd
     np.ndarray
         Predicted latent parameters with shape (N, PARAM_DIM)
     """
-    
-    if 'A1' in x.ch_names:
-        x.drop_channels(['A1'])
-    if 'A2' in x.ch_names:
-        x.drop_channels(['A2'])
-        
-    # specifically pick the 19 EEG channels by name
-    eeg_channels = ['Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4', 
-                    'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6', 
-                    'Cz', 'Pz', 'Fz']    
-    
-    
     model.eval()
-    x = x.pick_channels(eeg_channels)
-    x = x.filter(3.0, 45.0, fir_design='firwin')
-    sfreq = x.info['sfreq']
-    x = x.get_data()
-    freqs, psds = welch(x, fs=sfreq, nperseg=(N_FREQS-1)*2)
-    psds = psds.reshape(-1, psds.shape[1])
-    #psds = np.array([psds.mean(axis=0)]) uncomment this to use the mean of the psds
-    #print(psds.shape)
-    # Process data
     all_preds = []
-    
     with torch.no_grad():
         for i in range(psds.shape[0]):  
             emp_input = torch.as_tensor(
-                _normalise(smooth_psd(psds[i])), 
+                normalize_psd(smooth_psd(psds[i])), 
                 dtype=torch.float32
             ).to(device)
             pred = model(emp_input)[0].cpu().numpy().flatten()

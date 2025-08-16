@@ -8,10 +8,7 @@ from sklearn.cross_decomposition import CCA
 from sklearn.decomposition import PCA
 from scipy.spatial import procrustes
 
-from utils.latent_loading import (
-    load_latent_ae_parameters_array,
-    load_latent_parameters_array,
-)
+from utils.latent_loading import load_latent_parameters_array
 
 
 def _center_rows(X: np.ndarray) -> np.ndarray:
@@ -192,12 +189,10 @@ def _dataloader_to_array(loader) -> np.ndarray:
 def _load_latents_any(path: str, batch_size: int = 1024):
     path = os.path.expanduser(path)
     if path.endswith(".json"):
-        return load_latent_ae_parameters_array(path, batch_size=batch_size)
-    elif path.endswith(".txt"):
         return load_latent_parameters_array(path, batch_size=batch_size)
     else:
-        # Default to JSON loader; it appends .json if missing
-        return load_latent_ae_parameters_array(path, batch_size=batch_size)
+        print("ERROR: Unknown file type")
+        return None
 
 
 if __name__ == "__main__":
