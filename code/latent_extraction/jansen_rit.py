@@ -9,9 +9,9 @@ Public API mirrors the CTM helper for consistency:
 
     * fit_parameters(freqs, psd, *, initial_theta=None, sigma0=0.5,
                      bounds=None, cma_opts=None, return_full=False)
-        – Runs CMA-ES to fit JR parameters to the supplied power spectrum.
-          Returns a dict of best-fit parameters. If ``return_full=True`` also
-          returns (theta_best, loss_best).
+        – Runs CMA-ES to fit JR parameters (reduced 6‑parameter form) to the
+          supplied power spectrum. Returns a dict of best‑fit parameters. If
+          ``return_full=True`` also returns (theta_best, loss_best).
 
     * fit_jr_from_raw(raw, **kwargs)
         – Convenience wrapper: estimate PSD from all EEG channels, average,
@@ -22,19 +22,27 @@ from __future__ import annotations
 
 import numpy as np
 import cma
-from scipy.interpolate import interp1d
 import mne
 import os
 import re
+from utils.util import (
+    normalize_psd,
+    PSD_CALCULATION_PARAMS,
+    clean_raw_eeg,
+    compute_psd_from_raw,
+)
 
 mne.set_log_level('WARNING')
 
 
+
 # ---------------------------------------------------------------------
-# Fixed frequency grid used by the model evaluation
+# Frequency grid aligned to utils Welch PSD bins (no interpolation)
 # ---------------------------------------------------------------------
-_f = np.arange(0.5, 45.25, 0.25)  # Hz
-_w = 2 * np.pi * _f               # rad s^-1
+_NFFT = int(PSD_CALCULATION_PARAMS.get("n_fft", 256))
+_SFREQ = float(PSD_CALCULATION_PARAMS.get("sfreq", 128.0))
+_f = np.linspace(0.0, _SFREQ / 2.0, _NFFT // 2 + 1, dtype=float)  # Hz
+_w = 2 * np.pi * _f                                                # rad s^-1
 
 
 # ---------------------------------------------------------------------
@@ -71,7 +79,12 @@ def _jr_transfer(jw: complex, p: dict[str, float]) -> complex:
     He = _He(jw, p['A'], p['a'])
     Hi = _Hi(jw, p['B'], p['b'])
     G = p['G']
-    denom = 1.0 - (He ** 2) * (G ** 2) * p['C1'] * p['C2'] + (He * Hi) * (G ** 2) * p['C3'] * p['C4']
+    # Derived connectivities from base C1
+    C1 = p['C1']
+    C2 = 0.8 * C1
+    C3 = 0.25 * C1
+    C4 = 0.25 * C1
+    denom = 1.0 - (He ** 2) * (G ** 2) * C1 * C2 + (He * Hi) * (G ** 2) * C3 * C4
     return (He ** 2) * G / denom
 
 
@@ -106,7 +119,7 @@ def compute_psd(
 
     This matches the helper in the CTM module for a consistent interface.
     """
-    raw_copy = raw.copy().pick_channels([channel] if isinstance(channel, str) else channel)
+    raw_copy = raw.copy().pick([channel] if isinstance(channel, str) else channel)
     spectrum = raw_copy.compute_psd(method='welch', fmin=fmin, fmax=fmax, n_fft=n_fft)
     psds = spectrum.get_data()
     freqs = spectrum.freqs
@@ -118,10 +131,15 @@ def compute_psd(
 # Loss and optimisation
 # ---------------------------------------------------------------------
 
+# ---------------------------------------------------------------------
+# Reduced 6‑parameter JR: single connectivity scalar C1; others derived
+# C2 = 0.8*C1, C3 = 0.25*C1, C4 = 0.25*C1
+# ---------------------------------------------------------------------
 _PARAM_KEYS = [
-    'C1', 'C2', 'C3', 'C4',
-    'A', 'B', 'a', 'b',
-    'G', 'gain'
+    'C1',      # base connectivity; C2, C3, C4 are derived
+    'A', 'B',  # synaptic gains
+    'a', 'b',  # synaptic time constants (s⁻¹)
+    'G',       # linearised sigmoid slope
 ]
 
 
@@ -131,23 +149,19 @@ def _dict_to_vector(p: dict[str, float]):
 
 
 _DEFAULT_THETA0 = np.asarray([
-    135.0, 108.0, 33.75, 33.75,   # C1..C4
-    3.25, 22.0, 100.0, 50.0,      # A, B, a, b
-    1.5,                          # G (effective slope)
-    1.0,                          # gain (amplitude)
+    135.0,        # C1 (C2=0.8*C1, C3=C1/4, C4=C1/4)
+    3.25, 22.0,   # A, B
+    100.0, 50.0,  # a, b
+    1.5,          # G (effective slope)
 ], dtype=float)
 
 _DEFAULT_BOUNDS = np.asarray([
     (50.0, 300.0),   # C1
-    (50.0, 300.0),   # C2
-    (10.0, 120.0),   # C3
-    (10.0, 120.0),   # C4
     (1.0, 10.0),     # A
     (5.0, 60.0),     # B
     (50.0, 150.0),   # a
     (20.0, 120.0),   # b
     (0.1, 5.0),      # G
-    (1e-6, 1e3),     # gain
 ], dtype=float)
 
 
@@ -159,36 +173,17 @@ def _loss_function(
     normalize: bool = True,
     normalization: str = 'mean',
 ) -> float:
-    """Weighted MSE in log-space between model and empirical PSD."""
+    """MSE between model and empirical PSD on identical Welch bins.
+
+    The JR model is evaluated on the shared grid `_f` that matches utils' bins,
+    so no interpolation is required.
+    """
     p_full = dict(zip(_PARAM_KEYS, theta))
-    gain = p_full.pop('gain')
-    model_psd = gain * _P_omega(p_full)
-
-    # Interpolate model to match empirical frequency grid
-    interp_func = interp1d(_f, model_psd, kind='linear', bounds_error=False,
-                           fill_value='extrapolate')
-    model_resampled = interp_func(freqs)
-
-    # Optional normalization to compare shapes independent of scale
+    model_psd = _P_omega(p_full)
     if normalize:
-        eps = 1e-12
-        if normalization == 'mean':
-            real_psd = real_psd / (np.mean(real_psd) + eps)
-            model_resampled = model_resampled / (np.mean(model_resampled) + eps)
-        elif normalization == 'sum':
-            real_psd = real_psd / (np.sum(real_psd) + eps)
-            model_resampled = model_resampled / (np.sum(model_resampled) + eps)
-        elif normalization == 'max':
-            real_psd = real_psd / (np.max(real_psd) + eps)
-            model_resampled = model_resampled / (np.max(model_resampled) + eps)
-        else:
-            raise ValueError("normalization must be one of {'mean','sum','max'}")
-
-    log_model = np.log10(model_resampled + 1e-12)
-    log_real = np.log10(real_psd + 1e-12)
-
-    weights = 1.0 / (real_psd + 1e-12)
-    return float(np.mean(weights * (log_model - log_real) ** 2))
+        model_psd = normalize_psd(model_psd)
+        real_psd = normalize_psd(real_psd)
+    return float(np.mean((model_psd - real_psd) ** 2))
 
 
 class LossFunction:
@@ -244,63 +239,26 @@ def fit_parameters(
     return best_params
 
 
-def fit_jr_from_raw(
+def fit_jr_average_from_raw(
     raw: mne.io.BaseRaw,
-    *,
-    n_fft: int = 128,
-    as_vector: bool = False,
     **fit_kwargs,
 ) -> 'np.ndarray | dict[str, float]':
-    """High-level helper: estimate PSD from EEG channels and fit JR model."""
-    psds: list[np.ndarray] = []
-    freqss: list[np.ndarray] = []
+    """Estimate average PSD via utils and fit JR model on shared Welch bins."""
+    psd, freqs = compute_psd_from_raw(raw, calculate_average=True, normalize=False, return_freqs=True)
+    params = fit_parameters(freqs, psd, **fit_kwargs)   
+    return _dict_to_vector(params)
 
-    zips = zip(raw.ch_names, raw.get_channel_types())
-    eeg_chs = [name for name, type_ in zips if type_ == 'eeg']
 
-    for ch in eeg_chs:
-        try:
-            freqs, psd = compute_psd(raw, channel=ch, n_fft=n_fft)
-        except Exception as e:
-            print(f"Error computing PSD for channel {ch}: {e}")
-            return None
-        psds.append(psd)
-        freqss.append(freqs)
-
-    psd = np.mean(psds, axis=0)
-    freqs = freqss[0]
-
-    params = fit_parameters(freqs, psd, **fit_kwargs)
-    print(" ".join([f"{key}: {value:.5f}" for key, value in params.items()]))
-
-    # ---- Save PSD comparison plot (name includes EEG task) ----
-    task = "unknown"
-    if hasattr(raw, "filenames") and getattr(raw, "filenames", None):
-        fname = os.path.basename(raw.filenames[0])
-        match = re.search(r"task-([^_]+)", fname)
-        if match:
-            task = match.group(1)
-
-    model_psd = _P_omega({k: v for k, v in params.items() if k != 'gain'}) * params['gain']
-    interp_func = interp1d(_f, model_psd, kind='linear', bounds_error=False, fill_value='extrapolate')
-    model_resampled = interp_func(freqs)
-
-    # Uncomment to save a figure
-    # import matplotlib.pyplot as plt
-    # plt.figure(figsize=(10, 6))
-    # plt.plot(freqs, psd, label='Empirical PSD', color='blue')
-    # plt.plot(freqs, model_resampled, label='Fitted JR PSD', color='red', linestyle='--')
-    # plt.xscale('log')
-    # plt.yscale('log')
-    # plt.xlabel('Frequency (Hz)')
-    # plt.ylabel('Power Spectral Density')
-    # plt.title(f'JR Fitting ({task}): Empirical vs Fitted PSD')
-    # plt.legend()
-    # plt.grid(True)
-    # plt.savefig(f'fitted_psd_jr_{task}.png')
-
-    if as_vector:
-        return _dict_to_vector(params)
-    return params
+def fit_jr_per_channel_from_raw(
+    raw: mne.io.BaseRaw,
+    **fit_kwargs,
+) -> np.ndarray:
+    """Fit JR parameters per channel and return concatenated vector."""
+    psd_matrix, freqs = compute_psd_from_raw(raw, calculate_average=False, normalize=False, return_freqs=True)
+    all_params: list[np.ndarray] = []
+    for row in psd_matrix:
+        p = fit_parameters(freqs, row, **fit_kwargs)
+        all_params.append(_dict_to_vector(p))
+    return np.concatenate(all_params, axis=0)
 
 

@@ -1,0 +1,121 @@
+{
+  "metrics_per_task": {
+    "gender": {
+      "loss": 0.6739360716031946,
+      "accuracy": 0.5833333333333334,
+      "pred_counts": {
+        "label_0": 105,
+        "label_1": 171
+      },
+      "precision": 0.5964912280701754,
+      "recall": 0.6891891891891891,
+      "f1": 0.6394984326018809,
+      "f1_macro": 0.5729681004211121,
+      "roc_auc": 0.6078969594594594,
+      "pr_auc": 0.6705743492392903,
+      "confusion": [
+        [
+          59,
+          69
+        ],
+        [
+          46,
+          102
+        ]
+      ]
+    },
+    "abnormal": {
+      "loss": 0.525727590357048,
+      "accuracy": 0.7536231884057971,
+      "pred_counts": {
+        "label_0": 142,
+        "label_1": 134
+      },
+      "precision": 0.7164179104477612,
+      "recall": 0.7619047619047619,
+      "f1": 0.7384615384615385,
+      "f1_macro": 0.7527924130663857,
+      "roc_auc": 0.8257671957671957,
+      "pr_auc": 0.7994871046122649,
+      "confusion": [
+        [
+          112,
+          38
+        ],
+        [
+          30,
+          96
+        ]
+      ]
+    }
+  },
+  "hyperparams_per_task": {
+    "gender": {
+      "input_dim": 152,
+      "output_type": "classification",
+      "hidden_dims": [
+        256,
+        128,
+        64
+      ],
+      "dropout": 0.4962472294825632
+    },
+    "abnormal": {
+      "input_dim": 152,
+      "output_type": "classification",
+      "hidden_dims": [
+        448,
+        224,
+        112
+      ],
+      "dropout": 0.19123929304333953
+    }
+  },
+  "train_dataset_stats": {
+    "n_samples": 2717,
+    "gender_counts": {
+      "female(2)": 1447,
+      "male(1)": 1270,
+      "unknown(0)": 0
+    },
+    "abnormal_counts": {
+      "abnormal(1)": 1346,
+      "normal(0)": 1371
+    },
+    "age_bin_counts": {
+      "0\u201310": 2717,
+      "10\u201320": 0,
+      "20\u201330": 0,
+      "30\u201340": 0,
+      "40\u201350": 0,
+      "50\u201360": 0,
+      "60\u201370": 0,
+      "70\u201380": 0,
+      "80\u2013120": 0
+    }
+  },
+  "eval_dataset_stats": {
+    "n_samples": 276,
+    "gender_counts": {
+      "female(2)": 148,
+      "male(1)": 128,
+      "unknown(0)": 0
+    },
+    "abnormal_counts": {
+      "abnormal(1)": 126,
+      "normal(0)": 150
+    },
+    "age_bin_counts": {
+      "0\u201310": 276,
+      "10\u201320": 0,
+      "20\u201330": 0,
+      "30\u201340": 0,
+      "40\u201350": 0,
+      "50\u201360": 0,
+      "60\u201370": 0,
+      "70\u201380": 0,
+      "80\u2013120": 0
+    }
+  },
+  "latent": null
+}

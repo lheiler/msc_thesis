@@ -1,10 +1,23 @@
-method: ctm_nn
+#choose method from: 
+#ctm_nn_avg, ctm_nn_pc, 
+#pca_avg, pca_pc,
+#eeg2rep, 
+#eegnet,
+#c22 
+#jr_avg, jr_pc, 
+#wong_wang_avg, wong_wang_pc, 
+#hopf_avg, hopf_pc, 
+#psd_ae_avg, psd_ae_pc, 
+#psd_ae_channel, psd_ae_ch
+
+method: wong_wang_avg
+
 # Dataset corpus to use: 'tuh' or 'harvard'
 data_corp: tuh
 
 paths:
-  # Path to training data (ignored for Harvard)
-  data_tuh: "~/thesis/Datasets/tuh-eeg-ab-clean"
+  # Path to training data
+  data_path: "~/thesis/Datasets/tuh-eeg-ab-clean"
   # Directory where all results will be written
   results_root: "Results"
 
@@ -12,7 +25,7 @@ paths:
 # Hyper-parameter optimisation via Optuna (overrides manual settings)
 optuna:
   n_trials: 10    # Number of optimisation trials per task
-  val_split: 0.2   # Fraction of training data reserved for validation
+  val_split: 0.1   # Fraction of training data reserved for validation
   patience: 7    # Early-stopping patience within each trial
   batch_size: 64
 

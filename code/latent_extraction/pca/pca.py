@@ -2,13 +2,15 @@
 from __future__ import annotations
 import json
 from typing import Optional, Union, List, Iterable
-
+from pathlib import Path
 import numpy as np
 import mne
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import torch
-from utils.util import clean_raw_eeg
+import sys
+sys.path.append("/rds/general/user/lrh24/home/thesis/code")
+from utils.util import clean_raw_eeg, compute_psd_from_raw, PSD_CALCULATION_PARAMS, STANDARD_EEG_CHANNELS
 
 
 # Shared helpers / cleaning
@@ -39,11 +41,9 @@ def fit_pca_from_fif_dir(
     psd_fmax: float = 45.0,
     psd_df: float = 1.0,
     psd_n_per_seg: Optional[int] = 512,
-    psd_log: bool = True,
-    psd_resample: Optional[float] = None,
 ) -> dict:
     """
-    Recursively loads .fif files from train_dir, extracts the average PSD feature, fits
+    Recursively loads .fif files from train_dir, extracts per-channel PSDs, fits
     StandardScaler + PCA on TRAIN ONLY, and saves a frozen artifact (.npz + .pkl).
 
     """
@@ -61,42 +61,14 @@ def fit_pca_from_fif_dir(
     for fp in files:
         try:
             raw = mne.io.read_raw_fif(str(fp), preload=preload, verbose="ERROR")
-            raw = clean_x(raw)
-            r = raw
-            if psd_resample is not None:
-                r = raw.copy().resample(psd_resample, npad="auto")
-            psd = r.compute_psd(
-                method="welch",
-                fmin=psd_fmin,
-                fmax=psd_fmax,
-                n_per_seg=psd_n_per_seg,
-                n_fft=psd_n_fft,
-                verbose="ERROR",
-            )
-            psds, freqs = psd.get_data(return_freqs=True)
-            avg_psd = psds.mean(axis=0)  # (n_freqs,)
-            if psd_log:
-                avg_psd = np.log10(np.maximum(avg_psd, 1e-12))
-
-            if freqs_ref is None:
-                freqs_ref = freqs
-                first_dim = avg_psd.shape[0]
-            else:
-                if avg_psd.shape[0] != first_dim or not np.allclose(freqs, freqs_ref, atol=1e-6, rtol=0):
-                    raise ValueError(
-                        f"Frequency grid mismatch for {fp}.\n"
-                        f"Expected n={first_dim} and freqs≈{freqs_ref[:5]}...{freqs_ref[-5:]},\n"
-                        f"got n={avg_psd.shape[0]} and freqs≈{freqs[:5]}...{freqs[-5:]}.\n"
-                        f"Fix by using --psd-resample and/or --psd-n-fft to enforce identical bins, "
-                        f"or disable --no-interp."
-                    )
-
-            if not np.all(np.isfinite(avg_psd)):
+            raw = clean_raw_eeg(raw)
+            psd = compute_psd_from_raw(raw, calculate_average=False, normalize=True)  # (C, F)
+            if not np.all(np.isfinite(psd)):
                 if verbose:
                     print(f"⚠️  Non-finite PSD; will handle via imputation/scaling: {fp}")
-
-            X_list.append(avg_psd.astype(np.float32))
-            used_files.append(str(fp))
+            for ch_vec in psd:
+                X_list.append(ch_vec.astype(np.float32))
+                used_files.append(str(fp))
         except Exception as e:
             if verbose:
                 print(f"⚠️  Failed on {fp}: {e}")
@@ -124,7 +96,7 @@ def fit_pca_from_fif_dir(
         lam=pca.explained_variance_.astype(np.float32), # (k,)
         whiten=np.array(whiten, dtype=np.bool_),
         input_dim=np.array([d], dtype=np.int32),
-        channels=np.array(EEG_19, dtype=object),
+        channels=np.array(STANDARD_EEG_CHANNELS, dtype=object),
     )
     model_out.parent.mkdir(parents=True, exist_ok=True)
     np.savez(model_out, **payload_npz)
@@ -204,10 +176,20 @@ class FrozenPCATorch:
             z = z / self.lam.sqrt()
         return z.squeeze(0) if z.shape[0] == 1 else z
 
+def extract_pca_from_raw(raw: mne.io.BaseRaw, *, model: FrozenPCATorch, device: str = "cuda", per_channel: bool = False) -> torch.Tensor:
+    """Extract PCA features from raw data."""
+    if per_channel:
+        psd = compute_psd_from_raw(raw, calculate_average=False, normalize=True)
+        return model.transform_vec(psd).cpu().numpy().flatten()
+    else:
+        psd = compute_psd_from_raw(raw, calculate_average=True, normalize=True)
+        return model.transform_vec(psd).cpu().numpy().flatten()
+
+
 def main():
     # Hardcoded configuration – no CLI args
-    train_dir = "/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean/train"
-    out_dir = Path("/homes/lrh24/thesis/code/latent_extraction/pca/models/")
+    train_dir = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train"
+    out_dir = Path("/rds/general/user/lrh24/home/thesis/code/latent_extraction/pca/models/")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # PCA settings
@@ -218,15 +200,13 @@ def main():
     verbose = True
 
     # PSD settings
-    psd_fmin = 1.0
-    psd_fmax = 45.0
-    psd_df = 1.0
-    psd_n_per_seg = 512
-    psd_n_fft = 512
-    psd_log = True
-    psd_resample = None
+    psd_fmin = PSD_CALCULATION_PARAMS.get("min_freq", 3.0)
+    psd_fmax = PSD_CALCULATION_PARAMS.get("max_freq", 45.0)
+    psd_df = PSD_CALCULATION_PARAMS.get("df", 1.0)
+    psd_n_per_seg = PSD_CALCULATION_PARAMS.get("n_per_seg", 512)
+    psd_n_fft = PSD_CALCULATION_PARAMS.get("n_fft", 512)
 
-    model_stem = f"pca_avg_psd_k{k}"
+    model_stem = f"pca_pc_psd_k{k}"
     model_out = out_dir / f"{model_stem}.npz"
 
     fit_pca_from_fif_dir(
@@ -241,8 +221,6 @@ def main():
         psd_fmax=psd_fmax,
         psd_df=psd_df,
         psd_n_per_seg=psd_n_per_seg,
-        psd_log=psd_log,
-        psd_resample=psd_resample,
         psd_n_fft=psd_n_fft,
     )
 

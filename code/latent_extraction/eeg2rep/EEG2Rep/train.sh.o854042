@@ -1,0 +1,71 @@
+************************
+           FIF          
+************************
+Best validation loss: 1.0772047323339127
+Saving best model for epoch: 51
+
+Best validation loss: 1.0665203543270336
+Saving best model for epoch: 57
+
+Best validation loss: 1.0380077519837547
+Saving best model for epoch: 61
+
+Best validation loss: 1.0329383287359686
+Saving best model for epoch: 63
+
+Best validation loss: 1.027427827610689
+Saving best model for epoch: 65
+
+Best validation loss: 1.0215440602863537
+Saving best model for epoch: 66
+
+Best validation loss: 1.0130989937221302
+Saving best model for epoch: 67
+
+Best validation loss: 0.9984623071025399
+Saving best model for epoch: 68
+
+Best validation loss: 0.9954152475385105
+Saving best model for epoch: 69
+
+Best validation loss: 0.9888091876226313
+Saving best model for epoch: 71
+
+Best validation loss: 0.9754932715612299
+Saving best model for epoch: 74
+
+Best validation loss: 0.9627291411161423
+Saving best model for epoch: 78
+
+Best validation loss: 0.9565746486186981
+Saving best model for epoch: 87
+
+Best validation loss: 0.9564755664152258
+Saving best model for epoch: 96
+
+Best validation loss: 0.944373731227482
+Saving best model for epoch: 97
+
+Best validation loss: 0.9401830785414752
+Saving best model for epoch: 98
+
+Best validation loss: 0.928414185257519
+Saving best model for epoch: 141
+
+Best validation loss: 0.9190368871478474
+Saving best model for epoch: 142
+
+Loaded model from Results/Rep-Learning/Dataset/Crowdsource/2025-08-16_19-33/checkpoints/FIFmodel_last.pth. Epoch: 142
+************************
+           FIF          
+************************
+Best Model Test Summary: loss: None | 
+
+====================================
+CPU Time used: 09:38:38
+CPU Percent: 293%
+Memory usage: 2300352kb
+Approx Power usage: 0.1156
+Walltime usage: 04:10:30
+
+====================================

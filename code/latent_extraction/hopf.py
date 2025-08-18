@@ -32,6 +32,7 @@ except Exception as e:  # pragma: no cover
         "latant_extraction.hopf requires MNE available at runtime. "
         "Install mne or ensure it is on PYTHONPATH."
     ) from e
+from utils.util import compute_psd_from_raw
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -74,14 +75,27 @@ def _fit_lorentzian_band(
     For each (f0, gamma) on grids, solve linear least squares for (A, b),
     reject negative A or b, and keep the minimum SSE.
     """
-    mask = (freqs >= f_lo) & (freqs <= f_hi)
-    f = freqs[mask].astype(np.float64)
-    y = psd[mask].astype(np.float64)
+    # Select bins within [f_lo, f_hi]. If too few, expand to include
+    # neighbouring Welch bins until a minimum is met without changing PSD params.
+    i0 = int(np.searchsorted(freqs, f_lo, side="left"))
+    i1 = int(np.searchsorted(freqs, f_hi, side="right"))
+    min_bins = 8
+    if (i1 - i0) < min_bins:
+        deficit = min_bins - (i1 - i0)
+        pad_left = deficit // 2
+        pad_right = deficit - pad_left
+        i0 = max(0, i0 - pad_left)
+        i1 = min(len(freqs), i1 + pad_right)
+        # Final safety if still too small (very narrow arrays)
+        if (i1 - i0) < min_bins and len(freqs) >= min_bins:
+            i0 = 0
+            i1 = min(len(freqs), min_bins)
 
-    if f.size < 8:
+    f = freqs[i0:i1].astype(np.float64)
+    y = psd[i0:i1].astype(np.float64)
+    if f.size < 3:
         raise RuntimeError(
-            f"Not enough frequency bins in [{f_lo},{f_hi}] to fit Lorentzian. "
-            f"Increase n_fft/n_per_seg or widen the band."
+            f"Insufficient Welch bins to fit Lorentzian around [{f_lo},{f_hi}]."
         )
 
     f0_grid = np.linspace(max(f_lo + 0.1, f.min()), min(f_hi - 0.1, f.max()), n_f0)
@@ -118,7 +132,7 @@ def fit_hopf_from_raw(
     *,
     bands: Sequence[Tuple[str, Band]] = DEFAULT_BANDS,
     psd_kwargs: Dict[str, Union[float, int, str]] | None = None,
-    as_vector: bool = True,
+    per_channel: bool = True,
 ) -> Union[np.ndarray, Dict[str, Dict[str, float]]]:
     """Return Hopf spectral parameters from an MNE Raw.
 
@@ -130,30 +144,34 @@ def fit_hopf_from_raw(
         Frequency bands to fit. Defaults to delta, theta, alpha, beta.
     psd_kwargs : dict
         Passed to `raw.compute_psd`. Defaults set in DEFAULT_PSD_KW.
-    as_vector : bool
+    per_channel : bool
         If True return a float32 vector [A,f0,gamma,b]_per_band.
         If False return a dict per band.
     """
-    kw = DEFAULT_PSD_KW.copy()
-    if psd_kwargs:
-        kw.update(psd_kwargs)
-
-    psd = raw.compute_psd(**kw)
-    psds, freqs = psd.get_data(return_freqs=True)
-    # Average across channels to obtain a global spectrum to fit
-    avg_psd = psds.mean(axis=0).astype(np.float64)
+    # Use unified PSD computation without normalization and get freqs
+    if per_channel:
+        avg_psd, freqs = compute_psd_from_raw(raw, calculate_average=False, normalize=True, return_freqs=True)
+    else:
+        avg_psd, freqs = compute_psd_from_raw(raw, calculate_average=True, normalize=True, return_freqs=True)
+    avg_psd = avg_psd.astype(np.float64)
 
     out_dict: Dict[str, Dict[str, float]] = {}
     params: List[float] = []
 
-    for name, (flo, fhi) in bands:
-        A, f0, gamma, b = _fit_lorentzian_band(freqs, avg_psd, flo, fhi)
-        out_dict[name] = {"A": float(A), "f0": float(f0), "gamma": float(gamma), "b": float(b)}
-        params.extend([A, f0, gamma, b])
+    if per_channel:
+        for i in range(len(avg_psd)):
+            for name, (flo, fhi) in bands:
+                A, f0, gamma, b = _fit_lorentzian_band(freqs, avg_psd[i], flo, fhi)
+                out_dict[name] = {"A": float(A), "f0": float(f0), "gamma": float(gamma), "b": float(b)}
+                params.extend([A, f0, gamma, b])
+    else:
+        for name, (flo, fhi) in bands:
+            A, f0, gamma, b = _fit_lorentzian_band(freqs, avg_psd, flo, fhi)
+            out_dict[name] = {"A": float(A), "f0": float(f0), "gamma": float(gamma), "b": float(b)}
+            params.extend([A, f0, gamma, b])
 
-    if as_vector:
-        return np.asarray(params, dtype=np.float32)
-    return out_dict
+
+    return np.asarray(params, dtype=np.float32).flatten()
 
 
 def hopf_feature_names(

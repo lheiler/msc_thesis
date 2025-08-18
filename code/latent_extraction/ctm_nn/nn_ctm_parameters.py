@@ -6,13 +6,15 @@ import mne
 from scipy.signal import welch
 
 
-from utils.util import normalize_psd, PSD_CALCULATION_PARAMS
+from utils.util import normalize_psd, PSD_CALCULATION_PARAMS, compute_psd_from_raw
 
 class ParameterRegressor(torch.nn.Module):
     """Simple feedforward network that maps a PSD to CTM parameters."""
 
-    def __init__(self, in_dim: int = PSD_CALCULATION_PARAMS["n_fft"], hidden_dims=(512, 256), out_dim: int = 8):
+    def __init__(self, in_dim: int | None = None, hidden_dims=(512, 256), out_dim: int = 8):
         super().__init__()
+        if in_dim is None:
+            in_dim = int(PSD_CALCULATION_PARAMS.get("n_fft", 256)) // 2 + 1
         layers = []
         prev = in_dim
         for h in hidden_dims:
@@ -35,7 +37,7 @@ def smooth_psd(psd: np.ndarray) -> np.ndarray:
     return np.convolve(psd, np.ones(10)/10, mode='same')
 
 
-def infer_latent_parameters(model, psds: np.ndarray, device: str = "cuda") -> np.ndarray:
+def infer_latent_parameters(model, raw: mne.io.Raw, device: str = "cuda", per_channel: bool = False) -> np.ndarray:
     """
     Load the trained model and perform inference to get latent parameters.
     
@@ -55,12 +57,15 @@ def infer_latent_parameters(model, psds: np.ndarray, device: str = "cuda") -> np
     """
     model.eval()
     all_preds = []
+    psds = compute_psd_from_raw(raw, calculate_average=not per_channel, normalize=True)
+    #compute psd for each channel gives back (C, F) with average we get (F,)
+    
+    
     with torch.no_grad():
-        for i in range(psds.shape[0]):  
-            emp_input = torch.as_tensor(
-                normalize_psd(smooth_psd(psds[i])), 
-                dtype=torch.float32
-            ).to(device)
-            pred = model(emp_input)[0].cpu().numpy().flatten()
-            all_preds.append(pred)
+        emp_input = torch.as_tensor(
+            psds, 
+            dtype=torch.float32
+        ).to(device)
+        pred = model(emp_input).cpu().numpy()
+        all_preds.append(pred)
     return np.array(all_preds).flatten()
