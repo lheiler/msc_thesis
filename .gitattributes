@@ -3,3 +3,4 @@ code/utils/headers.txt filter=lfs diff=lfs merge=lfs -text
 *.pth filter=lfs diff=lfs merge=lfs -text
 *.npy filter=lfs diff=lfs merge=lfs -text
 *.pt filter=lfs diff=lfs merge=lfs -text
+/code/latent_extraction/ctm_nn/amore/data/generated_dataset.npz filter=lfs diff=lfs merge=lfs -text

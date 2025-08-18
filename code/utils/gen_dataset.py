@@ -3,7 +3,13 @@ import numpy as np
 import mne
 from pathlib import Path
 from torch.utils.data import Dataset
-from utils.util import clean_raw_eeg, preprocess_time_domain_input
+import sys
+
+utils_path = Path(__file__).resolve().parent.parent / "utils"
+sys.path.insert(0, str(utils_path))
+
+from util import clean_raw_eeg, preprocess_time_domain_input
+
 
 class TUHFIF60sDataset(torch.utils.data.Dataset):
     """
@@ -19,7 +25,7 @@ class TUHFIF60sDataset(torch.utils.data.Dataset):
         "Cz", "Pz", "Fz",
     ]
 
-    def __init__(self, root: Path, segment_len_sec: int = 60, target_sfreq: float = 128.0):
+    def __init__(self, root: Path, segment_len_sec: float = 60.0, target_sfreq: float = 128.0):
         super().__init__()
         self.root = Path(root)
         self.seg_len = segment_len_sec

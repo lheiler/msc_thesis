@@ -32,6 +32,7 @@ def main():
     parser = argparse.ArgumentParser(description="EEG classification pipeline")
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to YAML configuration file")
     parser.add_argument("--reset", action="store_true", help="Reset the pipeline")
+    parser.add_argument("--method", type=str, help="Method to use for latent feature extraction")
     args = parser.parse_args()
     reset = args.reset 
 
@@ -43,6 +44,9 @@ def main():
     # ------------------------------------------------------------------
     method    = cfg.get("method")
     data_corp = cfg.get("data_corp")
+    
+    # If --method is supplied, it overrides config; otherwise keep config value
+    method = args.method if args.method is not None else method
 
     paths_cfg = cfg.get("paths", {})
     data_path   = os.path.expanduser(paths_cfg.get("data_path", ""))
@@ -116,8 +120,7 @@ def main():
     # 6) Latent evaluation (disabled)
     # ------------------------------------------------------------------
     print("Evaluating latent features …")
-    #latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
-    latent_metrics = None
+    latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
 
     # ------------------------------------------------------------------
     # 7) Training – separate models per task
@@ -155,6 +158,8 @@ def main():
         return (y_tensor == 2).float() if torch.all((y_tensor == 1) | (y_tensor == 2)) else y_tensor
 
     for task_idx in range(num_tasks):
+        if task_idx == 1:
+            continue
         # Resolve task type/name and announce
         task_type, task_name = task_map.get(task_idx, ("classification", f"task_{task_idx+1}"))
         print(f"🔹 Task {task_idx+1}: hardcoded as {task_type} → '{task_name}'")

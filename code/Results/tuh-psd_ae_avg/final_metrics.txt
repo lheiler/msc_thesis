@@ -1,0 +1,61 @@
+metrics_per_task.gender.loss: 0.6964302538097769
+metrics_per_task.gender.accuracy: 0.532608695652174    # Classification accuracy (gender)
+metrics_per_task.gender.pred_counts.label_0: 105
+metrics_per_task.gender.pred_counts.label_1: 171
+metrics_per_task.gender.precision: 0.5555555555555556
+metrics_per_task.gender.recall: 0.6418918918918919
+metrics_per_task.gender.f1: 0.5956112852664577    # Binary F1-score (gender)
+metrics_per_task.gender.f1_macro: 0.5209816082984648    # Macro-averaged F1 (gender)
+metrics_per_task.gender.roc_auc: 0.5440772804054055    # ROC-AUC (gender)
+metrics_per_task.gender.pr_auc: 0.5778116525243666    # Precision–Recall AUC (gender)
+metrics_per_task.gender.confusion: [[52, 76], [53, 95]]
+metrics_per_task.abnormal.loss: 0.5663800148860269
+metrics_per_task.abnormal.accuracy: 0.6920289855072463    # Classification accuracy (abnormal)
+metrics_per_task.abnormal.pred_counts.label_0: 167
+metrics_per_task.abnormal.pred_counts.label_1: 109
+metrics_per_task.abnormal.precision: 0.6880733944954128
+metrics_per_task.abnormal.recall: 0.5952380952380952
+metrics_per_task.abnormal.f1: 0.6382978723404256    # Binary F1-score (abnormal)
+metrics_per_task.abnormal.f1_macro: 0.685079535539298    # Macro-averaged F1 (abnormal)
+metrics_per_task.abnormal.roc_auc: 0.7767195767195768    # ROC-AUC (abnormal)
+metrics_per_task.abnormal.pr_auc: 0.7634267248024609    # Precision–Recall AUC (abnormal)
+metrics_per_task.abnormal.confusion: [[116, 34], [51, 75]]
+hyperparams_per_task.gender.input_dim: 8
+hyperparams_per_task.gender.output_type: classification
+hyperparams_per_task.gender.hidden_dims: (320, 160, 80, 40)
+hyperparams_per_task.gender.dropout: 0.3558565544660703
+hyperparams_per_task.abnormal.input_dim: 8
+hyperparams_per_task.abnormal.output_type: classification
+hyperparams_per_task.abnormal.hidden_dims: (448, 224)
+hyperparams_per_task.abnormal.dropout: 0.28298328709337317
+train_dataset_stats.n_samples: 2717    # Number of training samples
+train_dataset_stats.gender_counts.female(2): 1447
+train_dataset_stats.gender_counts.male(1): 1270
+train_dataset_stats.gender_counts.unknown(0): 0
+train_dataset_stats.abnormal_counts.abnormal(1): 1346
+train_dataset_stats.abnormal_counts.normal(0): 1371
+train_dataset_stats.age_bin_counts.0–10: 2717
+train_dataset_stats.age_bin_counts.10–20: 0
+train_dataset_stats.age_bin_counts.20–30: 0
+train_dataset_stats.age_bin_counts.30–40: 0
+train_dataset_stats.age_bin_counts.40–50: 0
+train_dataset_stats.age_bin_counts.50–60: 0
+train_dataset_stats.age_bin_counts.60–70: 0
+train_dataset_stats.age_bin_counts.70–80: 0
+train_dataset_stats.age_bin_counts.80–120: 0
+eval_dataset_stats.n_samples: 276    # Number of evaluation samples
+eval_dataset_stats.gender_counts.female(2): 148
+eval_dataset_stats.gender_counts.male(1): 128
+eval_dataset_stats.gender_counts.unknown(0): 0
+eval_dataset_stats.abnormal_counts.abnormal(1): 126
+eval_dataset_stats.abnormal_counts.normal(0): 150
+eval_dataset_stats.age_bin_counts.0–10: 276
+eval_dataset_stats.age_bin_counts.10–20: 0
+eval_dataset_stats.age_bin_counts.20–30: 0
+eval_dataset_stats.age_bin_counts.30–40: 0
+eval_dataset_stats.age_bin_counts.40–50: 0
+eval_dataset_stats.age_bin_counts.50–60: 0
+eval_dataset_stats.age_bin_counts.60–70: 0
+eval_dataset_stats.age_bin_counts.70–80: 0
+eval_dataset_stats.age_bin_counts.80–120: 0
+latent: None

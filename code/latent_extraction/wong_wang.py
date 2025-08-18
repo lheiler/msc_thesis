@@ -4,36 +4,33 @@ Wong–Wang mean-field latent feature extractor for EEG.
 Provides:
 - WWParams dataclass
 - simulate_wong_wang(): Euler–Maruyama single-node DMF
-- fit_wong_wang_from_raw(): lightweight random-search fitter
-- fit_wong_wang_from_raw_cma(): CMA-ES fitter (if pycma available)
-- extract_wong_wang(): wrapper that tries CMA-ES then falls back
+- fit_wong_wang_average_from_raw(): CMA-ES fitter on average PSD
+- fit_wong_wang_per_channel_from_raw(): CMA-ES fitter per channel
+- fit_wong_wang_from_raw_cma(): CMA-ES fitter (single-call)
 
 Returns a compact parameter vector [J, tau_s_ms, gamma_gain, I0, sigma].
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 import numpy as np
 
-# Optional dependency for MNE Raw.compute_psd at runtime
-try:  # pragma: no cover
-    import mne  # type: ignore
-except Exception:  # pragma: no cover
-    mne = None  # type: ignore
+import cma
 
-# Optional CMA-ES optimizer
-try:  # pragma: no cover
-    import cma  # type: ignore
-except Exception:  # pragma: no cover
-    cma = None  # type: ignore
+from utils.util import (
+    compute_psd_from_raw,
+    compute_psd_from_array,
+    normalize_psd,
+    PSD_CALCULATION_PARAMS,
+)
 
 __all__ = [
     "WWParams",
     "simulate_wong_wang",
-    "fit_wong_wang_from_raw",
+    "fit_wong_wang_average_from_raw",
+    "fit_wong_wang_per_channel_from_raw",
     "fit_wong_wang_from_raw_cma",
-    "extract_wong_wang",
 ]
 
 
@@ -116,105 +113,24 @@ def simulate_wong_wang(
 
 
 # ----------------------
-# PSD utilities
+# PSD utilities aligned to utils
 # ----------------------
 
-def _welch_psd(y: np.ndarray, sfreq: float, n_per_seg: int, n_fft: int,
-               fmin: float, fmax: float) -> Tuple[np.ndarray, np.ndarray]:
-    """Simple Welch PSD using numpy FFT. Returns (psd, freqs)."""
-    step = max(1, n_per_seg // 2)
-    n = len(y)
-    if n < n_per_seg:
-        y = np.pad(y, (0, n_per_seg - n), mode="constant")
-        n = len(y)
-    windows = []
-    for start in range(0, n - n_per_seg + 1, step):
-        seg = y[start:start + n_per_seg]
-        seg = seg - np.mean(seg)
-        w = np.hanning(n_per_seg)
-        X = np.fft.rfft(seg * w, n=n_fft)
-        Pxx = (np.abs(X) ** 2) / (np.sum(w ** 2) * sfreq)
-        windows.append(Pxx)
-    psd = np.mean(windows, axis=0) if windows else np.zeros(n_fft // 2 + 1)
-    freqs = np.fft.rfftfreq(n_fft, 1.0 / sfreq)
-    mask = (freqs >= fmin) & (freqs <= fmax)
-    return psd[mask], freqs[mask]
+_NFFT = int(PSD_CALCULATION_PARAMS.get("n_fft", 256))
+_SFREQ = float(PSD_CALCULATION_PARAMS.get("sfreq", 128.0))
+_FREQS = np.linspace(0.0, _SFREQ / 2.0, _NFFT // 2 + 1, dtype=np.float64)
 
 
-# ----------------------
-# Random-search fitting
-# ----------------------
+def _loss_function(theta: np.ndarray, target_psd: np.ndarray, *, sim_T: float = 8.0, seed: Optional[int] = None) -> float:
+    """Compute MSE between simulated WW log-PSD and target log-PSD on identical Welch bins."""
+    J, tau_ms, gamma_gain, I0, sigma = theta
+    params = WWParams(J=float(J), tau_s=float(tau_ms) / 1000.0, gamma_gain=float(gamma_gain), I0=float(I0), sigma=float(sigma))
+    y = simulate_wong_wang(T=sim_T, dt=1.0 / _SFREQ, params=params, s0=0.0, burn_in=1.0, seed=seed)
+    psd_sim = compute_psd_from_array(y, sfreq=_SFREQ, n_fft=_NFFT, n_per_seg=PSD_CALCULATION_PARAMS.get("n_per_seg", _NFFT), n_overlap=PSD_CALCULATION_PARAMS.get("n_overlap", int(PSD_CALCULATION_PARAMS.get("n_per_seg", _NFFT)//2)), normalize=False)
+    log_sim = normalize_psd(psd_sim)
+    log_tgt = normalize_psd(target_psd)
+    return float(np.mean((log_sim - log_tgt) ** 2))
 
-def fit_wong_wang_from_raw(
-    raw,
-    *,
-    fmin: float = 1.0,
-    fmax: float = 30.0,
-    sim_T: float = 8.0,
-    psd_window_sec: float = 2.0,
-    n_iter: int = 80,
-    seed: Optional[int] = 0,
-    as_vector: bool = True,
-):
-    """Random-search fit to channel-averaged EEG log-PSD in [fmin,fmax]."""
-    sfreq = float(getattr(raw.info, "sfreq", 128.0))
-    psd = raw.compute_psd(method="welch", fmin=fmin, fmax=fmax,
-                          n_per_seg=int(psd_window_sec * sfreq),
-                          n_fft=int(2 ** np.ceil(np.log2(psd_window_sec * sfreq))),
-                          verbose="ERROR")
-    psds, freqs = psd.get_data(return_freqs=True)
-    target = np.mean(psds, axis=0)
-    target = np.log10(np.maximum(target, 1e-12))
-
-    n_per_seg = int(psd_window_sec * sfreq)
-    n_fft = int(2 ** np.ceil(np.log2(n_per_seg)))
-
-    rng = np.random.default_rng(seed)
-    best_loss = np.inf
-    best = None
-
-    J_range = (0.2, 1.6)
-    tau_range_ms = (60.0, 140.0)
-    gamma_range = (0.4, 1.2)
-    I0_range = (0.2, 0.6)
-    sigma_range = (0.003, 0.05)
-
-    for _ in range(int(n_iter)):
-        J = rng.uniform(*J_range)
-        tau_ms = rng.uniform(*tau_range_ms)
-        gamma_gain = rng.uniform(*gamma_range)
-        I0 = rng.uniform(*I0_range)
-        sigma = rng.uniform(*sigma_range)
-        params = WWParams(J=J, tau_s=tau_ms / 1000.0, gamma_gain=gamma_gain, I0=I0, sigma=sigma)
-        y = simulate_wong_wang(T=sim_T, dt=1.0 / sfreq, params=params,
-                               s0=0.0, burn_in=1.0, seed=rng.integers(1e9))
-        psd_sim, f_sim = _welch_psd(y, sfreq=sfreq, n_per_seg=n_per_seg,
-                                    n_fft=n_fft, fmin=fmin, fmax=fmax)
-        log_sim = np.log10(np.maximum(psd_sim, 1e-12))
-        if log_sim.shape != target.shape:
-            log_sim = np.interp(freqs, f_sim, log_sim, left=log_sim[0], right=log_sim[-1])
-        loss = float(np.mean((log_sim - target) ** 2))
-        if loss < best_loss:
-            best_loss = loss
-            best = (J, tau_ms, gamma_gain, I0, sigma)
-
-    assert best is not None
-    vec = np.asarray(best, dtype=np.float32)
-    if as_vector:
-        return vec
-    return {
-        "J": float(vec[0]),
-        "tau_s_ms": float(vec[1]),
-        "gamma_gain": float(vec[2]),
-        "I0": float(vec[3]),
-        "sigma": float(vec[4]),
-        "loss": float(best_loss),
-    }
-
-
-# ----------------------
-# CMA-ES fitting
-# ----------------------
 
 def _ranges() -> Tuple[Tuple[float, float], ...]:
     return (
@@ -238,42 +154,20 @@ def _from_unit(u: np.ndarray) -> Tuple[float, float, float, float, float]:
 
 
 def fit_wong_wang_from_raw_cma(
-    raw,
+    target_psd,
     *,
-    fmin: float = 1.0,
-    fmax: float = 30.0,
     sim_T: float = 8.0,
-    psd_window_sec: float = 2.0,
     seed: Optional[int] = 0,
     popsize: int = 12,
     sigma0: float = 0.2,
     max_iter: Optional[int] = None,
-    as_vector: bool = True,
 ):
     """Fit Wong–Wang params with CMA-ES on a bounded, scaled space."""
-    if cma is None:
-        raise RuntimeError("pycma is not available. Install `cma` or use the random-search fitter.")
-
-    sfreq = float(getattr(raw.info, "sfreq", 128.0))
-    psd = raw.compute_psd(method="welch", fmin=fmin, fmax=fmax,
-                          n_per_seg=int(psd_window_sec * sfreq),
-                          n_fft=int(2 ** np.ceil(np.log2(psd_window_sec * sfreq))),
-                          verbose="ERROR")
-    psds, freqs = psd.get_data(return_freqs=True)
-    target_log = np.log10(np.maximum(np.mean(psds, axis=0), 1e-12))
-
-    n_per_seg = int(psd_window_sec * sfreq)
-    n_fft = int(2 ** np.ceil(np.log2(n_per_seg)))
 
     def loss_unit(u: np.ndarray) -> float:
         J, tau_ms, gamma_gain, I0, sigma = _from_unit(u)
-        params = WWParams(J=J, tau_s=tau_ms / 1000.0, gamma_gain=gamma_gain, I0=I0, sigma=sigma)
-        y = simulate_wong_wang(T=sim_T, dt=1.0 / sfreq, params=params, s0=0.0, burn_in=1.0, seed=seed)
-        psd_sim, f_sim = _welch_psd(y, sfreq=sfreq, n_per_seg=n_per_seg, n_fft=n_fft, fmin=fmin, fmax=fmax)
-        log_sim = np.log10(np.maximum(psd_sim, 1e-12))
-        if log_sim.shape != target_log.shape:
-            log_sim = np.interp(freqs, f_sim, log_sim, left=log_sim[0], right=log_sim[-1])
-        return float(np.mean((log_sim - target_log) ** 2))
+        theta = np.asarray([J, tau_ms, gamma_gain, I0, sigma], dtype=float)
+        return _loss_function(theta, target_psd, sim_T=sim_T, seed=seed)
 
     x0 = 0.5 * np.ones(5, dtype=float)
     opts = {"bounds": [0.0, 1.0], "popsize": int(popsize), "verb_disp": 0}
@@ -287,31 +181,27 @@ def fit_wong_wang_from_raw_cma(
     u_best = es.result.xbest
     J, tau_ms, gamma_gain, I0, sigma = _from_unit(u_best)
     vec = np.asarray([J, tau_ms, gamma_gain, I0, sigma], dtype=np.float32)
-    if as_vector:
-        return vec
-    return {
-        "J": float(vec[0]),
-        "tau_s_ms": float(vec[1]),
-        "gamma_gain": float(vec[2]),
-        "I0": float(vec[3]),
-        "sigma": float(vec[4]),
-        "loss": float(es.result.fbest),
-    }
+    return vec
 
 
-# ----------------------
-# Public wrapper
-# ----------------------
+# ---------------------------------------------------------------------
+# Convenience wrappers aligned to utils (avg and per-channel)
+# ---------------------------------------------------------------------
 
-def extract_wong_wang(raw, *, use_cma: bool = True) -> np.ndarray:
-    """Return float32 vector [J, tau_s_ms, gamma_gain, I0, sigma].
+def fit_wong_wang_average_from_raw(raw, **fit_kwargs) -> np.ndarray:
+    psd, _ = compute_psd_from_raw(raw, calculate_average=True, normalize=True, return_freqs=True)
+    params = fit_wong_wang_from_raw_cma(psd, **fit_kwargs)
+    keys = ["J", "tau_s_ms", "gamma_gain", "I0", "sigma"]
+    vec = np.asarray([params[k] for k in keys], dtype=np.float32)
+    return vec
 
-    If `use_cma` and `pycma` is available, use CMA-ES; otherwise fall back
-    to random-search fitting.
-    """
-    if use_cma and cma is not None:
-        try:
-            return fit_wong_wang_from_raw_cma(raw, as_vector=True)
-        except Exception:
-            pass
-    return fit_wong_wang_from_raw(raw, as_vector=True)
+
+def fit_wong_wang_per_channel_from_raw(raw, **fit_kwargs) -> np.ndarray:
+    psd_matrix, _ = compute_psd_from_raw(raw, calculate_average=False, normalize=True, return_freqs=True)
+    keys = ["J", "tau_s_ms", "gamma_gain", "I0", "sigma"]
+    out: list[np.ndarray] = []
+    for psd in psd_matrix:  # fit on each channel by constructing Raw would be expensive; fallback to avg proxy via CMA each time
+        params = fit_wong_wang_from_raw_cma(psd, **fit_kwargs)
+        out.append(np.asarray([params[k] for k in keys], dtype=np.float32))
+    return np.array(out, dtype=np.float32).flatten()
+

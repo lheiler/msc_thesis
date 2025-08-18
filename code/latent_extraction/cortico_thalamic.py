@@ -29,7 +29,7 @@ import mne
 import matplotlib.pyplot as plt
 import os
 import re
-from utils.util import compute_psd_from_raw, normalize_psd
+from utils.util import compute_psd_from_raw, normalize_psd, PSD_CALCULATION_PARAMS
 mne.set_log_level('WARNING')  # Suppress MNE warnings
 
 # ---------------------------------------------------------------------
@@ -43,8 +43,11 @@ r_e = 0.086                 # metres (86 mm)
 # ---------------------------------------------------------------------
 # Frequency and spatial grids (global, reused across calls)
 # ---------------------------------------------------------------------
-_f = np.arange(0.5, 45.25, 0.25)        # Hz
-_w = 2 * np.pi * _f                     # rad s^-1
+# Align model evaluation frequencies to utils PSD parameters (no interpolation)
+_NFFT = int(PSD_CALCULATION_PARAMS.get("n_fft", 256))
+_SFREQ = float(PSD_CALCULATION_PARAMS.get("sfreq", 128.0))
+_f = np.linspace(0.0, _SFREQ / 2.0, _NFFT // 2 + 1, dtype=float)  # Hz
+_w = 2 * np.pi * _f                                                # rad s^-1
 
 _M = 10
 _m = _n = np.arange(-_M, _M + 1)
@@ -102,7 +105,7 @@ def _P_omega(p: dict[str, float]) -> np.ndarray:
 # Public order of parameters (9-element vector)
 _PARAM_KEYS = [
     'G_ee', 'G_ei', 'G_ese', 'G_esre', 'G_srs',
-    'alpha', 'beta', 't0', 'gain'
+    'alpha', 'beta', 't0'
 ]
 
 # ---------------------------------------------------------------------
@@ -114,7 +117,7 @@ def _dict_to_vector(p: dict[str, float]):
     import numpy as _np  # local import to avoid unconditional dependency
     return _np.asarray([p[k] for k in _PARAM_KEYS], dtype=_np.float32)
 
-_DEFAULT_THETA0 = np.asarray([10.3, -11.2, 1.7, -2.7, -0.13, 58.0, 305.0, 0.08, 1.0])
+_DEFAULT_THETA0 = np.asarray([10.3, -11.2, 1.7, -2.7, -0.13, 58.0, 305.0, 0.08])
 _DEFAULT_BOUNDS = np.asarray(
     [
         (0, 30),      # G_ee
@@ -125,7 +128,6 @@ _DEFAULT_BOUNDS = np.asarray(
         (10, 100),    # alpha
         (100, 400),   # beta
         (0.01, 0.2),  # t0
-        (1e-4, 1e2),  # gain
     ],
     dtype=float,
 )
@@ -140,8 +142,11 @@ def _loss_function(
     normalization: str = 'mean',
 ) -> float:
     """Weighted MSE in log-space between model and empirical PSD."""
+    
+    model_psd = _P_omega(theta)
 
     log_model = normalize_psd(model_psd)
+    
     log_real = normalize_psd(real_psd)
 
     return np.mean((log_model - log_real) ** 2)
@@ -207,8 +212,8 @@ def fit_parameters(
     """
     theta0 = _DEFAULT_THETA0 if initial_theta is None else np.asarray(initial_theta, dtype=float)
     bounds_arr = _DEFAULT_BOUNDS if bounds is None else np.asarray(bounds, dtype=float)
-    if bounds_arr.shape != (9, 2):
-        raise ValueError('bounds must have shape (9, 2)')
+    if bounds_arr.shape != (8, 2):
+        raise ValueError('bounds must have shape (8, 2)')
 
     lower_bounds, upper_bounds = bounds_arr[:, 0], bounds_arr[:, 1]
     opts = {
@@ -229,25 +234,6 @@ def fit_parameters(
     es.optimize(LossFunction(freqs, psd, normalize=normalize, normalization=normalization), n_jobs=-1)
     theta_best = es.result.xbest
     best_params = dict(zip(_PARAM_KEYS, theta_best))
-
-
-    # plot fitted psd vs empirical psd
-    model_psd = _P_omega(best_params)
-    interp_func = interp1d(_f, model_psd, kind='linear', bounds_error=False,
-                           fill_value='extrapolate')
-    #model_resampled = interp_func(freqs)
-    #import matplotlib.pyplot as plt
-    #plt.figure(figsize=(10, 6))
-    #plt.plot(freqs, psd, label='Empirical PSD', color='blue')
-    #plt.plot(freqs, model_resampled, label='Fitted CTM PSD', color='red', linestyle='--')
-    #plt.xscale('log')
-    #plt.yscale('log')
-    #plt.xlabel('Frequency (Hz)')
-    #plt.ylabel('Power Spectral Density')
-    #plt.title('CTM Fitting: Empirical vs Fitted PSD')
-    #plt.legend()
-    #plt.grid(True)
-    #plt.show()  
     
     
     if return_full:
@@ -267,9 +253,9 @@ def fit_ctm_average_from_raw(raw: mne.io.BaseRaw,
     All keyword arguments not recognised by this function are forwarded
     to :func:`fit_parameters`.
     """
-    psd = compute_psd_from_raw(raw, calculate_average=True)
+    psd = compute_psd_from_raw(raw, calculate_average=True, normalize=False)
     total_params = []
-    total_params.append(_dict_to_vector(fit_parameters(psd, **fit_kwargs)))
+    total_params.append(_dict_to_vector(fit_parameters(_f, psd, **fit_kwargs)))
     
     return np.array(total_params).flatten()
 
@@ -281,8 +267,8 @@ def fit_ctm_per_channel_from_raw(raw: mne.io.BaseRaw,
     All keyword arguments not recognised by this function are forwarded
     to :func:`fit_parameters`.
     """
-    psd = compute_psd_from_raw(raw, calculate_average=False)
+    psd = compute_psd_from_raw(raw, calculate_average=False, normalize=False)
     total_params = []
     for psd in psd:
-        total_params.append(_dict_to_vector(fit_parameters(psd, **fit_kwargs)))
+        total_params.append(_dict_to_vector(fit_parameters(_f, psd, **fit_kwargs)))
     return np.array(total_params).flatten()

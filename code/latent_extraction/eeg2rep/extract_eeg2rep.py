@@ -19,6 +19,24 @@ def _load_project_modules():
     from Models.model import Encoder_factory  # type: ignore
     from Models.utils import load_model  # type: ignore
     return Encoder_factory, load_model
+def _resolve_latest_eeg2rep_checkpoint() -> Path:
+    """Return the newest checkpoint under EEG2Rep/Results recursively.
+
+    Prefers files named '*best*.pth' over others when timestamps tie.
+    """
+    results_root = EEG2REP_ROOT / "EEG2Rep" / "Results"
+    if not results_root.exists():
+        # Fallback to older layout if present
+        results_root = EEG2REP_ROOT / "Results"
+    candidates = list(results_root.rglob("checkpoints/*.pth")) if results_root.exists() else []
+    if not candidates:
+        raise FileNotFoundError(f"No EEG2Rep checkpoints found under {results_root}")
+    # Choose most recent by mtime; break ties by favoring '*best*'
+    def sort_key(p: Path):
+        return (p.stat().st_mtime, 1 if "best" in p.name.lower() else 0)
+    candidates.sort(key=sort_key, reverse=True)
+    return candidates[0]
+
 
 
 def _preprocess_raw_to_tensor(
@@ -63,12 +81,8 @@ def get_eeg2rep_model(
     """
     Encoder_factory, load_model = _load_project_modules()
 
-    ckpt = (
-        checkpoint_path
-        or os.environ.get("EEG2REP_CKPT")
-        or "/rds/general/user/lrh24/home/thesis/code/latent_extraction/eeg2rep/EEG2Rep/Results/Rep-Learning/Dataset/Crowdsource/2025-08-15_20-37/checkpoints/FIFmodel_last.pth"
-    )
-    ckpt_path = Path(ckpt)
+    ckpt_env = os.environ.get("EEG2REP_CKPT")
+    ckpt_path = Path(checkpoint_path) if checkpoint_path else (Path(ckpt_env) if ckpt_env else _resolve_latest_eeg2rep_checkpoint())
     if not ckpt_path.exists():
         raise FileNotFoundError(f"EEG2Rep checkpoint not found: {ckpt_path}")
 
