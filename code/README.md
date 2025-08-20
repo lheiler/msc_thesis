@@ -1,227 +1,256 @@
-# EEG Latent-Feature Classification Pipeline
+## EEG Latent-Feature Pipeline (TUH-focused)
 
-A research-grade, end-to-end pipeline for **EEG latent-feature extraction** and **multi-task classification** (gender, age, abnormality). It is designed to be reproducible, configurable via YAML, and easy to extend.
+Research-grade, end-to-end pipeline for EEG latent-feature extraction and downstream evaluation/classification. The current code path is TUH-centric and driven by a simple YAML config. Cached latent features are reused between runs unless reset.
 
 ---
 
 ## Table of Contents
 1. [Features](#features)
 2. [Project Structure](#project-structure)
-3. [Quick Start](#quick-start)
-4. [Configuration](#configuration)
-5. [Running the Pipeline](#running-the-pipeline)
-6. [Results & Outputs](#results--outputs)
-7. [Advanced Features](#advanced-features)
+3. [Setup](#setup)
+4. [Preprocessing (TUH EDF → cleaned)](#preprocessing)
+5. [Data expectations](#data-expectations)
+6. [Configuration](#configuration)
+7. [Running](#running)
+8. [Outputs](#outputs)
+9. [Extraction methods](#extraction-methods)
+10. [HPC usage](#hpc-usage)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Features
-* **Modular pipeline** – data loading, latent-feature extraction, model training, evaluation, and visualisation live in dedicated packages.
-* **Multiple extraction methods** – `ctm`, `c22`, `c22_psd`, and deep-learning `AE` (Auto-encoder).
-* **Independent per-task models** – trains *separate* lightweight MLPs for gender, age, and abnormality, avoiding parameter sharing.
-* **YAML-driven config** – switch datasets, methods, hyper-parameters without touching code.
-* **Snake-case package layout** – PEP-8 compliant, importable with `pip install -e .`.
-* **Reproducible results** – each run writes to an auto-generated `Results/…` directory.
-* **Hyperparameter optimization** – optional Optuna integration for automatic hyperparameter tuning.
-* **Multi-dataset support** – Harvard BIDS format and TUH EEG corpus.
+- **Modular pipeline**: data loading → latent extraction → Optuna search → evaluation → reports.
+- **Many extraction options**: mechanistic models (CTM/JR/Wong–Wang/Hopf), statistical (Catch22, PCA), and learned (EEGNet-AE, EEG2Rep, PSD-AE).
+- **Config/CLI driven**: choose dataset root, method, and optimisation knobs via YAML/flags.
+- **Caching**: latent features written as JSONL and reused on subsequent runs.
+- **Reproducible reports**: text, markdown, JSON, and figures per run under `Results/`.
 
 ---
 
 ## Project Structure
 ```
 code/
-├── data_preprocessing/      # Raw EEG → cleaned tensors
-├── latent_extraction/       # CTM, Catch22, Auto-encoder, CWT-AE
-├── model_training/          # SingleTaskModel & Optuna trainer
-├── evaluation/              # Metrics, HSIC independence, saving
-├── utils/                   # Data loading, reporting utilities
-├── Results/                 # <-- auto-generated metrics
-├── configs/                 # YAML experiment files
-├── extras/                  # Additional models and archives
-├── main.py                  # Single entry-point
-├── run_all_configs.sh      # Batch execution script
-├── run_latent_extraction.sh # Latent extraction only
-├── run_cleanup.sh          # Cleanup utilities
-├── requirements.txt         # Python deps (>= versions)
-└── README.md                
+├── data_preprocessing/      # TUH .fif loader
+├── latent_extraction/       # All extractors and models
+├── model_training/          # Optuna search + single-task head
+├── evaluation/              # Latent metrics, plots, reporting
+├── utils/                   # Cleaning, PSD, dataset utilities
+├── Results/                 # Auto-generated per-run outputs
+├── configs/                 # Example (legacy) configs
+├── main.py                  # Entry point
+├── run_all_configs.sh       # Batch runner (PBS example)
+├── run_cleanup.sh           # Force re-extraction across methods
+├── run_latent_extraction.sh # SLURM example (update paths before use)
+├── requirements.txt
+└── README.md
 ```
-*Large datasets are **not** stored in the repo – supply paths in `config.yaml` or your own YAML file.*
+
+Note: some configs under `configs/` use a legacy schema and may not match the current loader (see Configuration below).
 
 ---
 
-## Quick Start
+## Setup
 ```bash
-# 1. Clone & create an isolated Python environment (optional)
-git clone <your-fork-url> eeg-pipeline && cd eeg-pipeline
-python -m venv .venv && source .venv/bin/activate
+# Optional: create and activate a venv
+python -m venv ~/env_thesis && source ~/env_thesis/bin/activate
 
-# 2. Install requirements
+# Install dependencies
 pip install -r requirements.txt
 
-# 3. Edit config.yaml to point to your dataset locations (see below)
-
-# 4. Run the pipeline
-python main.py --config config.yaml
+# On some clusters, compile pycatch22 from source (see HPC usage)
 ```
 
-The first run will:
-1. Load the dataset(s) defined in your config.
-2. Extract latent features and cache them as JSON files in `Results/<corpus>-<method>-parameters*/`.
-3. Train the multi-task classifier (with optional Optuna optimization).
-4. Evaluate and save metrics + figures.
+---
 
-Set `reset: true` in the YAML if you **want to force re-extraction** of latent features even if matching cached files already exist. Leave it `false` (default) to reuse cached latents for faster iteration.
+## Preprocessing
+
+If you start from TUH EDFs, run the cleaning/export utility first to produce cleaned, standardised data. This script performs channel renaming, bad-channel interpolation, trimming zero edges, notch filtering at mains and harmonics, ICA (EOG/ECG), rereferencing, low-pass, artifact annotations, canonical 19‑channel ordering, epoching, AutoReject, basic QC, and per-epoch z-scoring.
+
+```bash
+python -m utils.cleanup_real_eeg_tuh \
+  # or open and run the __main__ example at the bottom of utils/cleanup_real_eeg_tuh.py
+```
+
+Programmatic usage (example):
+```python
+from utils.cleanup_real_eeg_tuh import load_data
+
+data_path_train = "/abs/path/to/tuh/edf/train"
+data_path_eval  = "/abs/path/to/tuh/edf/eval"
+save_path       = "/abs/path/to/tuh-eeg-ab-clean"  # will contain train/ and eval/ .npz
+
+load_data(data_path_train, data_path_eval, save_path, sfreq=128, epoch_len_s=7.0)
+```
+
+This produces `.npz` epoch datasets for train/eval. The main pipeline (`main.py`) currently expects `.fif` files under `paths.data_path/{train,eval}`; use the preprocessing utility if you need cleaned epochs or to standardise raw EDF data ahead of `.fif` conversion.
+
+---
+
+## Data expectations
+The current pipeline expects a TUH-style directory with preconverted `.fif` files and a simple split:
+```
+<data_path>/
+├── train/
+│   ├── abnormal/  # .fif files
+│   └── normal/    # .fif files
+└── eval/
+    ├── abnormal/
+    └── normal/
+```
+Each `.fif` should have `raw.info['subject_info']['sex']` as 1 or 2. Abnormal/normal is inferred from the folder name. Age is currently a placeholder (0) in the TUH path.
+
+If starting from raw TUH EDFs, see `utils/cleanup_real_eeg_tuh.py` for a comprehensive cleaning pipeline and epoch export (produces `.npz`). That utility is separate from the `.fif` loader used by `main.py`.
 
 ---
 
 ## Configuration
-All parameters live in a YAML file. Example (`config.yaml`):
+Minimal current schema (example `config.yaml`):
 ```yaml
-method: c22               # ctm | c22 | c22_psd | AE
-# Data corpus: harvard (BIDS) or tuh (TUH EEG)
+# Choose one of the supported methods (see Extraction methods)
+method: wong_wang_avg
+
+# Dataset corpus flag (kept for consistency; current path is TUH-centric)
 data_corp: tuh
 
 paths:
-  data_tuh: "/path/to/tuh/eeg/data"      # TUH corpus path
-  data_harvard: "/path/to/bids/root"     # Harvard BIDS path
-  results_root: "Results"                 # where outputs go
+  # Root containing train/ and eval/ subfolders of .fif files
+  data_path: "/absolute/path/to/tuh-eeg-ab-clean"
+  # Where to write run artifacts
+  results_root: "Results"
 
-# Manual hyperparameters (ignored if Optuna enabled)
-model:
-  batch_size: 16
-  num_epochs: 30
-  hidden_dims: [64]      # Single int or list
-  dropout: 0.1
-  weight_decay: 0.0
-  scheduler: "none"       # none | cosine | step
-
-# Hyper-parameter optimisation via Optuna (overrides manual settings)
+# Optuna/loader knobs (used by main.py)
 optuna:
-  n_trials: 10           # Number of optimisation trials per task
-  val_split: 0.2         # Fraction of training data for validation
-  patience: 5            # Early-stopping patience within each trial
+  n_trials: 10      # per task
+  val_split: 0.1    # fixed split used globally
+  patience: 7
+  batch_size: 64
 
-# Whether to re-extract latent representations even when cached files exist
-reset: false
+# Whether to ignore cached JSONL latent files and recompute
+# (can also use CLI flag --reset)
+# reset: false
 ```
 
-Create as many configs as you like under `configs/`, e.g. `configs/ablation_c22.yaml`, and launch them with:
+CLI overrides:
 ```bash
-python main.py --config configs/ablation_c22.yaml
+python main.py --config config.yaml                 # normal run
+python main.py --config config.yaml --reset         # force re-extraction
+python main.py --config config.yaml --method c22    # override YAML method
 ```
 
-**Pre-configured experiments** are available in the `configs/` directory for different datasets and methods.
+Legacy configs under `configs/` include keys like `data_train`, `data_eval`, or `data_harvard`. The current loader reads `paths.data_path` and assumes `train/` and `eval/` inside it. Update older files accordingly before use.
 
 ---
 
-## Running the Pipeline
-
-### Basic Execution
+## Running
+Basic run:
 ```bash
-# Single experiment
 python main.py --config config.yaml
-
-# Multiple experiments
-bash run_all_configs.sh
 ```
 
-### Pipeline Stages
-| Stage | Script / Module | Key Function |
-|-------|-----------------|--------------|
-| Data loading | `data_preprocessing/data_loading.py` | `load_data()` / `load_data_harvard()` |
-| Latent extraction | `latent_extraction/extractor.py` | `extract_latent_features()` |
-| Model training | `model_training/single_task_model.py` | `train_single_task()` |
-| Hyperparameter tuning | `model_training/optuna_search.py` | `tune_hyperparameters()` |
-| Evaluation | `evaluation/evaluation.py` | `run_evaluation()` |
-| HSIC independence | `evaluation/evaluation.py` | `independence_of_features()` |
+Batch run across several methods (PBS example in this repo):
+```bash
+bash run_cleanup.sh     # enumerates many methods using --reset
+bash run_all_configs.sh # if you update configs to the current schema
+```
 
-Each stage can also be called independently in an interactive notebook for debugging.
+What happens during a run:
+1. Load TUH `.fif` files from `paths.data_path/{train,eval}`.
+2. Extract latent features for each file using the chosen `method`.
+3. Cache JSONL latents to `Results/<data_corp>-<method>/temp_latent_features_{train,eval}.json`.
+4. Run Optuna to pick simple head hyperparameters per task (classification heads for gender and abnormal; age head is currently skipped).
+5. Evaluate and write reports/plots.
 
-### Batch Execution
-The `run_all_configs.sh` script runs multiple pre-configured experiments:
-- Different datasets (500/2000 samples)
-- Different extraction methods (CTM, C22, C22_PSD, AE)
-- Different tasks (abnormality, age classification)
+Caching: If the cache files exist and `--reset` is not passed, cached latents are reused. If counts mismatch the dataset size, latents are regenerated automatically.
 
 ---
 
-## Results & Outputs
-After a successful run you'll find a folder like:
+## Outputs
+Per run directory: `Results/<data_corp>-<method>/`
 ```
-Results/bids_500_normal_abnormal_clean-c22/
 ├── temp_latent_features_train.json
 ├── temp_latent_features_eval.json
-├── final_metrics.txt
-├── final_metrics.md
-├── hsic_matrix.png
-├── task_0_model.pth          # Model weights (if saved)
-└── optuna_trials.db          # Optuna database (if used)
+├── final_metrics.txt     # flat text with inline descriptions
+├── final_metrics.md      # human-friendly report
+├── final_metrics.json    # raw metrics
+├── pca_explained_variance_curve.png
+├── train/
+│   ├── hsic_matrix.png
+│   ├── variance_hist.png
+│   ├── pca2_scatter.png
+│   └── tsne_scatter.png
+├── eval/
+│   ├── hsic_matrix.png
+│   ├── variance_hist.png
+│   ├── pca2_scatter.png
+│   └── tsne_scatter.png
+└── plots_<task>/         # per-task evaluation plots (if produced)
 ```
 
-### Metrics Included
-- **Classification tasks**: Accuracy, Precision, Recall, F1-Score
-- **Regression tasks**: MAE, RMSE, R²
-- **Model prediction distribution** table for each classification task
-- **HSIC independence scores** for latent feature analysis
-- **Dataset statistics** for train/eval splits
+Metrics included (subset):
+- Latent quality: active units, HSIC global score, KMeans cluster scores, PCA explained variance, geometry preservation.
+- Dataset stats: sample counts and simple label distributions.
+- Per-task head metrics for classification tasks (gender, abnormal).
 
 ---
 
-## Advanced Features
+## Extraction methods
+Method names accepted by `--method` and `config.yaml`:
+- Mechanistic
+  - `ctm_cma_avg`, `ctm_cma_pc`: Cortico–Thalamic Model fitted with CMA-ES (average vs per-channel PSD).
+  - `ctm_nn_avg`, `ctm_nn_pc`: CTM parameters via amortised regressor.
+  - `jr_avg`, `jr_pc`: Jansen–Rit model fits.
+  - `wong_wang_avg`, `wong_wang_pc`: Wong–Wang model fits.
+  - `hopf_avg`, `hopf_pc`: Hopf oscillator model fits.
+- Statistical
+  - `c22`: Catch22 feature vector.
+  - `pca_avg`, `pca_pc`: PCA features over PSD (frozen model files under `latent_extraction/pca/models/`).
+- Learned
+  - `psd_ae_avg`, `psd_ae_pc`: PSD autoencoder latents.
+  - `eegnet`: EEGNet-based autoencoder.
+  - `eeg2rep`: EEG2Rep representation extractor (requires `EEG2REP_CKPT` env var).
 
-### Hyperparameter Optimization
-Enable Optuna for automatic hyperparameter tuning:
-```yaml
-optuna:
-  n_trials: 30
-  val_split: 0.2
-  patience: 10
-```
+Notes:
+- Some methods rely on local model files (e.g., `ctm_nn` regressor, PCA/PSD-AE checkpoints) already included under `latent_extraction/`.
+- `eeg2rep` and `eegnet` may require GPU and additional assets; make sure dependencies are installed.
 
-### Supported Extraction Methods
-- **CTM** (`ctm`): Cortico-thalamic modeling
-- **Catch22** (`c22`): 22 time-series features
-- **Catch22 PSD** (`c22_psd`): Power spectral density features
-- **Auto-encoder** (`AE`): Deep learning-based compression
+---
 
-### Dataset Support
-- **Harvard BIDS**: Clean, structured EEG data
-- **TUH EEG**: Temple University Hospital corpus
+## HPC usage
+Two example job scripts are provided; update paths/modules to your cluster:
 
-### Model Architecture
-- **SingleTaskModel**: Independent MLP for each task
-- **No parameter sharing** between tasks
-- **Configurable architecture** via `hidden_dims`
-- **Early stopping** and learning rate scheduling
+- `run_all_configs.sh` (PBS): activates `~/env_thesis`, loads CUDA, and rebuilds `pycatch22` from source for compatibility:
+  ```bash
+  pip uninstall -y pycatch22
+  pip install --no-cache-dir --no-binary=:all: pycatch22
+  ```
+  Then iterates configs with `python main.py --config ...`.
 
-### Utilities
-- **Data metrics**: `utils/data_metrics.py`
-- **Latent loading**: `utils/latent_loading.py`
-- **Reporting**: `utils/reporting.py`
-- **Harvard labels**: `utils/harvard_labels.py`
+- `run_cleanup.sh` (PBS): calls `python main.py --reset --method <name>` across many methods.
+
+- `run_latent_extraction.sh` (SLURM example): uses a different environment path; treat it as a template and adjust `cd` and `source` lines.
+
+Tip: If `pycatch22` wheels are unavailable on your node, compile from source as shown above.
 
 ---
 
 ## Troubleshooting
-
-### Common Issues
-1. **CUDA out of memory**: Reduce `batch_size` in config
-2. **Slow extraction**: Use `reset: false` to reuse cached latents
-3. **Optuna trials**: Check `optuna_trials.db` for optimization history
-
-### Performance Tips
-- Use GPU acceleration when available
-- Enable Optuna for better hyperparameters
-- Reuse cached latent features for faster iteration
-- Use pre-configured experiments in `configs/`
+- Missing/invalid labels: The TUH `.fif` loader expects `raw.info['subject_info']['sex']` ∈ {1,2}. Files outside this convention will emit warnings.
+- Cache mismatch: If you move or change the dataset, pass `--reset` to recompute latents.
+- CUDA OOM: Reduce `optuna.batch_size` in `config.yaml`.
+- Slow CMA-ES fits: Use the amortised `ctm_nn_*` methods or statistical/learned methods for faster iteration.
+- Legacy configs: Update `paths` to use `data_path` with `train/` and `eval/` inside. Remove unused keys like `data_harvard`.
 
 ---
 
 ## Dependencies
-Key dependencies (see `requirements.txt` for full list):
-- `torch` - Deep learning framework
-- `mne` - EEG processing
-- `pycatch22` - Time-series features
-- `optuna` - Hyperparameter optimization
-- `torcheeg` - EEG-specific utilities
-- `scikit-learn` - Machine learning utilities 
+See `requirements.txt`. Notable:
+- `torch`, `scikit-learn`, `optuna`, `mne`, `mne-bids`
+- `pycatch22` (may require source build on HPC)
+- `cma` (for CMA-ES model fits)
+- `matplotlib`, `seaborn`
+
+---
+
+## Citation
+If you use this code, please cite the thesis/work corresponding to this repository.

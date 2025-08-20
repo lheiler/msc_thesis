@@ -180,6 +180,15 @@ def _loss_function(
     """
     p_full = dict(zip(_PARAM_KEYS, theta))
     model_psd = _P_omega(p_full)
+
+    # Restrict comparison to configured band (e.g., up to 45 Hz)
+    from utils.util import PSD_CALCULATION_PARAMS  # local to avoid circulars
+    fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 0.0))
+    fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", _SFREQ / 2.0))
+    mask = (_f >= fmin) & (_f <= fmax)
+    model_psd = model_psd[mask]
+    real_psd = real_psd[mask]
+
     if normalize:
         model_psd = normalize_psd(model_psd)
         real_psd = normalize_psd(real_psd)
@@ -224,7 +233,7 @@ def fit_parameters(
         'verbose': -9,
         'verb_log': 0,
     }
-    opts.setdefault('tolfun', 1e-8)
+    opts.setdefault('tolfun', 1e-7)
     opts.setdefault('maxiter', 600)
     if cma_opts:
         opts.update(cma_opts)
