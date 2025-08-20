@@ -15,6 +15,7 @@ import numpy as np
 import importlib.util
 import sys
 import matplotlib.pyplot as plt
+from utils.util import PSD_CALCULATION_PARAMS
 
 def _load_infer_module():
     this_dir = Path(__file__).resolve().parent
@@ -124,8 +125,15 @@ def mixed_recon_loss(x_hat: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         x_hat = x_hat[..., :Tt]
 
     # Welch PSD
-    _, Xh_psd = welch_psd_torch(x_hat, fs=128.0, nperseg=256, noverlap=128)
+    F, Xh_psd = welch_psd_torch(x_hat, fs=128.0, nperseg=256, noverlap=128)
     _, X_psd  = welch_psd_torch(x,     fs=128.0, nperseg=256, noverlap=128)
+
+    # Restrict comparison to configured frequency band (e.g., ≤45 Hz)
+    fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 0.0))
+    fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", 64.0))
+    mask = (F >= fmin) & (F <= fmax)
+    Xh_psd = Xh_psd[..., mask]
+    X_psd  = X_psd[..., mask]
 
     # Normalize each PSD so that the sum across frequencies is 1 for each (B, C)
     Xh_psd = Xh_psd / (Xh_psd.sum(dim=-1, keepdim=True) + 1e-8)

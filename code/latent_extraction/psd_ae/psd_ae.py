@@ -209,9 +209,14 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
             # treat each channel PSD as a separate input vector
             inputs = psd.reshape(B * C, F).to(device)
 
+            # Frequency mask to align with preprocessing band (e.g., ≤45 Hz)
+            fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 0.0))
+            fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", 64.0))
+            mask = (freqs_t >= fmin) & (freqs_t <= fmax)
+
             optimizer.zero_grad()
             recon = model(inputs)
-            loss = criterion(recon, inputs)
+            loss = criterion(recon[:, mask], inputs[:, mask])
             loss.backward()
             optimizer.step()
 
@@ -246,7 +251,7 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
                 if val_steps == 1:  # save once per epoch
                     Path("plots").mkdir(exist_ok=True)
                     _plot_recon_example(inputs.detach().cpu(), recon.detach().cpu(), freqs_t.detach().cpu(), path=Path("plots/val_recon_example.png"))
-                val_total += float(criterion(recon, inputs).item())
+                val_total += float(criterion(recon[:, mask], inputs[:, mask]).item())
                 val_steps += 1
             val_loss = val_total / max(1, val_steps)
             print(f"Epoch {epoch} val loss: {val_loss:.6f}")

@@ -127,6 +127,14 @@ def _loss_function(theta: np.ndarray, target_psd: np.ndarray, *, sim_T: float = 
     params = WWParams(J=float(J), tau_s=float(tau_ms) / 1000.0, gamma_gain=float(gamma_gain), I0=float(I0), sigma=float(sigma))
     y = simulate_wong_wang(T=sim_T, dt=1.0 / _SFREQ, params=params, s0=0.0, burn_in=1.0, seed=seed)
     psd_sim = compute_psd_from_array(y, sfreq=_SFREQ, n_fft=_NFFT, n_per_seg=PSD_CALCULATION_PARAMS.get("n_per_seg", _NFFT), n_overlap=PSD_CALCULATION_PARAMS.get("n_overlap", int(PSD_CALCULATION_PARAMS.get("n_per_seg", _NFFT)//2)), normalize=False)
+
+    # Compare only within configured band
+    fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 0.0))
+    fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", _SFREQ / 2.0))
+    mask = (_FREQS >= fmin) & (_FREQS <= fmax)
+    psd_sim = psd_sim[mask]
+    target_psd = target_psd[mask]
+
     log_sim = normalize_psd(psd_sim)
     log_tgt = normalize_psd(target_psd)
     return float(np.mean((log_sim - log_tgt) ** 2))

@@ -275,8 +275,17 @@ def train(
         """
         # Forward model: parameters → PSD
         pred_psd = compute_ctm_psd(params, freqs_tensor)          # (B,F)
+
+        # Restrict comparison to configured frequency band
+        fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 0.0))
+        fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", float(SFREQ) / 2.0))
+        mask = (freqs_tensor >= fmin) & (freqs_tensor <= fmax)
+        pred_psd = pred_psd[:, mask]
+        target_psd = target_psd[:, mask]
+
         # Log‑transform & z‑score to match `_normalise`
         pred_psd = _normalise(pred_psd)
+        target_psd = _normalise(target_psd)
         return torch.nn.functional.mse_loss(pred_psd, target_psd)
 
     loss_fn = psd_loss
@@ -330,8 +339,14 @@ def train(
                     
             if epoch % 5 == 0:
                 with torch.no_grad():
-                    pred_psd = _normalise(compute_ctm_psd(pred, torch.as_tensor(FREQS, dtype=torch.float32, device=device)))
-                plot_psd_comparison(xb, pred_psd, FREQS, f"/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/results/psd_comparison_{epoch}.png")
+                    pred_psd_full = compute_ctm_psd(pred, torch.as_tensor(FREQS, dtype=torch.float32, device=device))
+                    # mask for plotting consistency
+                    fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 0.0))
+                    fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", float(SFREQ) / 2.0))
+                    mask_np = (FREQS >= fmin) & (FREQS <= fmax)
+                    pred_psd = _normalise(pred_psd_full[:, mask_np])
+                    xb_masked = _normalise(xb[:, mask_np])
+                plot_psd_comparison(xb_masked, pred_psd, FREQS[mask_np], f"/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/results/psd_comparison_{epoch}.png")
             
         print(f"Epoch {epoch:>3d}/{epochs} – train PSD loss: {np.mean(train_losses):.4f} – test PSD loss: {np.mean(test_losses):.4f}")
         

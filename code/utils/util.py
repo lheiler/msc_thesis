@@ -128,6 +128,8 @@ def compute_psd_from_raw(
         n_per_seg=n_per_seg,
         average="mean",
         verbose=False,
+        fmin=PSD_CALCULATION_PARAMS["min_freq"],
+        fmax=PSD_CALCULATION_PARAMS["max_freq"],
     )  # (C, F)
 
     if calculate_average:
@@ -176,6 +178,8 @@ def compute_psd_from_array(
         n_per_seg=int(n_per_seg),
         average="mean",
         verbose=False,
+        fmin=PSD_CALCULATION_PARAMS["min_freq"],
+        fmax=PSD_CALCULATION_PARAMS["max_freq"],
     )
     psd_vec = psd_arr[0].astype(np.float32)
     if normalize:

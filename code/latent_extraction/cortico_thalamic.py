@@ -143,10 +143,24 @@ def _loss_function(
 ) -> float:
     """Weighted MSE in log-space between model and empirical PSD."""
     
-    model_psd = _P_omega(theta)
+    # Convert optimisation vector -> parameter dict expected by _P_omega
+    if isinstance(theta, np.ndarray):
+        if theta.ndim != 1 or theta.size != len(_PARAM_KEYS):
+            theta = theta.reshape(-1)
+        p = {k: float(theta[i]) for i, k in enumerate(_PARAM_KEYS)}
+    else:
+        p = theta  # assume already a dict-like
+
+    model_psd = _P_omega(p)
+
+    # Compare only within configured band (aligns with preprocessing band-pass)
+    fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 0.0))
+    fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", _SFREQ / 2.0))
+    mask = (_f >= fmin) & (_f <= fmax)
+    model_psd = model_psd[mask]
+    real_psd = real_psd[mask]
 
     log_model = normalize_psd(model_psd)
-    
     log_real = normalize_psd(real_psd)
 
     return np.mean((log_model - log_real) ** 2)
@@ -222,7 +236,7 @@ def fit_parameters(
         'verb_log': 0        # don't write CMA log files
     }
     
-    opts.setdefault('tolfun', 1e-8)  # Less strict convergence tolerance
+    opts.setdefault('tolfun', 1e-7)  # Less strict convergence tolerance
     opts.setdefault('maxiter', 600)  # Allow more iterations
     
     if cma_opts:

@@ -59,9 +59,9 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         elif method == "ctm_nn_avg":
             latent_feature = infer_latent_parameters(model, x, device=device, per_channel=False)
         elif method == "ctm_cma_pc":
-            latent_feature = fit_ctm_average_from_raw(x)
-        elif method == "ctm_cma_avg":
             latent_feature = fit_ctm_per_channel_from_raw(x)
+        elif method == "ctm_cma_avg":
+            latent_feature = fit_ctm_average_from_raw(x)
         elif method == "jr_pc":
             latent_feature = fit_jr_per_channel_from_raw(x)
         elif method == "jr_avg":
