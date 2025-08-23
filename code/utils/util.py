@@ -56,13 +56,16 @@ def ensure_float32_tensor(x):
     return torch.as_tensor(x, dtype=torch.float32)
 
 
-def make_latent_record(latent_feature, gender, age, abnormal):
-    """Serialize a latent tuple matching JSONL output format used downstream."""
+def make_latent_record(latent_feature, gender, age, abnormal, sample_id):
+    """Serialize a latent tuple matching JSONL output format used downstream.
+
+    Always returns a 5‑tuple: (vec, g, a, ab, sample_id).
+    """
     vec = latent_feature.tolist() if hasattr(latent_feature, 'tolist') else latent_feature
     g = int(gender.item()) if hasattr(gender, 'item') else int(gender)
     a = int(age.item()) if hasattr(age, 'item') else int(age)
     ab = int(abnormal.item()) if hasattr(abnormal, 'item') else int(abnormal)
-    return (vec, g, a, ab)
+    return (vec, g, a, ab, str(sample_id))
 
 
 def truncate_file(path):

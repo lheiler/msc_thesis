@@ -9,6 +9,7 @@ from sklearn.decomposition import PCA
 from scipy.spatial import procrustes
 
 from utils.latent_loading import load_latent_parameters_array
+from typing import Tuple, List
 
 
 def _center_rows(X: np.ndarray) -> np.ndarray:
@@ -175,7 +176,7 @@ def compute_pairwise_summary(Z1: np.ndarray, Z2: np.ndarray, *, k: int = 10) -> 
     }
 
 
-def _dataloader_to_array(loader) -> np.ndarray:
+def _dataloader_to_array(loader) -> Tuple[np.ndarray, List[str] | None]:
     # Loader.dataset is a list of tuples: (latent, ...)
     arr = []
     for sample in loader.dataset:
@@ -183,7 +184,27 @@ def _dataloader_to_array(loader) -> np.ndarray:
         if hasattr(z, "detach"):
             z = z.detach().cpu().numpy()
         arr.append(np.asarray(z, dtype=np.float32).reshape(-1))
-    return np.stack(arr, axis=0) if arr else np.zeros((0, 0), dtype=np.float32)
+    Z = np.stack(arr, axis=0) if arr else np.zeros((0, 0), dtype=np.float32)
+    # Optional IDs were attached at load time
+    sample_ids = getattr(loader, "sample_ids", None)
+    return Z, sample_ids
+
+
+def _align_by_ids(ZL: np.ndarray, idsL: List[str], ZR: np.ndarray, idsR: List[str]) -> Tuple[np.ndarray, np.ndarray]:
+    # IDs are required on both sides
+    if not idsL or not idsR:
+        raise ValueError("Missing sample IDs for alignment.")
+    # Build index by id
+    idxL = {sid: i for i, sid in enumerate(idsL)}
+    idxR = {sid: i for i, sid in enumerate(idsR)}
+    common = [sid for sid in idsL if sid in idxR]
+    if not common:
+        raise ValueError("No overlapping sample IDs between inputs; cannot align.")
+    if len(common) < min(len(idsL), len(idsR)):
+        print(f"⚠️  Aligning on {len(common)} common sample IDs (left={len(idsL)}, right={len(idsR)}).")
+    left_idx = np.array([idxL[sid] for sid in common], dtype=int)
+    right_idx = np.array([idxR[sid] for sid in common], dtype=int)
+    return ZL[left_idx], ZR[right_idx]
 
 
 def _load_latents_any(path: str, batch_size: int = 1024):
@@ -207,18 +228,17 @@ if __name__ == "__main__":
     # Load
     left_loader = _load_latents_any(LEFT_PATH, batch_size=BATCH_SIZE)
     right_loader = _load_latents_any(RIGHT_PATH, batch_size=BATCH_SIZE)
-    ZL = _dataloader_to_array(left_loader)
-    ZR = _dataloader_to_array(right_loader)
+    ZL, idsL = _dataloader_to_array(left_loader)
+    ZR, idsR = _dataloader_to_array(right_loader)
 
     if ZL.shape[0] == 0 or ZR.shape[0] == 0:
         raise SystemExit("No samples loaded from one or both inputs.")
 
-    # Align lengths if different by truncating to min
-    n = min(ZL.shape[0], ZR.shape[0])
-    if ZL.shape[0] != ZR.shape[0]:
-        print(f"⚠️  Different number of samples: left={ZL.shape[0]} right={ZR.shape[0]} → truncating to {n}")
-    ZL = ZL[:n]
-    ZR = ZR[:n]
+    # Align by sample IDs (required)
+    if idsL is None or idsR is None:
+        raise SystemExit("Latent loaders missing required sample IDs. Ensure JSONL includes sample_id.")
+    ZL, ZR = _align_by_ids(ZL, idsL, ZR, idsR)
+    n = ZL.shape[0]
 
     # Subsample if requested
     if SUBSAMPLE and n > SUBSAMPLE:

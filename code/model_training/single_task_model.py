@@ -314,6 +314,10 @@ def train(
     consistency, but only a **single** target is expected from the dataloader.
     """
     device = torch.device(device)
+
+    # --- Stability knobs (embedded defaults, no config bloat) ---
+    _MIN_EPOCHS_FOR_SELECTION = 5   # don't accept a best checkpoint before this epoch
+
     model.to(device)
 
     print(f"Training model with checkpoint path: {checkpoint_path}")
@@ -339,7 +343,7 @@ def train(
 
             train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True)
             val_loader   = DataLoader(val_subset,   batch_size=batch_size, shuffle=False)
-            print(f"📑 Split {total_samples} samples → {len(train_subset)} train | {len(val_subset)} val")
+            print(f"📑OH OHH; CAREFULL CREATING SPLIT in the wrong place; split {total_samples} samples → {len(train_subset)} train | {len(val_subset)} val")
         else:
             train_loader = dataloader
             val_loader   = None
@@ -446,15 +450,12 @@ def train(
             if model.output_type == "classification":
                 val_acc = val_correct_cls / max(val_total, 1)
                 msg += f" | val_loss = {val_loss:.4f}, val_acc = {val_acc:.2f}"
-
-                # Use *accuracy* itself to drive best-model checkpointing & early-stopping.
-                # We invert the sign so that "lower" still means "better" relative to the
-                # original comparison (< best_metric).
-                current_val_score = val_acc          # human-readable (higher = better)
-                plateau_metric    = -val_acc         # lower negative → higher accuracy
+                # Always use val_loss for scheduler & model selection; val_acc for logging
+                current_val_score = val_acc      # for logging/reporting only
+                plateau_metric = val_loss        # scheduler & early stopping on loss
             else:
                 msg += f" | val_loss = {val_loss:.4f}"
-                current_val_score = -val_loss  # lower loss ⇒ higher score
+                current_val_score = -val_loss  # lower loss ⇒ higher score (for reporting)
                 plateau_metric = val_loss
         else:
             val_loss = None
@@ -463,19 +464,18 @@ def train(
         if epoch % 1 == 0: print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
 
         # ---------------- Early-stopping tracking ------------------
-        current_metric = plateau_metric
-        if current_metric + min_delta < best_metric:
-            best_metric = current_metric
+        # Use validation loss for selection; require a minimum number of epochs
+        current_metric = val_loss if val_loss is not None else float("inf")
+        if epoch >= _MIN_EPOCHS_FOR_SELECTION and (current_metric + min_delta < best_metric):
+            best_metric = float(current_metric)
             best_state_dict = {k: v.clone() for k, v in model.state_dict().items()}
             best_epoch = epoch
-            best_val_score = current_val_score
+            best_val_score = current_val_score if 'current_val_score' in locals() else None
             epochs_no_improve = 0
             if checkpoint_path is not None:
                 torch.save(best_state_dict, checkpoint_path)
         else:
             epochs_no_improve += 1
-            # if checkpoint_path is not None:
-            #     torch.save(best_state_dict, checkpoint_path)
 
         # ---------------- History bookkeeping -------------------
         entry = {"epoch": epoch, "train_loss": epoch_loss, "val_loss": val_loss}
@@ -492,14 +492,15 @@ def train(
         if early_stopping_patience and epochs_no_improve >= early_stopping_patience:
             print(
                 f"⏹️  Early stopping after {epoch} epochs (best epoch {best_epoch}, "
-                f"val_metric={best_metric:.4f})."
+                f"best_val_loss={best_metric:.4f})."
             )
             break
 
         # ---------------- Scheduler step -----------------------------
         if sched is not None:
             if isinstance(sched, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                sched.step(plateau_metric)
+                # step on validation loss (lower is better); if no val loader, fall back to train loss
+                sched.step(val_loss if val_loss is not None else epoch_loss)
             else:
                 sched.step(epoch + 1)
 
