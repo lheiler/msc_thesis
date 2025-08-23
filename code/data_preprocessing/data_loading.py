@@ -20,6 +20,8 @@ def load_data(data_path_train): #specifically for TUH EEG dataset
                 print(f"Sex code {sex_code} not what we expect")
             age = 0
             abn = 1 if path == "abnormal" else 0  # Abnormal
-            t_data.append((raw, sex_code, age, abn))
+            # Attach a stable sample identifier based on relative path
+            sample_id = f"{path}/{sub_path}"
+            t_data.append((raw, sex_code, age, abn, sample_id))
     return t_data
 

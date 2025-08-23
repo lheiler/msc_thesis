@@ -51,7 +51,11 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
     elif method == "psd_ae_pc" or method == "psd_ae_avg":
         model = get_psd_ae_model(device=device)
     
-    for x, g, a, ab in data:
+    for item in data:
+        # Require (raw, g, a, ab, sample_id)
+        if len(item) != 5:
+            raise ValueError("Expected 5-tuple (raw, gender, age, abnormal, sample_id) from data loader.")
+        x, g, a, ab, sample_id = item
         x = clean_raw_eeg(x)
         
         if method == "ctm_nn_pc":
@@ -101,12 +105,13 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path=""):
         latent_feature = ensure_float32_tensor(latent_feature)
 
         # Serialize safely
-        record = make_latent_record(latent_feature, g, a, ab)
+        record = make_latent_record(latent_feature, g, a, ab, sample_id)
 
         # Append to the file
         if save_path:
             append_jsonl(save_path, record)
 
+        # Dataset keeps tuples (latent, g, a, ab) to avoid downstream changes
         latent_features.append((latent_feature, g, a, ab))
 
     return DataLoader(latent_features, batch_size=batch_size, shuffle=False)

@@ -24,8 +24,8 @@ paths:
 # ----------------------------------------------------------------------------
 # Hyper-parameter optimisation via Optuna (overrides manual settings)
 optuna:
-  n_trials: 10    # Number of optimisation trials per task
-  val_split: 0.1   # Fraction of training data reserved for validation
+  n_trials: 80    # Number of optimisation trials per task
+  val_split: 0.15   # Fraction of training data reserved for validation
   patience: 7    # Early-stopping patience within each trial
-  batch_size: 64
+  batch_size: 256
 
