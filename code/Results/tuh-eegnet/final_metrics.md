@@ -1,59 +1,79 @@
 # Model Evaluation Report
 
 
-## Task: gender
-
-| Metric     |    Value |
-|------------|----------|
-| Loss (BCE) | 0.685748 |
-| Accuracy   | 0.496377 |
-
-Model prediction distribution
-
-| Label   |   Count | %     |
-|---------|---------|-------|
-| label_0 |      73 | 26.4% |
-| label_1 |     203 | 73.6% |
-
 ## Task: abnormal
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.501961 |
-| Accuracy   | 0.73913  |
+| Loss (BCE) | 0.542441 |
+| Accuracy   | 0.747573 |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |     152 | 55.1% |
-| label_1 |     124 | 44.9% |
+| label_0 |    3065 | 56.1% |
+| label_1 |    2394 | 43.9% |
 
 ## Dataset statistics – train
 
-|---------|------|
-| Samples | 2717 |
+|---------|-------|
+| Samples | 53622 |
 
 Gender counts
 
 | Gender code   |   Count | %     |
 |---------------|---------|-------|
-| female(2)     |    1447 | 53.3% |
-| male(1)       |    1270 | 46.7% |
-| unknown(0)    |       0 | 0.0%  |
+| female(2)     |       0 | 0.0%  |
+| male(1)       |   28583 | 53.3% |
+| unknown(0)    |   25039 | 46.7% |
 
 Abnormal counts
 
 | Label       |   Count | %     |
 |-------------|---------|-------|
-| abnormal(1) |    1346 | 49.5% |
-| normal(0)   |    1371 | 50.5% |
+| abnormal(1) |   26545 | 49.5% |
+| normal(0)   |   27077 | 50.5% |
+
+Age distribution
+
+| Age bin   |     N |
+|-----------|-------|
+| 0–10      | 53622 |
+| 10–20     |     0 |
+| 20–30     |     0 |
+| 30–40     |     0 |
+| 40–50     |     0 |
+| 50–60     |     0 |
+| 60–70     |     0 |
+| 70–80     |     0 |
+| 80–120    |     0 |
+
+## Dataset statistics – eval
+
+|---------|------|
+| Samples | 5459 |
+
+Gender counts
+
+| Gender code   |   Count | %     |
+|---------------|---------|-------|
+| female(2)     |       0 | 0.0%  |
+| male(1)       |    2919 | 53.5% |
+| unknown(0)    |    2540 | 46.5% |
+
+Abnormal counts
+
+| Label       |   Count | %     |
+|-------------|---------|-------|
+| abnormal(1) |    2486 | 45.5% |
+| normal(0)   |    2973 | 54.5% |
 
 Age distribution
 
 | Age bin   |    N |
 |-----------|------|
-| 0–10      | 2717 |
+| 0–10      | 5459 |
 | 10–20     |    0 |
 | 20–30     |    0 |
 | 30–40     |    0 |
@@ -62,40 +82,6 @@ Age distribution
 | 60–70     |    0 |
 | 70–80     |    0 |
 | 80–120    |    0 |
-
-## Dataset statistics – eval
-
-|---------|-----|
-| Samples | 276 |
-
-Gender counts
-
-| Gender code   |   Count | %     |
-|---------------|---------|-------|
-| female(2)     |     148 | 53.6% |
-| male(1)       |     128 | 46.4% |
-| unknown(0)    |       0 | 0.0%  |
-
-Abnormal counts
-
-| Label       |   Count | %     |
-|-------------|---------|-------|
-| abnormal(1) |     126 | 45.7% |
-| normal(0)   |     150 | 54.3% |
-
-Age distribution
-
-| Age bin   |   N |
-|-----------|-----|
-| 0–10      | 276 |
-| 10–20     |   0 |
-| 20–30     |   0 |
-| 30–40     |   0 |
-| 40–50     |   0 |
-| 50–60     |   0 |
-| 60–70     |   0 |
-| 70–80     |   0 |
-| 80–120    |   0 |
 
 ## Latent-feature independence
 

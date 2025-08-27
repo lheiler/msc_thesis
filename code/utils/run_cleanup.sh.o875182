@@ -1,0 +1,221 @@
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟥 [skip] /rds/general/user/lrh24/ephemeral/edf/train/abnormal/01_tcp_ar/aaaaaott_s001_t001.edf: events should be a NumPy array of integers, got <class 'numpy.ndarray'>
+🟠 [summary] only 19 epochs kept (< 20)
+🟠 [summary] only 9 epochs kept (< 20)
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟥 [skip] /rds/general/user/lrh24/ephemeral/edf/train/normal/01_tcp_ar/aaaaapcv_s001_t001.edf: events should be a NumPy array of integers, got <class 'numpy.ndarray'>
+🟠 [summary] only 18 epochs kept (< 20)
+🟥 [skip] /rds/general/user/lrh24/ephemeral/edf/train/abnormal/01_tcp_ar/aaaaaaxa_s006_t001.edf: events should be a NumPy array of integers, got <class 'numpy.ndarray'>
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟥 [skip] /rds/general/user/lrh24/ephemeral/edf/train/abnormal/01_tcp_ar/aaaaacns_s002_t002.edf: events should be a NumPy array of integers, got <class 'numpy.ndarray'>
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [summary] only 4 epochs kept (< 20)
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [summary] only 12 epochs kept (< 20)
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟥 [skip] /rds/general/user/lrh24/ephemeral/edf/train/abnormal/01_tcp_ar/aaaaamlt_s003_t001.edf: events should be a NumPy array of integers, got <class 'numpy.ndarray'>
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟥 [skip] /rds/general/user/lrh24/ephemeral/edf/train/abnormal/01_tcp_ar/aaaaacsa_s003_t001.edf: events should be a NumPy array of integers, got <class 'numpy.ndarray'>
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟥 [skip] /rds/general/user/lrh24/ephemeral/edf/train/abnormal/01_tcp_ar/aaaaamde_s002_t001.edf: events should be a NumPy array of integers, got <class 'numpy.ndarray'>
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟥 [skip] /rds/general/user/lrh24/ephemeral/edf/train/normal/01_tcp_ar/aaaaanvd_s006_t002.edf: One PCA component captures most of the explained variance (99.55166888877095%), your threshold results in 1 component. You should select a higher value.
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+[train] Saving 53622 epochs to /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl
+
+🟠 [TRAIN] Files with <20 clean epochs:
+  - aaaaapve_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamde_s002_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaaocy_s009_t000.edf: 4 epochs (success)
+  - aaaaaedq_s007_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamlt_s003_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaacns_s002_t002.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaaptf_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaoro_s002_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaoom_s002_t006.edf: 9 epochs (success)
+  - aaaaajgj_s004_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanie_s003_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaadli_s005_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanqc_s003_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaott_s001_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaacsa_s003_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaapfa_s004_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaaxa_s006_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaamug_s001_t000.edf: 12 epochs (success)
+  - aaaaajqu_s002_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamdj_s002_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaappt_s002_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanvd_s006_t002.edf: 0 epochs (cleanup_failed: One PCA component captures most of the explained variance (99.55166888877095%), your threshold results in 1 component. You should select a higher value.)
+  - aaaaaket_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanbe_s002_t003.edf: 19 epochs (success)
+  - aaaaadfx_s004_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapto_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanvi_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanew_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaajwi_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaoef_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapsr_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapri_s002_t001.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaprt_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanqb_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaansy_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamae_s003_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamib_s002_t002.edf: 18 epochs (success)
+  - aaaaaohh_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapcv_s001_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+Total files with <20 epochs: 39/2717
+📁 [TRAIN] Saved 53622 total epochs to /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl
+[eval] Saving 5459 epochs to /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl
+
+🟠 [EVAL] Files with <20 clean epochs:
+  - aaaaajah_s004_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapmb_s002_t001.edf: 6 epochs (success)
+  - aaaaahzm_s001_t001.edf: 13 epochs (success)
+  - aaaaaitt_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+Total files with <20 epochs: 4/276
+📁 [EVAL] Saved 5459 total epochs to /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl
+
+============================================================
+FINAL SUMMARY:
+Total files processed: 2993
+Files with ≥20 epochs: 2950
+Files with <20 epochs: 43
+
+ALL FILES WITH <20 EPOCHS:
+  - aaaaapve_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamde_s002_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaaocy_s009_t000.edf: 4 epochs (success)
+  - aaaaaedq_s007_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamlt_s003_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaacns_s002_t002.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaaptf_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaoro_s002_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaoom_s002_t006.edf: 9 epochs (success)
+  - aaaaajgj_s004_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanie_s003_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaadli_s005_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanqc_s003_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaott_s001_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaacsa_s003_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaapfa_s004_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaaxa_s006_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaamug_s001_t000.edf: 12 epochs (success)
+  - aaaaajqu_s002_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamdj_s002_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaappt_s002_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanvd_s006_t002.edf: 0 epochs (cleanup_failed: One PCA component captures most of the explained variance (99.55166888877095%), your threshold results in 1 component. You should select a higher value.)
+  - aaaaaket_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanbe_s002_t003.edf: 19 epochs (success)
+  - aaaaadfx_s004_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapto_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanvi_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanew_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaajwi_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaoef_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapsr_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapri_s002_t001.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaaprt_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaanqb_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaansy_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamae_s003_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaamib_s002_t002.edf: 18 epochs (success)
+  - aaaaaohh_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapcv_s001_t001.edf: 0 epochs (cleanup_failed: events should be a NumPy array of integers, got <class 'numpy.ndarray'>)
+  - aaaaajah_s004_t000.edf: 0 epochs (autoreject_rejected_all)
+  - aaaaapmb_s002_t001.edf: 6 epochs (success)
+  - aaaaahzm_s001_t001.edf: 13 epochs (success)
+  - aaaaaitt_s001_t000.edf: 0 epochs (autoreject_rejected_all)
+[save] Done. Data saved in train_epochs.pkl and eval_epochs.pkl
+Each entry is a tuple: (raw, g, a, ab, sample_id)
+  raw: mne.Raw object
+  g: gender (0=female, 1=male)
+  a: age (set to 0 for compatibility)
+  ab: abnormal label (0=normal, 1=abnormal)
+  sample_id: unique epoch identifier
+============================================================
+[done] Data cleaning pipeline finished.
+🟠 [summary] only 13 epochs kept (< 20)
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+🟠 [summary] only 6 epochs kept (< 20)
+🟠 [autoreject] rejected all epochs; trying with µV→V scaling
+🟥 [autoreject] all epochs rejected; discarding sample
+🟥 [summary] AutoReject rejected all epochs; skipping
+
+====================================
+CPU Time used: 130:31:38
+CPU Percent: 6329%
+Memory usage: 50555660kb
+Approx Power usage: 1.5662000000000003
+Walltime usage: 02:14:31
+
+====================================

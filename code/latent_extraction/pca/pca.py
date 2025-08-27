@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Optional, Union, List, Iterable
 from pathlib import Path
+import pickle
 import numpy as np
 import mne
 from sklearn.decomposition import PCA
@@ -10,7 +11,7 @@ from sklearn.preprocessing import StandardScaler
 import torch
 import sys
 sys.path.append("/rds/general/user/lrh24/home/thesis/code")
-from utils.util import clean_raw_eeg, compute_psd_from_raw, PSD_CALCULATION_PARAMS, STANDARD_EEG_CHANNELS
+from utils.util import compute_psd_from_raw, PSD_CALCULATION_PARAMS, STANDARD_EEG_CHANNELS
 
 
 # Shared helpers / cleaning
@@ -27,68 +28,153 @@ def _parse_n_components(s: str) -> Union[int, float, str]:
     return int(s)
 
 
-def fit_pca_from_fif_dir(
-    train_dir: Union[str, Path],
+# def fit_pca_from_fif_dir(
+#     train_dir: Union[str, Path],
+#     model_out: Union[str, Path],
+#     n_components: Union[int, float, str] = 0.95,
+#     whiten: bool = False,
+#     impute: Optional[str] = None,  # "median" | "mean" | None
+#     preload: bool = True,
+#     verbose: bool = True,
+#     psd_n_fft: Optional[int] = None,
+#     # ---- New PSD params (used for method=avg_psd) ----
+#     psd_fmin: float = 1.0,
+#     psd_fmax: float = 45.0,
+#     psd_df: float = 1.0,
+#     psd_n_per_seg: Optional[int] = 512,
+# ) -> dict:
+#     """
+#     Recursively loads .fif files from train_dir, extracts per-channel PSDs, fits
+#     StandardScaler + PCA on TRAIN ONLY, and saves a frozen artifact (.npz + .pkl).
+
+#     """
+#     train_dir = Path(train_dir)
+#     model_out = Path(model_out)
+#     files = list(iter_fif_files(train_dir))
+#     if not files:
+#         raise FileNotFoundError(f"No .fif files found under {train_dir}")
+
+#     X_list: List[np.ndarray] = []
+#     used_files: List[str] = []
+#     first_dim: Optional[int] = None
+#     freqs_ref: Optional[np.ndarray] = None
+
+#     for fp in files:
+#         try:
+#             raw = mne.io.read_raw_fif(str(fp), preload=preload, verbose="ERROR")
+#             psd = compute_psd_from_raw(raw, calculate_average=False, normalize=True)  # (C, F)
+#             if not np.all(np.isfinite(psd)):
+#                 if verbose:
+#                     print(f"⚠️  Non-finite PSD; will handle via imputation/scaling: {fp}")
+#             for ch_vec in psd:
+#                 X_list.append(ch_vec.astype(np.float32))
+#                 used_files.append(str(fp))
+#         except Exception as e:
+#             if verbose:
+#                 print(f"⚠️  Failed on {fp}: {e}")
+#             continue
+    
+#     if not X_list:
+#         raise RuntimeError("No valid feature vectors were produced.")
+
+#     X = np.vstack(X_list).astype(np.float32)  # (n, d)
+#     d = X.shape[1]
+
+
+#     # Scale + PCA
+#     scaler = StandardScaler(with_mean=True, with_std=True)
+#     Xs = scaler.fit_transform(X)
+
+#     pca = PCA(n_components=n_components, whiten=whiten, svd_solver="auto", random_state=0)
+#     Z = pca.fit_transform(Xs)
+
+#     # Save light artifact for fast runtime + a .pkl with full objects (optional)
+#     payload_npz = dict(
+#         mu=scaler.mean_.astype(np.float32),
+#         sigma=scaler.scale_.astype(np.float32),
+#         V=pca.components_.astype(np.float32),           # (k, d)
+#         lam=pca.explained_variance_.astype(np.float32), # (k,)
+#         whiten=np.array(whiten, dtype=np.bool_),
+#         input_dim=np.array([d], dtype=np.int32),
+#         channels=np.array(STANDARD_EEG_CHANNELS, dtype=object),
+#     )
+#     model_out.parent.mkdir(parents=True, exist_ok=True)
+#     np.savez(model_out, **payload_npz)
+
+#     summary = {
+#         "files_total": len(files),
+#         "files_used": len(used_files),
+#         "input_dim": d,
+#         "k": int(pca.components_.shape[0]),
+#         "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
+#         "model_out_npz": str(model_out),
+#         "model_out_pkl": str(model_out.with_suffix(".pkl")),
+#     }
+#     if verbose:
+#         print(json.dumps(summary, indent=2))
+#     return summary
+
+# ---------------------------------------------------------------------
+# New: Fit PCA from cleaned epoch pickle (train_epochs.pkl)
+# ---------------------------------------------------------------------
+def fit_pca_from_pickle(
+    train_pickle: Union[str, Path],
     model_out: Union[str, Path],
     n_components: Union[int, float, str] = 0.95,
     whiten: bool = False,
-    impute: Optional[str] = None,  # "median" | "mean" | None
     preload: bool = True,
     verbose: bool = True,
-    psd_n_fft: Optional[int] = None,
-    # ---- New PSD params (used for method=avg_psd) ----
-    psd_fmin: float = 1.0,
-    psd_fmax: float = 45.0,
-    psd_df: float = 1.0,
-    psd_n_per_seg: Optional[int] = 512,
 ) -> dict:
     """
-    Recursively loads .fif files from train_dir, extracts per-channel PSDs, fits
-    StandardScaler + PCA on TRAIN ONLY, and saves a frozen artifact (.npz + .pkl).
-
+    Load cleaned epochs from a single pickle file (list of 5‑tuples:
+    (raw, gender, age, abnormal, sample_id)), compute per‑channel PSDs,
+    fit StandardScaler + PCA on TRAIN ONLY, and save a frozen artifact (.npz).
     """
-    train_dir = Path(train_dir)
+    train_pickle = Path(train_pickle)
     model_out = Path(model_out)
-    files = list(iter_fif_files(train_dir))
-    if not files:
-        raise FileNotFoundError(f"No .fif files found under {train_dir}")
+
+    if not train_pickle.exists():
+        raise FileNotFoundError(f"Pickle file not found: {train_pickle}")
+
+    with open(train_pickle, "rb") as f:
+        records = pickle.load(f)
+
+    if not isinstance(records, list) or len(records) == 0:
+        raise RuntimeError(f"No records found in {train_pickle}")
 
     X_list: List[np.ndarray] = []
-    used_files: List[str] = []
-    first_dim: Optional[int] = None
-    freqs_ref: Optional[np.ndarray] = None
+    used_count: int = 0
 
-    for fp in files:
+    for rec in records:
         try:
-            raw = mne.io.read_raw_fif(str(fp), preload=preload, verbose="ERROR")
-            raw = clean_raw_eeg(raw)
+            # Expecting (raw, g, a, ab, sample_id)
+            raw = rec[0]
             psd = compute_psd_from_raw(raw, calculate_average=False, normalize=True)  # (C, F)
             if not np.all(np.isfinite(psd)):
                 if verbose:
-                    print(f"⚠️  Non-finite PSD; will handle via imputation/scaling: {fp}")
+                    print("⚠️  Non-finite PSD encountered – sanitizing and continuing …")
+                psd = np.nan_to_num(psd, nan=0.0, posinf=0.0, neginf=0.0)
             for ch_vec in psd:
                 X_list.append(ch_vec.astype(np.float32))
-                used_files.append(str(fp))
+            used_count += 1
         except Exception as e:
             if verbose:
-                print(f"⚠️  Failed on {fp}: {e}")
+                print(f"⚠️  Skipping record due to error: {e}")
             continue
-    
+
     if not X_list:
-        raise RuntimeError("No valid feature vectors were produced.")
+        raise RuntimeError("No valid feature vectors were produced from pickle.")
 
     X = np.vstack(X_list).astype(np.float32)  # (n, d)
     d = X.shape[1]
 
-
-    # Scale + PCA
+    # Scale + PCA (train-only statistics)
     scaler = StandardScaler(with_mean=True, with_std=True)
     Xs = scaler.fit_transform(X)
 
     pca = PCA(n_components=n_components, whiten=whiten, svd_solver="auto", random_state=0)
-    Z = pca.fit_transform(Xs)
+    _ = pca.fit_transform(Xs)
 
-    # Save light artifact for fast runtime + a .pkl with full objects (optional)
     payload_npz = dict(
         mu=scaler.mean_.astype(np.float32),
         sigma=scaler.scale_.astype(np.float32),
@@ -102,8 +188,8 @@ def fit_pca_from_fif_dir(
     np.savez(model_out, **payload_npz)
 
     summary = {
-        "files_total": len(files),
-        "files_used": len(used_files),
+        "records_used": int(used_count),
+        "vectors": int(X.shape[0]),
         "input_dim": d,
         "k": int(pca.components_.shape[0]),
         "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
@@ -113,7 +199,6 @@ def fit_pca_from_fif_dir(
     if verbose:
         print(json.dumps(summary, indent=2))
     return summary
-
 # -----------------------------
 # Online: lightweight runtime
 # -----------------------------
@@ -188,7 +273,7 @@ def extract_pca_from_raw(raw: mne.io.BaseRaw, *, model: FrozenPCATorch, device: 
 
 def main():
     # Hardcoded configuration – no CLI args
-    train_dir = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train"
+    train_pickle = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl"
     out_dir = Path("/rds/general/user/lrh24/home/thesis/code/latent_extraction/pca/models/")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -209,19 +294,14 @@ def main():
     model_stem = f"pca_pc_psd_k{k}"
     model_out = out_dir / f"{model_stem}.npz"
 
-    fit_pca_from_fif_dir(
-        train_dir=train_dir,
+    # Use cleaned epoch pickle instead of scanning FIF files
+    fit_pca_from_pickle(
+        train_pickle=train_pickle,
         model_out=model_out,
         n_components=k,
         whiten=whiten,
-        impute=impute,
         preload=preload,
         verbose=verbose,
-        psd_fmin=psd_fmin,
-        psd_fmax=psd_fmax,
-        psd_df=psd_df,
-        psd_n_per_seg=psd_n_per_seg,
-        psd_n_fft=psd_n_fft,
     )
 
 if __name__ == "__main__":

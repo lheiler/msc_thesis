@@ -17,6 +17,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 import evaluation.metrix as metrics
 from pathlib import Path
+import pickle
 
 
 
@@ -50,8 +51,6 @@ def main():
 
     paths_cfg = cfg.get("paths", {})
     data_path   = os.path.expanduser(paths_cfg.get("data_path", ""))
-    data_path_train = os.path.join(data_path, "train")
-    data_path_eval = os.path.join(data_path, "eval")
     results_root = paths_cfg.get("results_root", "Results")
     
     results_path = os.path.join(results_root, f"{data_corp}-{method}")
@@ -70,8 +69,18 @@ def main():
     patience_opt   = optuna_cfg.get("patience", 10)
     batch_size   = optuna_cfg.get("batch_size", 64)
     
-    n_train = sum(1 for _ in Path(data_path_train).rglob("*.fif"))
-    n_eval  = sum(1 for _ in Path(data_path_eval).rglob("*.fif"))
+    # Count epochs from pickle files instead of individual .fif files
+    train_pickle = os.path.join(data_path, "train_epochs.pkl")
+    eval_pickle = os.path.join(data_path, "eval_epochs.pkl")
+    
+    if os.path.exists(train_pickle) and os.path.exists(eval_pickle):
+        with open(train_pickle, 'rb') as f:
+            n_train = len(pickle.load(f))
+        with open(eval_pickle, 'rb') as f:
+            n_eval = len(pickle.load(f))
+    else:
+        print("⚠️  Pickle files not found. Run preprocessing first.")
+        n_train, n_eval = 0, 0
     
     # ------------------------------------------------------------------
     # 4) Latent feature loading: cache or compute
@@ -96,7 +105,7 @@ def main():
 
     else:
         print("Loading raw EEG data …")
-        t_data, e_data = dl.load_data(data_path_train), dl.load_data(data_path_eval)
+        t_data, e_data = dl.load_data(data_path, "train"), dl.load_data(data_path, "eval")
         print(f"Loaded {len(t_data)} training samples and {len(e_data)} evaluation samples from tuh dataset")
 
         print("Extracting latent features …")
@@ -120,7 +129,8 @@ def main():
     # 6) Latent evaluation (disabled)
     # ------------------------------------------------------------------
     print("Evaluating latent features …")
-    latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
+    latent_metrics = None
+    #latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
 
     # ------------------------------------------------------------------
     # 7) Training – separate models per task
@@ -158,7 +168,7 @@ def main():
         return (y_tensor == 2).float() if torch.all((y_tensor == 1) | (y_tensor == 2)) else y_tensor
 
     for task_idx in range(num_tasks):
-        if task_idx == 1:
+        if task_idx == 1 or task_idx == 0:
             continue
         # Resolve task type/name and announce
         task_type, task_name = task_map.get(task_idx, ("classification", f"task_{task_idx+1}"))
@@ -169,10 +179,15 @@ def main():
         if task_type == "classification":
             y_train_tensor = map_class_labels(y_train_tensor)
         assert X_train.shape[0] == y_train_tensor.shape[0], "Mismatch: features and labels have different lengths (train)."
+        
+        # Normalize features using only the training split (avoid leakage)
+        train_idx_tensor = torch.as_tensor(train_indices_global, dtype=torch.long)
+        X_mean = X_train.index_select(0, train_idx_tensor).mean(dim=0, keepdim=True)
+        X_std = X_train.index_select(0, train_idx_tensor).std(dim=0, keepdim=True) + 1e-8
+        X_train = (X_train - X_mean) / X_std
 
         # Datasets and loaders (global split)
         train_dataset_full = TensorDataset(X_train, y_train_tensor)
-        val_dataset_full   = TensorDataset(X_train.clone(), y_train_tensor.clone())
         train_loader = DataLoader(Subset(train_dataset_full, train_indices_global), batch_size=batch_size, shuffle=True)
         val_loader   = DataLoader(Subset(train_dataset_full, val_indices_global),   batch_size=batch_size, shuffle=True)
 
@@ -181,7 +196,10 @@ def main():
         if task_type == "classification":
             y_eval_tensor = map_class_labels(y_eval_tensor)
         assert X_eval.shape[0] == y_eval_tensor.shape[0], "Mismatch: features and labels have different lengths (eval)."
-        eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=True)
+        
+        # Apply same normalization as training data
+        X_eval = (X_eval - X_mean) / X_std
+        eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=False)
 
         print(f"   → Optuna search (n_trials={n_trials_opt}) for {task_type} …")
         search_out = tune_hyperparameters(
@@ -226,7 +244,7 @@ def main():
         "hyperparams_per_task": hyperparams_all,
         "train_dataset_stats": train_stats,
         "eval_dataset_stats": eval_stats,
-        "latent": latent_metrics,
+        "latent":   latent_metrics if latent_metrics is not None else None,
     }
 
     print("Saving results …")
@@ -239,3 +257,5 @@ def main():
 if __name__ == "__main__":
     main()
     
+
+

@@ -8,9 +8,11 @@ import mne
 import numpy as np
 import torch
 from torch import nn, Tensor
-from utils.util import preprocess_time_domain_input
+
 import os
 import torch.nn.functional as F
+
+from utils.util import preprocess_time_domain_input
 
 
 # ----------------- Helper: Depthwise-separable conv -----------------
@@ -42,7 +44,7 @@ class EEGNetAE(nn.Module):
         self,
         n_channels: int = 19,
         latent_dim: int = 128,
-        fixed_len: int = 60 * 128,
+        fixed_len: int = 10 * 128,
         F1: int = 8,
         D: int = 2,
         F2: int = 16,
@@ -187,16 +189,6 @@ class EEGNetAE(nn.Module):
 #                           INFERENCE UTILITIES
 # -----------------------------------------------------------------------------
 
-_EEG_CHANNELS_19 = [
-    "Fp1", "Fp2", "F3", "F4", "C3", "C4", "P3", "P4",
-    "O1", "O2", "F7", "F8", "T3", "T4", "T5", "T6",
-    "Cz", "Pz", "Fz",
-]
-
-
-def _preprocess_raw(raw: mne.io.BaseRaw, *, target_sfreq: float = 128.0, segment_len_sec: int = 60) -> np.ndarray:
-    """Preprocess Raw to (C, T) without redundant channel cleaning (handled in extractor)."""
-    return preprocess_time_domain_input(raw, target_sfreq=target_sfreq, segment_len_sec=segment_len_sec)
 
 
 def _this_dir() -> Path:
@@ -232,7 +224,7 @@ def get_eegnet_ae_model(*, device: Optional[torch.device | str] = None, latent_d
         device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     device = torch.device(device)
 
-    model = EEGNetAE(n_channels=19, latent_dim=latent_dim, fixed_len=60 * 128)
+    model = EEGNetAE(n_channels=19, latent_dim=latent_dim, fixed_len=10 * 128)
     ckpt = _resolve_latest_ckpt()
     if ckpt.exists():
         state = torch.load(ckpt, map_location=device)
@@ -268,7 +260,7 @@ def extract_eegnet_ae(
 
     if model is None:
         model = get_eegnet_ae_model(device=device, latent_dim=latent_dim)
-    data = _preprocess_raw(raw)
+    data = preprocess_time_domain_input(raw, target_sfreq=128.0, segment_len_sec=10)
     x = torch.as_tensor(data, dtype=torch.float32, device=device).unsqueeze(0)  # (1, C, T)
     z = model.encode(x).squeeze(0).detach().cpu()  # (latent_dim,)
     return z
