@@ -1,5 +1,5 @@
-Datasets/tuh-eeg-ab/
-Datasets/harvard-eeg/
+Datasets/old-tuh-eeg-ab-clean/
+Datasets/tuh-eeg-ab-clean/
 **/.DS_Store
 **/__pycache__/
 env_thesis/

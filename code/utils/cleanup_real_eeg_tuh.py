@@ -7,6 +7,7 @@ import mne
 import os
 import numpy as np
 import pandas as pd
+import pickle
 from autoreject import AutoReject
 from mne.time_frequency import psd_array_welch
 from typing import List, Iterable, Optional
@@ -432,8 +433,8 @@ def _epoch_quality_scores(epochs: mne.Epochs) -> np.ndarray:
 
 
 # === File Processing ===
-def _process_one_file(eeg_path: str, data_root: str, save_path_split: str, sfreq: int, epoch_len_s: float, split_name: str, ar_n_jobs: int) -> dict:
-    """Process a single EDF file through the complete pipeline."""
+def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: float, split_name: str, ar_n_jobs: int) -> dict:
+    """Process a single EDF file and return tuples for batch saving."""
     mne.set_log_level('ERROR')  # Suppress filter messages in worker
     
     # Extract labels from path
@@ -448,7 +449,7 @@ def _process_one_file(eeg_path: str, data_root: str, save_path_split: str, sfreq
         label = 0
     else:
         print(f"🛑 [skip] {eeg_path}: unknown label (expected 'abnormal' or 'normal' in path)")
-        return {"file": fn, "epochs_saved": 0, "reason": "unknown_label"}
+        return {"file": fn, "epochs_saved": 0, "reason": "unknown_label", "epoch_tuples": []}
     
     # Load and validate
     raw = mne.io.read_raw_edf(eeg_path, preload=True, verbose=False)
@@ -459,14 +460,14 @@ def _process_one_file(eeg_path: str, data_root: str, save_path_split: str, sfreq
             raise ValueError("Invalid sex")
     except Exception:
         print("🟥 [labels] sex unknown (0) -> discarding this recording")
-        return {"file": fn, "epochs_saved": 0, "reason": "sex_unknown"}
+        return {"file": fn, "epochs_saved": 0, "reason": "sex_unknown", "epoch_tuples": []}
     
     # Clean
     try:
         clean = cleanup_real_eeg_tuh(raw, sfreq=sfreq)
     except Exception as e:
         print(f"🟥 [skip] {eeg_path}: {e}")
-        return {"file": fn, "epochs_saved": 0, "reason": f"cleanup_failed: {e}"}
+        return {"file": fn, "epochs_saved": 0, "reason": f"cleanup_failed: {e}", "epoch_tuples": []}
     
     # Epoching + AR + QC
     ep = _make_fixed_length_epochs(clean, epoch_len_s)
@@ -477,7 +478,7 @@ def _process_one_file(eeg_path: str, data_root: str, save_path_split: str, sfreq
     # Check if AutoReject returned None (all epochs rejected)
     if ep is None:
         print(f"🟥 [summary] AutoReject rejected all epochs; skipping")
-        return {"file": fn, "epochs_saved": 0, "reason": "autoreject_rejected_all"}
+        return {"file": fn, "epochs_saved": 0, "reason": "autoreject_rejected_all", "epoch_tuples": []}
     
     mask = _qc_epoch_mask(ep)
     n_pass = int(mask.sum())
@@ -485,7 +486,7 @@ def _process_one_file(eeg_path: str, data_root: str, save_path_split: str, sfreq
     
     if len(ep) == 0:
         print(f"🟥 [summary] no {split_name} epochs kept; skipping")
-        return {"file": fn, "epochs_saved": 0, "reason": "no_epochs_after_qc"}
+        return {"file": fn, "epochs_saved": 0, "reason": "no_epochs_after_qc", "epoch_tuples": []}
     
     # Cap at 20 epochs, prefer best quality
     if len(ep) > 20:
@@ -500,7 +501,7 @@ def _process_one_file(eeg_path: str, data_root: str, save_path_split: str, sfreq
                 print(f"🟠 [warning] Poor epoch quality: median beta/alpha = {np.median(kept_scores):.2f}")
         except Exception as e:
             print(f"🟥 [skip] Quality scoring failed: {e}; discarding sample")
-            return {"file": fn, "epochs_saved": 0, "reason": "quality_scoring_failed"}
+            return {"file": fn, "epochs_saved": 0, "reason": "quality_scoring_failed", "epoch_tuples": []}
     else:
         print(f"🟠 [summary] only {len(ep)} epochs kept (< 20)")
         
@@ -512,8 +513,10 @@ def _process_one_file(eeg_path: str, data_root: str, save_path_split: str, sfreq
         except Exception:
             pass
     
-    # Save epochs
+    # Create epoch tuples (raw, g, a, ab, sample_id)
     edf_stem = os.path.splitext(fn)[0]
+    epoch_tuples = []
+    
     for i in range(len(ep)):
         epoch_data = ep.get_data()[i]
         info = mne.create_info(ep.info['ch_names'], sfreq=ep.info['sfreq'], ch_types='eeg')
@@ -528,15 +531,15 @@ def _process_one_file(eeg_path: str, data_root: str, save_path_split: str, sfreq
         subj.update({"sex": int(sex), "his_id": str(epoch_id)})
         raw_epoch.info["subject_info"] = subj
         
-        out_path = os.path.join(save_path_split, f"{epoch_id}-raw.fif")
-        raw_epoch.save(out_path, overwrite=True, verbose=False)
+        # Create tuple: (raw, g, a, ab, sample_id)
+        epoch_tuple = (raw_epoch, sex, 0, label, epoch_id)  # age=0 for compatibility
+        epoch_tuples.append(epoch_tuple)
     
-    return {"file": fn, "epochs_saved": len(ep), "reason": "success"}
+    return {"file": fn, "epochs_saved": len(ep), "reason": "success", "epoch_tuples": epoch_tuples}
 
 
-def _process_split(data_path: str, save_path_split: str, sfreq: int, epoch_len_s: float, split_name: str, n_jobs: int = 1, ar_n_jobs: Optional[int] = None):
-    """Process all EDF files in a split."""
-    os.makedirs(save_path_split, exist_ok=True)
+def _process_split(data_path: str, save_path: str, sfreq: int, epoch_len_s: float, split_name: str, n_jobs: int = 1, ar_n_jobs: Optional[int] = None):
+    """Process all EDF files in a split and save as single pickle file."""
     
     # Discover files
     edf_files = []
@@ -551,19 +554,33 @@ def _process_split(data_path: str, save_path_split: str, sfreq: int, epoch_len_s
     if tqdm_joblib is not None:
         with tqdm_joblib(tqdm(total=len(edf_files), desc=f"[{split_name}] processing files", unit="file")):
             results = Parallel(n_jobs=n_jobs, backend="loky")(
-                delayed(_process_one_file)(eeg_path, data_path, save_path_split, sfreq, epoch_len_s, split_name, ar_n_jobs)
+                delayed(_process_one_file)(eeg_path, data_path, sfreq, epoch_len_s, split_name, ar_n_jobs)
                 for eeg_path in edf_files
             )
     else:
         results = Parallel(n_jobs=n_jobs, backend="loky", verbose=10)(
-            delayed(_process_one_file)(eeg_path, data_path, save_path_split, sfreq, epoch_len_s, split_name, ar_n_jobs)
+            delayed(_process_one_file)(eeg_path, data_path, sfreq, epoch_len_s, split_name, ar_n_jobs)
             for eeg_path in edf_files
         )
     
-    # Filter and report files with <20 epochs
+    # Filter and collect epoch tuples
     results = [r for r in results if r is not None]  # Filter None results
     insufficient_files = [r for r in results if r["epochs_saved"] < 20]
     
+    # Collect all epoch tuples
+    all_epoch_tuples = []
+    for result in results:
+        if result["epoch_tuples"]:
+            all_epoch_tuples.extend(result["epoch_tuples"])
+    
+    # Save all epochs to single pickle file
+    output_file = os.path.join(save_path, f"{split_name}_epochs.pkl")
+    print(f"[{split_name}] Saving {len(all_epoch_tuples)} epochs to {output_file}")
+    
+    with open(output_file, 'wb') as f:
+        pickle.dump(all_epoch_tuples, f, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    # Report statistics
     if insufficient_files:
         print(f"\n🟠 [{split_name.upper()}] Files with <20 clean epochs:")
         for result in insufficient_files:
@@ -571,6 +588,8 @@ def _process_split(data_path: str, save_path_split: str, sfreq: int, epoch_len_s
         print(f"Total files with <20 epochs: {len(insufficient_files)}/{len(results)}")
     else:
         print(f"\n✅ [{split_name.upper()}] All {len(results)} files produced ≥20 clean epochs!")
+    
+    print(f"📁 [{split_name.upper()}] Saved {len(all_epoch_tuples)} total epochs to {output_file}")
     
     return results
 
@@ -581,13 +600,11 @@ def load_data(data_path_train, data_path_eval, save_path, sfreq=128, epoch_len_s
     data_path_train = data_path_train.rstrip("/")
     data_path_eval = data_path_eval.rstrip("/")
     
-    save_path_train = os.path.join(save_path, "train")
-    save_path_eval = os.path.join(save_path, "eval")
     os.makedirs(save_path, exist_ok=True)
     
-    # Process splits
-    train_results = _process_split(data_path_train, save_path_train, sfreq, epoch_len_s, split_name="training", n_jobs=n_jobs, ar_n_jobs=ar_n_jobs)
-    eval_results = _process_split(data_path_eval, save_path_eval, sfreq, epoch_len_s, split_name="evaluation", n_jobs=n_jobs, ar_n_jobs=ar_n_jobs)
+    # Process splits - now saves to single files
+    train_results = _process_split(data_path_train, save_path, sfreq, epoch_len_s, split_name="train", n_jobs=n_jobs, ar_n_jobs=ar_n_jobs)
+    eval_results = _process_split(data_path_eval, save_path, sfreq, epoch_len_s, split_name="eval", n_jobs=n_jobs, ar_n_jobs=ar_n_jobs)
     
     # Overall summary
     all_results = train_results + eval_results
@@ -604,17 +621,25 @@ def load_data(data_path_train, data_path_eval, save_path, sfreq=128, epoch_len_s
         for result in all_insufficient:
             print(f"  - {result['file']}: {result['epochs_saved']} epochs ({result['reason']})")
     
-    print("[save] Done. Labels embedded in each epoch's Raw.info (description & subject_info). No CSV written.")
+    print("[save] Done. Data saved in train_epochs.pkl and eval_epochs.pkl")
+    print("Each entry is a tuple: (raw, g, a, ab, sample_id)")
+    print("  raw: mne.Raw object")
+    print("  g: gender (0=female, 1=male)")  
+    print("  a: age (set to 0 for compatibility)")
+    print("  ab: abnormal label (0=normal, 1=abnormal)")
+    print("  sample_id: unique epoch identifier")
     print(f"{'='*60}")
+
 
 
 if __name__ == "__main__":
     # Example usage
     data_path_train = "/rds/general/user/lrh24/ephemeral/edf/train"
     data_path_eval = "/rds/general/user/lrh24/ephemeral/edf/eval"
-    save_path = "/rds/general/user/lrh24/ephemeral/tuh-eeg-ab-clean"
+    save_path = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean"
     epoch_len_s = 10.0
     sfreq = 128
-    
-    load_data(data_path_train, data_path_eval, save_path, sfreq, epoch_len_s)
+    n_jobs = 64
+
+    load_data(data_path_train, data_path_eval, save_path, sfreq, epoch_len_s, n_jobs=n_jobs)
     print("[done] Data cleaning pipeline finished.")

@@ -1,27 +1,35 @@
-import mne
+import pickle
 import os
 
-def load_data(data_path_train): #specifically for TUH EEG dataset
+def load_data(data_path_base, split="train"):
+    """
+    Load cleaned epoch data from pickle files.
     
-    t_data = []    
-    for path in os.listdir(data_path_train):
-        if path == ".DS_Store":
-            continue
+    Parameters:
+    -----------
+    data_path_base : str
+        Base path containing the pickle files (e.g., ~/thesis/Datasets/tuh-eeg-ab-clean)
+    split : str
+        Which split to load: "train" or "eval"
         
-        for sub_path in os.listdir(os.path.join(data_path_train, path)):
-            if sub_path == ".DS_Store":
-                continue
-            eeg_path = os.path.join(data_path_train, path, sub_path)
-            #print("Loading training data from:", eeg_path)
-            raw = mne.io.read_raw_fif(eeg_path, preload=True, verbose=False)
-            sex_code = raw.info['subject_info']['sex']
-            #print if sexcode is not what we expect
-            if sex_code not in [1, 2]:
-                print(f"Sex code {sex_code} not what we expect")
-            age = 0
-            abn = 1 if path == "abnormal" else 0  # Abnormal
-            # Attach a stable sample identifier based on relative path
-            sample_id = f"{path}/{sub_path}"
-            t_data.append((raw, sex_code, age, abn, sample_id))
-    return t_data
-
+    Returns:
+    --------
+    List of tuples: (raw, g, a, ab, sample_id)
+        raw: mne.Raw object
+        g: gender (0=female, 1=male)
+        a: age (always 0 for compatibility)
+        ab: abnormal label (0=normal, 1=abnormal)
+        sample_id: unique epoch identifier
+    """
+    pickle_file = os.path.join(data_path_base, f"{split}_epochs.pkl")
+    
+    if not os.path.exists(pickle_file):
+        raise FileNotFoundError(f"Pickle file not found: {pickle_file}")
+    
+    print(f"Loading {split} data from {pickle_file}...")
+    
+    with open(pickle_file, 'rb') as f:
+        epoch_data = pickle.load(f)
+    
+    print(f"Loaded {len(epoch_data)} samples from {split} split")
+    return epoch_data

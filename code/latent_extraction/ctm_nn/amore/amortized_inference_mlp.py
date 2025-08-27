@@ -24,6 +24,7 @@ from utils.util import (
     normalize_psd,
     select_device,
     plot_psd_comparison,
+    compute_psd_from_array,
 )
 # -----------------------------------------------------------------------------
 # CTM analytic constants (from nn_ctm_parameters.py)
@@ -98,13 +99,24 @@ def compute_ctm_psd(params: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
 ###############################################################################
 
 def _psd_input_dim() -> int:
-    n_fft = int(PSD_CALCULATION_PARAMS.get("n_fft", 256))
-    return n_fft // 2 + 1
+    # Use the same Welch settings (including fmin/fmax) to compute the actual bin count
+    _, freqs = compute_psd_from_array(
+        np.zeros(int(PSD_CALCULATION_PARAMS.get("n_per_seg", 256)), dtype=np.float32),
+        sfreq=float(PSD_CALCULATION_PARAMS.get("sfreq", 128.0)),
+        return_freqs=True,
+    )
+    return int(freqs.shape[0])
 
 # Frequency grid for the CTM forward model to match utils Welch bins exactly
+# Derive FREQS from the same Welch computation so bins align with fmin/fmax
 SFREQ = float(PSD_CALCULATION_PARAMS.get("sfreq", 128.0))
-N_FREQS = _psd_input_dim()
-FREQS = np.linspace(0.0, SFREQ / 2.0, N_FREQS, dtype=np.float32)
+_, _FREQS_TMP = compute_psd_from_array(
+    np.zeros(int(PSD_CALCULATION_PARAMS.get("n_per_seg", 256)), dtype=np.float32),
+    sfreq=SFREQ,
+    return_freqs=True,
+)
+FREQS = _FREQS_TMP.astype(np.float32)
+N_FREQS = int(FREQS.shape[0])
 
 PARAM_NAMES = [
     "G_ee",   # Excitatory-to-excitatory gain
@@ -118,9 +130,9 @@ PARAM_NAMES = [
 ]
 PARAM_DIM = len(PARAM_NAMES)
 
-# Physiologically plausible ranges (uniform priors)
-PRIOR_LOW  = np.array([0.0, -30.0, 0.0, -10.0, -1.0, 10.0, 100.0, 0.01])
-PRIOR_HIGH = np.array([30.0,   0.0, 10.0,   0.0,  0.0, 100.0, 400.0, 0.20])
+# Physiological ranges from Assadzadeh et al., J Neurosci Methods (2023), Table 2
+PRIOR_LOW  = np.array([0.0, -40.0, 0.0, -40.0, -5.0, 10.0, 100.0, 0.075])
+PRIOR_HIGH = np.array([20.0,   0.0, 40.0,   0.0,  0.0, 100.0, 800.0, 0.140])
 
 
 
@@ -283,15 +295,15 @@ def train(
         pred_psd = pred_psd[:, mask]
         target_psd = target_psd[:, mask]
 
-        # Log‑transform & z‑score to match `_normalise`
+        # Log‑transform & z‑score predicted PSD to match training data format
         pred_psd = _normalise(pred_psd)
-        target_psd = _normalise(target_psd)
+        # target_psd is already normalized from generate_dataset(), don't normalize again!
         return torch.nn.functional.mse_loss(pred_psd, target_psd)
 
     loss_fn = psd_loss
 
     patience=5
-    best_loss=float('inf')
+    best_val_loss=float('inf')
     epochs_no_improve=0
 
     print("[INFO] Training feedforward network with PSD reconstruction loss …")
@@ -345,20 +357,23 @@ def train(
                     fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", float(SFREQ) / 2.0))
                     mask_np = (FREQS >= fmin) & (FREQS <= fmax)
                     pred_psd = _normalise(pred_psd_full[:, mask_np])
-                    xb_masked = _normalise(xb[:, mask_np])
+                    xb_masked = xb[:, mask_np]  # xb is already normalized, don't normalize again
                 plot_psd_comparison(xb_masked, pred_psd, FREQS[mask_np], f"/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/results/psd_comparison_{epoch}.png")
             
-        print(f"Epoch {epoch:>3d}/{epochs} – train PSD loss: {np.mean(train_losses):.4f} – test PSD loss: {np.mean(test_losses):.4f}")
-        
-        # Early stopping
-        if np.mean(train_losses) < best_loss:
-            best_loss = np.mean(train_losses)
+        mean_train = float(np.mean(train_losses)) if train_losses else float('inf')
+        mean_val = float(np.mean(test_losses)) if test_losses else float('inf')
+        print(f"Epoch {epoch:>3d}/{epochs} – train PSD loss: {mean_train:.4f} – val PSD loss: {mean_val:.4f}")
+
+        # Save best model based on validation loss and handle early stopping
+        if mean_val < best_val_loss:
+            best_val_loss = mean_val
             epochs_no_improve = 0
             torch.save({"model_state": model.state_dict(), "freqs": FREQS, "param_names": PARAM_NAMES}, "/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/models/regressor.pt")
-            print("saving model")
+            print("[INFO] Saved new best model (by validation loss) to ~/thesis/code/latent_extraction/ctm_nn/amore/models/regressor.pt")
+        else:
             epochs_no_improve += 1
         if epochs_no_improve >= patience:
-            print(f"[INFO] Early stopping at epoch {epoch}")
+            print(f"[INFO] Early stopping at epoch {epoch} (no val improvement for {patience} epochs)")
             break
         
     final_test_loss = float(np.mean(test_losses)) if test_losses else float('nan')
@@ -419,30 +434,6 @@ def extract_psds_from_tuh(
 
 
 
-def infer(model_path: pathlib.Path, data: np.ndarray) -> np.ndarray:
-    def smooth_psd(psd: np.ndarray) -> np.ndarray:
-        return np.convolve(psd, np.ones(10)/10, mode='same')
-    
-    model = ParameterRegressor()
-    model.load_state_dict(torch.load(model_path)["model_state"])
-    model.to("cuda")
-    data = torch.as_tensor(data, dtype=torch.float32).to("cuda")
-    model.eval()
-    all_preds = []
-    with torch.no_grad():
-        for i in range(data.shape[0]):
-            emp_input = torch.as_tensor(_normalise(smooth_psd(data[i].cpu().numpy())), dtype=torch.float32).to("cuda")
-            pred = model(emp_input)[0].cpu().numpy()
-            all_preds.append(pred)
-            #plot comparison empirical psd with calculated psd  
-            # ctm_psd = _ctm_transfer_function(pred)
-            # plt.plot(FREQS, emp_input.cpu().numpy(), label="Empirical")
-            # plt.plot(FREQS, ctm_psd, label="Calculated")
-            # plt.legend()
-            # plt.savefig(f"results/psd_comparison_{i}.png")
-            # plt.close()
-    return np.array(all_preds)
 if __name__ == "__main__":
-    train(out_dir="models", device="cuda", epochs=70, num_sims=200000, test_fraction=0.1, batch_size=1024)
-    # data = extract_psds_from_tuh(pathlib.Path("/homes/lrh24/thesis/Datasets/tuh-eeg-ab-clean"))
-    # preds = infer(pathlib.Path("models/regressor.pt"), data)
+    device = select_device()
+    train(out_dir="models", device=device, epochs=100, num_sims=200000, test_fraction=0.1, batch_size=1024)

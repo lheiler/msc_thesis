@@ -5,41 +5,21 @@ import mne
 import matplotlib.pyplot as plt
 # Standard 19-channel EEG montage used across methods
 STANDARD_EEG_CHANNELS = [
-    'Fp1', 'Fp2', 'F3', 'F4', 'C3', 'C4', 'P3', 'P4',
-    'O1', 'O2', 'F7', 'F8', 'T3', 'T4', 'T5', 'T6',
-    'Cz', 'Pz', 'Fz'
+    'Fp1','Fp2','F7','F3','Fz','F4','F8',
+    'T7','C3','Cz','C4','T8','P7','P3','Pz','P4','P8','O1','O2'
 ]
 
 PSD_CALCULATION_PARAMS = {
-    "n_fft": 256,
-    "n_overlap": 128,
-    "n_per_seg": 256,
-    "min_freq": 3.0,
+    "n_fft": 512,
+    "n_overlap": 256,  
+    "n_per_seg": 512,   
+    "min_freq": 1,
     "max_freq": 45.0,
-    "segment_length": 60.0,
+    "segment_length": 10.0,
     "sfreq": 128.0,
-    "freqs": np.linspace(3, 45, 256//2 + 1),
 }
 
 
-def clean_raw_eeg(raw, segment_length=60.0):
-    """Drop aux channels (A1/A2) and pick the standard 19 EEG channels.
-    Mirrors the prior inline cleaning logic used in extractors.
-    """
-    # Ensure data is loaded for operations like filtering/cropping
-    try:
-        raw.load_data(verbose=False)
-    except Exception:
-        # If already loaded or load not supported, continue
-        pass
-    if 'A1' in raw.ch_names:
-        raw.drop_channels(['A1'])
-    if 'A2' in raw.ch_names:
-        raw.drop_channels(['A2'])
-    raw.pick(STANDARD_EEG_CHANNELS)
-    raw.crop(tmin=0.0, tmax=segment_length-1.0/raw.info['sfreq'])
-    raw.filter(PSD_CALCULATION_PARAMS["min_freq"], PSD_CALCULATION_PARAMS["max_freq"], fir_design="firwin", verbose=False)
-    return raw
 
 
 def select_device():
@@ -79,23 +59,64 @@ def append_jsonl(path, record_tuple):
     with open(path, 'a') as f:
         f.write(json.dumps(record_tuple) + '\n')
         
-def normalize_psd(psd: np.ndarray):
-    #make it work for both 1D and 2D arrays
-    if psd.ndim == 1:
-        log_psd = np.log10(psd + 1e-12)
-        return (log_psd - log_psd.mean()) / log_psd.std()
-    else:
-        log_psd = np.log10(psd + 1e-12)
-        return (log_psd - log_psd.mean(axis=1, keepdims=True)) / log_psd.std(axis=1, keepdims=True)
+def normalize_psd(psd: np.ndarray) -> np.ndarray:
+    """Robust PSD normalization that never produces NaN values.
 
-def normalize_psd_torch(psd: torch.Tensor):
-    #make it work for both 1D and 2D tensors
+    Applies log10 transform and z-scoring. Handles multi-channel (2D)
+    or single-channel (1D) PSDs.
+    
+    NORMALIZATION STRATEGY ACROSS PIPELINE:
+    - Mechanistic models (CTM, JR, Wong-Wang, Hopf): Use normalize=False in compute_psd_from_raw, 
+      then apply this function internally to avoid double normalization
+    - Learned models (PSD-AE, CTM-NN, PCA): Use normalize=True in compute_psd_from_raw 
+      for consistency with their training data
+    - EEGNet: Uses this function in training loss computation
+    """
+    if np.any(np.isnan(psd)) or np.any(np.isinf(psd)):
+        print(f"⚠️  Warning: PSD contains NaN/Inf values, replacing with safe defaults")
+        psd = np.nan_to_num(psd, nan=1.0, posinf=1e6, neginf=1e-12)
+    
+    # Add a small, signal-dependent epsilon to avoid log(0)
+    # This is more robust than hard-clamping.
+    epsilon = 1e-8 * np.max(psd) if np.max(psd) > 0 else 1e-8
+    log_psd = np.log10(psd + epsilon)
+    
     if psd.ndim == 1:
-        log_psd = torch.log10(psd + 1e-12)
-        return (log_psd - log_psd.mean()) / log_psd.std()
+        # Handle constant PSDs (std = 0)
+        std_val = log_psd.std()
+        if std_val < 1e-8:
+            return log_psd - log_psd.mean()
+        return (log_psd - log_psd.mean()) / std_val
     else:
-        log_psd = torch.log10(psd + 1e-12)
-        return (log_psd - log_psd.mean(dim=1, keepdim=True)) / log_psd.std(dim=1, keepdim=True)
+        means = log_psd.mean(axis=1, keepdims=True)
+        stds = log_psd.std(axis=1, keepdims=True)
+        # Handle rows with zero std
+        stds[stds < 1e-8] = 1.0
+        return (log_psd - means) / stds
+
+def normalize_psd_torch(psd: torch.Tensor) -> torch.Tensor:
+    """Robust PyTorch PSD normalization that never produces NaN values."""
+    # Handle NaN and infinite values
+    if torch.any(torch.isnan(psd)) or torch.any(torch.isinf(psd)):
+        print(f"⚠️  Warning: PSD contains NaN/Inf values, replacing with safe defaults")
+        psd = torch.nan_to_num(psd, nan=1.0, posinf=1e6, neginf=1e-12)
+    
+    # Add a small, signal-dependent epsilon to avoid log(0)
+    epsilon = 1e-8 * torch.max(psd) if torch.max(psd) > 0 else 1e-8
+    log_psd = torch.log10(psd + epsilon)
+    
+    if psd.ndim == 1:
+        # Handle constant PSDs (std = 0)
+        std_val = log_psd.std()
+        if std_val < 1e-8:
+            return log_psd - log_psd.mean()
+        return (log_psd - log_psd.mean()) / std_val
+    else:
+        means = log_psd.mean(dim=1, keepdim=True)
+        stds = log_psd.std(dim=1, keepdim=True)
+        # Handle rows with zero std
+        stds = torch.clamp(stds, min=1e-8)
+        return (log_psd - means) / stds
 
 
 
@@ -195,7 +216,7 @@ def compute_psd_from_array(
 # ------------------------------------------------------------------
 # Method-specific time-domain preprocessing (no channel cleaning here)
 # ------------------------------------------------------------------
-def preprocess_time_domain_input(raw, *, target_sfreq: float = 128.0, segment_len_sec: int = 60) -> np.ndarray:
+def preprocess_time_domain_input(raw, *, target_sfreq: float = 128.0, segment_len_sec: int = 10) -> np.ndarray:
     """Resample, crop/pad, and z-score for time-domain models.
     Assumes channels already cleaned and ordered and typical bandpass done upstream.
     """
