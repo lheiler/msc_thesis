@@ -1,0 +1,74 @@
+Training metrics/plots (for models that need training beforehand)
+- Metrics
+  - train_loss: Average training loss per epoch
+  - val_loss: Average validation loss per epoch
+  - best_epoch: Epoch index with the best validation metric
+  - best_val_score: Best validation accuracy (classification; higher is better)
+  - best_val_metric: Early-stopping metric (regression: val_loss; classification: -val_acc; lower is better)
+- Plots
+  - loss_curve.png: Training/validation loss vs epochs
+
+Dataset metrics
+- n_samples: Number of samples in the split
+- gender_counts: Counts for female(2), male(1), unknown(0)
+- abnormal_counts: Counts for abnormal(1), normal(0)
+- age_bin_counts: Histogram of ages over bins [0–10, 10–20, …, 80–120)
+
+Latent space metrics (per split: train, eval)
+- Basic
+  - n_samples: Number of latent vectors
+  - dim: Latent dimensionality
+  - variance_per_dim: Per-dimension variance vector
+  - active_units: Number of dimensions with variance > 1e-3
+- Independence
+  - hsic_global_score: Mean off-diagonal HSIC (lower = more independent)
+- Clustering quality (KMeans k=5)
+  - cluster.silhouette: Silhouette score (higher better)
+  - cluster.davies_bouldin: Davies–Bouldin index (lower better)
+  - cluster.calinski_harabasz: Calinski–Harabasz score (higher better)
+- Geometry preservation (via 2D PCA)
+  - geometry.trustworthiness: Neighbourhood preservation (0–1; higher better)
+  - geometry.continuity: Lost-neighbour complement (0–1; higher better)
+  - geometry.dist_corr: Pearson correlation of pairwise distances (higher better)
+- PCA summary (on concatenated train+eval latents)
+  - pca.top5_ratio_sum: Sum of first 5 explained variance ratios
+  - pca.explained_variance_ratio: Full explained variance ratio vector
+- Optional supervised MI (if labels present)
+  - mi_zy.gender.mean / mi_zy.gender.per_dim: Mutual information with gender
+  - mi_zy.age.mean / mi_zy.age.per_dim: Mutual information with age
+  - mi_zy.abnormal.mean / mi_zy.abnormal.per_dim: Mutual information with abnormal
+- Plots
+  - hsic_matrix.png (per split): Heatmap of HSIC matrix
+  - variance_hist.png (per split): Histogram of per-dimension variance
+  - pca_explained_variance_curve.png: Cumulative EVR curve
+  - pca2_scatter.png (per split): 2D PCA scatter
+  - tsne_scatter.png (per split): t-SNE scatter (subsampled if large)
+  - shepard_plot.png (per split): High-d vs 2D distance scatter
+
+Latent space comparison (between two embeddings; offline utility)
+- cka_linear: Linear CKA similarity (0–1; higher better)
+- cka_rbf: RBF-CKA similarity (0–1; higher better)
+- cca_maxcorr: Maximum canonical correlation between projections (higher better)
+- dist_geom_corr: Correlation of pairwise distances across spaces (higher better)
+- knn_jaccard_k{K}: Average Jaccard overlap of k-NN sets (0–1; higher better)
+- procrustes_disparity: Procrustes disparity after optimal alignment (lower better)
+
+Task-specific performance metrics
+- Classification tasks
+  - loss: Mean BCEWithLogits loss on eval set
+  - accuracy: Fraction of correct predictions
+  - precision: Positive predictive value
+  - recall: True positive rate
+  - f1: Harmonic mean of precision and recall (binary)
+  - f1_macro: Macro-averaged F1 across classes (when both classes present)
+  - roc_auc: Area under ROC curve (when feasible)
+  - pr_auc: Average precision / PR AUC (when feasible)
+  - confusion: 2×2 confusion matrix as a nested list
+  - pred_counts: Number of predicted label_0 and label_1
+  - Plots: confusion_matrix.png, roc_curve.png, pr_curve.png
+- Regression tasks
+  - loss: Mean squared error (MSE) on eval set
+  - mae: Mean absolute error
+  - rmse: Root mean squared error
+  - r2: Coefficient of determination (when labels vary sufficiently)
+

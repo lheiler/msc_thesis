@@ -1,19 +1,33 @@
 # Model Evaluation Report
 
 
-## Task: abnormal
+## Task: gender
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.66388  |
-| Accuracy   | 0.600476 |
+| Loss (BCE) | 0.683047 |
+| Accuracy   | 0.563656 |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |    2782 | 51.0% |
-| label_1 |    2677 | 49.0% |
+| label_0 |    1764 | 32.3% |
+| label_1 |    3695 | 67.7% |
+
+## Task: abnormal
+
+| Metric     |    Value |
+|------------|----------|
+| Loss (BCE) | 0.647351 |
+| Accuracy   | 0.618978 |
+
+Model prediction distribution
+
+| Label   |   Count | %     |
+|---------|---------|-------|
+| label_0 |    2727 | 50.0% |
+| label_1 |    2732 | 50.0% |
 
 ## Dataset statistics – train
 

@@ -1,0 +1,88 @@
+{
+  "metrics_per_task": {
+    "abnormal": {
+      "loss": 0.5310929743093675,
+      "accuracy": 0.7347499542040666,
+      "pred_counts": {
+        "label_0": 2929,
+        "label_1": 2530
+      },
+      "precision": 0.7051383399209487,
+      "recall": 0.7176186645213194,
+      "f1": 0.7113237639553429,
+      "f1_macro": 0.7329916007170818,
+      "roc_auc": 0.8116798843114446,
+      "pr_auc": 0.7732191959913934,
+      "confusion": [
+        [
+          2227,
+          746
+        ],
+        [
+          702,
+          1784
+        ]
+      ]
+    }
+  },
+  "hyperparams_per_task": {
+    "abnormal": {
+      "architecture": {
+        "input_dim": 8,
+        "output_type": "classification",
+        "hidden_dims": [
+          128,
+          64
+        ],
+        "dropout": 0.35403628889802274
+      }
+    }
+  },
+  "train_dataset_stats": {
+    "n_samples": 53622,
+    "gender_counts": {
+      "female(2)": 0,
+      "male(1)": 28583,
+      "unknown(0)": 25039
+    },
+    "abnormal_counts": {
+      "abnormal(1)": 26545,
+      "normal(0)": 27077
+    },
+    "age_bin_counts": {
+      "0\u201310": 53622,
+      "10\u201320": 0,
+      "20\u201330": 0,
+      "30\u201340": 0,
+      "40\u201350": 0,
+      "50\u201360": 0,
+      "60\u201370": 0,
+      "70\u201380": 0,
+      "80\u2013120": 0
+    }
+  },
+  "eval_dataset_stats": {
+    "n_samples": 5459,
+    "gender_counts": {
+      "female(2)": 0,
+      "male(1)": 2919,
+      "unknown(0)": 2540
+    },
+    "abnormal_counts": {
+      "abnormal(1)": 2486,
+      "normal(0)": 2973
+    },
+    "age_bin_counts": {
+      "0\u201310": 5459,
+      "10\u201320": 0,
+      "20\u201330": 0,
+      "30\u201340": 0,
+      "40\u201350": 0,
+      "50\u201360": 0,
+      "60\u201370": 0,
+      "70\u201380": 0,
+      "80\u2013120": 0
+    }
+  },
+  "latent": null
+}

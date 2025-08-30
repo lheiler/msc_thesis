@@ -1,0 +1,46 @@
+metrics_per_task.abnormal.loss: 0.6042851337060581
+metrics_per_task.abnormal.accuracy: 0.6779629968858766    # Classification accuracy (abnormal)
+metrics_per_task.abnormal.pred_counts.label_0: 2743
+metrics_per_task.abnormal.pred_counts.label_1: 2716
+metrics_per_task.abnormal.precision: 0.634020618556701
+metrics_per_task.abnormal.recall: 0.6926790024135157
+metrics_per_task.abnormal.f1: 0.6620530565167243    # Binary F1-score (abnormal)
+metrics_per_task.abnormal.f1_macro: 0.6772476619182641    # Macro-averaged F1 (abnormal)
+metrics_per_task.abnormal.roc_auc: 0.7312932915412756    # ROC-AUC (abnormal)
+metrics_per_task.abnormal.pr_auc: 0.6551780960695028    # Precision–Recall AUC (abnormal)
+metrics_per_task.abnormal.confusion: [[1979, 994], [764, 1722]]
+hyperparams_per_task.abnormal.architecture.input_dim: 8
+hyperparams_per_task.abnormal.architecture.output_type: classification
+hyperparams_per_task.abnormal.architecture.hidden_dims: (128, 64)
+hyperparams_per_task.abnormal.architecture.dropout: 0.35403628889802274
+train_dataset_stats.n_samples: 53622    # Number of training samples
+train_dataset_stats.gender_counts.female(2): 0
+train_dataset_stats.gender_counts.male(1): 28583
+train_dataset_stats.gender_counts.unknown(0): 25039
+train_dataset_stats.abnormal_counts.abnormal(1): 26545
+train_dataset_stats.abnormal_counts.normal(0): 27077
+train_dataset_stats.age_bin_counts.0–10: 53622
+train_dataset_stats.age_bin_counts.10–20: 0
+train_dataset_stats.age_bin_counts.20–30: 0
+train_dataset_stats.age_bin_counts.30–40: 0
+train_dataset_stats.age_bin_counts.40–50: 0
+train_dataset_stats.age_bin_counts.50–60: 0
+train_dataset_stats.age_bin_counts.60–70: 0
+train_dataset_stats.age_bin_counts.70–80: 0
+train_dataset_stats.age_bin_counts.80–120: 0
+eval_dataset_stats.n_samples: 5459    # Number of evaluation samples
+eval_dataset_stats.gender_counts.female(2): 0
+eval_dataset_stats.gender_counts.male(1): 2919
+eval_dataset_stats.gender_counts.unknown(0): 2540
+eval_dataset_stats.abnormal_counts.abnormal(1): 2486
+eval_dataset_stats.abnormal_counts.normal(0): 2973
+eval_dataset_stats.age_bin_counts.0–10: 5459
+eval_dataset_stats.age_bin_counts.10–20: 0
+eval_dataset_stats.age_bin_counts.20–30: 0
+eval_dataset_stats.age_bin_counts.30–40: 0
+eval_dataset_stats.age_bin_counts.40–50: 0
+eval_dataset_stats.age_bin_counts.50–60: 0
+eval_dataset_stats.age_bin_counts.60–70: 0
+eval_dataset_stats.age_bin_counts.70–80: 0
+eval_dataset_stats.age_bin_counts.80–120: 0
+latent: None

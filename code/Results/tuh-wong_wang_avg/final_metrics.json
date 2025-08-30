@@ -1,40 +1,79 @@
 {
   "metrics_per_task": {
-    "abnormal": {
-      "loss": 0.6638803146199487,
-      "accuracy": 0.6004762777065397,
+    "gender": {
+      "loss": 0.6830469434526426,
+      "accuracy": 0.5636563473163583,
       "pred_counts": {
-        "label_0": 2782,
-        "label_1": 2677
+        "label_0": 1764,
+        "label_1": 3695
       },
-      "precision": 0.5569667538289129,
-      "recall": 0.5997586484312148,
-      "f1": 0.5775711795467752,
-      "f1_macro": 0.5992981875144823,
-      "roc_auc": 0.6357338735668482,
-      "pr_auc": 0.5790091887982423,
+      "precision": 0.5726657645466847,
+      "recall": 0.7249057896539911,
+      "f1": 0.639854853341397,
+      "f1_macro": 0.54320809581568,
+      "roc_auc": 0.57522915301055,
+      "pr_auc": 0.5916783053466502,
       "confusion": [
         [
-          1787,
-          1186
+          961,
+          1579
         ],
         [
-          995,
-          1491
+          803,
+          2116
+        ]
+      ]
+    },
+    "abnormal": {
+      "loss": 0.6473514300319471,
+      "accuracy": 0.6189778347682726,
+      "pred_counts": {
+        "label_0": 2727,
+        "label_1": 2732
+      },
+      "precision": 0.5743045387994143,
+      "recall": 0.6311343523732904,
+      "f1": 0.6013798390187811,
+      "f1_macro": 0.6182337791585133,
+      "roc_auc": 0.6649353432704477,
+      "pr_auc": 0.6092808478773033,
+      "confusion": [
+        [
+          1810,
+          1163
+        ],
+        [
+          917,
+          1569
         ]
       ]
     }
   },
   "hyperparams_per_task": {
+    "gender": {
+      "architecture": {
+        "input_dim": 5,
+        "output_type": "classification",
+        "hidden_dims": [
+          512,
+          256,
+          128,
+          64
+        ],
+        "dropout": 0.049895171900147625
+      }
+    },
     "abnormal": {
       "architecture": {
         "input_dim": 5,
         "output_type": "classification",
         "hidden_dims": [
+          256,
           128,
-          64
+          64,
+          32
         ],
-        "dropout": 0.35403628889802274
+        "dropout": 0.011617847511116771
       }
     }
   },
@@ -84,5 +123,156 @@
       "80\u2013120": 0
     }
   },
-  "latent": null
+  "latent": {
+    "train": {
+      "n_samples": 53622,
+      "dim": 5,
+      "variance_per_dim": [
+        0.15927903354167938,
+        1320.7989501953125,
+        0.0602475181221962,
+        0.0018441376741975546,
+        0.00015262444503605366
+      ],
+      "active_units": 4,
+      "hsic_global_score": 0.007614378817379475,
+      "cluster": {
+        "silhouette": 0.645646870136261,
+        "davies_bouldin": 0.4707096999485548,
+        "calinski_harabasz": 556440.625
+      },
+      "geometry": {
+        "trustworthiness": 0.9967318166315579,
+        "continuity": 0.9990717424014445,
+        "dist_corr": 0.9999994456708224
+      },
+      "mi_zy": {
+        "gender": {
+          "mean": 0.0007394701669192205,
+          "per_dim": [
+            7.862298662075773e-05,
+            0.001911731087602675,
+            0.0,
+            0.001706996699795127,
+            0.0
+          ]
+        },
+        "abnormal": {
+          "mean": 0.016130513346441555,
+          "per_dim": [
+            0.015192815102636814,
+            0.022388776764273643,
+            0.01448098011314869,
+            0.014648613519966602,
+            0.013941382057964802
+          ]
+        }
+      }
+    },
+    "eval": {
+      "n_samples": 5459,
+      "dim": 5,
+      "variance_per_dim": [
+        0.1716601699590683,
+        1336.0152587890625,
+        0.060264166444540024,
+        0.002101349178701639,
+        0.00017138695693574846
+      ],
+      "active_units": 4,
+      "hsic_global_score": 0.007233289536088705,
+      "cluster": {
+        "silhouette": 0.6359460949897766,
+        "davies_bouldin": 0.48313030663513123,
+        "calinski_harabasz": 55897.6875
+      },
+      "geometry": {
+        "trustworthiness": 0.9972797873407564,
+        "continuity": 0.999085256294513,
+        "dist_corr": 0.9999994700139344
+      },
+      "mi_zy": {
+        "gender": {
+          "mean": 0.014283618491030037,
+          "per_dim": [
+            0.0210036002099514,
+            0.013574464246630669,
+            0.0041980440728366375,
+            0.019905585795640945,
+            0.012736398726701736
+          ]
+        },
+        "abnormal": {
+          "mean": 0.014901548681851428,
+          "per_dim": [
+            0.02254312112927437,
+            0.007464212365448475,
+            0.016461895778775215,
+            0.017245521768927574,
+            0.010792992077767849
+          ]
+        }
+      }
+    },
+    "pca": {
+      "top5_ratio_sum": 1.0000001192092896,
+      "explained_variance_ratio": [
+        0.9998351335525513,
+        0.00011990204802714288,
+        4.398720557219349e-05,
+        9.369357485411456e-07,
+        8.661876904625387e-08
+      ],
+      "train_shape": [
+        53622,
+        5
+      ],
+      "eval_shape": [
+        5459,
+        5
+      ],
+      "note": "PCA fitted on training data only to avoid data leakage"
+    },
+    "train_vs_eval_comparison": {
+      "active_units_ratio": 1.0,
+      "hsic_score_ratio": 0.9499513630158575,
+      "variance_distribution": {
+        "train_mean": 264.2041015625,
+        "eval_mean": 267.2498779296875,
+        "ratio": 1.0115281191668668
+      },
+      "geometry_preservation": {
+        "trustworthiness_ratio": 1.0005497674500352,
+        "continuity_ratio": 1.0000135264490977
+      }
+    },
+    "subsampling_info": {
+      "hsic_max_samples": 10000,
+      "geometry_max_samples": 5000,
+      "tsne_max_samples": 2000,
+      "shepard_max_samples": 10000,
+      "note": "None means no subsampling was applied. Subsampling uses seeded random sampling for reproducibility."
+    },
+    "analysis_recommendations": {
+      "dataset_size": "large",
+      "most_useful_plots": [
+        "HSIC heatmap: Shows latent independence patterns",
+        "Latent space analysis: Reveals dimension utilization and generalization",
+        "Variance histograms: Identifies active vs inactive dimensions",
+        "Train vs eval scatter: Detects overfitting in latent space"
+      ],
+      "less_useful_at_scale": [
+        "Individual scatter points: Too dense to interpret",
+        "t-SNE: Representative but subsampled",
+        "Shepard plots: Shows overall trends but subsampled"
+      ],
+      "key_metrics_to_focus_on": [
+        "Active units ratio (train vs eval)",
+        "HSIC global score",
+        "Dimension utilization patterns",
+        "Train-eval variance correlation",
+        "Effective dimensionality"
+      ]
+    }
+  }
 }
