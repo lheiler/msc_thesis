@@ -58,6 +58,7 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path="", 
     Extract latent features from the EEG data and optionally save them.
     """
     latent_features = []
+    sample_ids = []
     model = None
     if save_path:
         truncate_file(save_path)
@@ -81,7 +82,14 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path="", 
                 if save_path:
                     append_jsonl(save_path, record)
                 latent_features.append((latent_feature, g, a, ab))
-        return DataLoader(latent_features, batch_size=batch_size, shuffle=False)
+                sample_ids.append(str(sample_id))
+        loader = DataLoader(latent_features, batch_size=batch_size, shuffle=False)
+        # Attach sample IDs for downstream evaluation alignment
+        try:
+            loader.sample_ids = sample_ids  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        return loader
 
     if method == "ctm_nn_pc" or method == "ctm_nn_avg":
         model = ParameterRegressor().to(device)
@@ -153,5 +161,12 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path="", 
 
         # Dataset keeps tuples (latent, g, a, ab) to avoid downstream changes
         latent_features.append((latent_feature, g, a, ab))
+        sample_ids.append(str(sample_id))
 
-    return DataLoader(latent_features, batch_size=batch_size, shuffle=False)
+    loader = DataLoader(latent_features, batch_size=batch_size, shuffle=False)
+    # Attach sample IDs for downstream evaluation alignment
+    try:
+        loader.sample_ids = sample_ids  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    return loader

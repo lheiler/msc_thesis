@@ -87,7 +87,7 @@ def mixed_recon_loss(x_hat: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     # Time-domain term is disabled
     mse = nn.functional.mse_loss(x_hat, x)
     
-    return 0.5 * mse + 1.0 * spec
+    return spec
 
 
 def train(

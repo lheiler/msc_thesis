@@ -1,0 +1,4 @@
+/rds/general/user/lrh24/home/thesis/code/latent_extraction/cortico_thalamic.py:151: RuntimeWarning: divide by zero encountered in divide
+  phi = phi_num / denom
+[I 2025-08-29 04:25:38,674] A new study created in memory with name: no-name-e9b09100-b01c-4f37-98f2-b7a8e99cdb1d
+  0%|          | 0/2 [00:00<?, ?it/s]                                       0%|          | 0/2 [04:00<?, ?it/s]Best trial: 0. Best value: 0.625599:   0%|          | 0/2 [04:00<?, ?it/s]Best trial: 0. Best value: 0.625599:  50%|█████     | 1/2 [04:00<04:00, 240.75s/it]                                                                                   Best trial: 0. Best value: 0.625599:  50%|█████     | 1/2 [05:52<04:00, 240.75s/it]Best trial: 1. Best value: 0.624008:  50%|█████     | 1/2 [05:52<04:00, 240.75s/it]Best trial: 1. Best value: 0.624008: 100%|██████████| 2/2 [05:52<00:00, 165.07s/it]Best trial: 1. Best value: 0.624008: 100%|██████████| 2/2 [05:52<00:00, 176.42s/it]

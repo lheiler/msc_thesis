@@ -285,7 +285,7 @@ def main():
     verbose = True
 
     # PSD settings
-    psd_fmin = PSD_CALCULATION_PARAMS.get("min_freq", 3.0)
+    psd_fmin = PSD_CALCULATION_PARAMS.get("min_freq", 1.0)
     psd_fmax = PSD_CALCULATION_PARAMS.get("max_freq", 45.0)
     psd_df = PSD_CALCULATION_PARAMS.get("df", 1.0)
     psd_n_per_seg = PSD_CALCULATION_PARAMS.get("n_per_seg", 512)

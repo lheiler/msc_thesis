@@ -1,0 +1,269 @@
+Results will be saved to: Results/tuh-ctm_cma_avg
+Loading raw EEG data …
+Loading train data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl...
+Loaded 53622 samples from train split
+Loading eval data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl...
+Loaded 5459 samples from eval split
+Loaded 53622 training samples and 5459 evaluation samples from tuh dataset
+Extracting latent features …
+Evaluating latent features …
+Training models for each task
+🔹 Task 3: hardcoded as classification → 'abnormal'
+   → Optuna search (n_trials=2) for classification …
+Training model with checkpoint path: None
+[Task-specific] Epoch 001: loss = 0.6850, acc = 0.58 | val_loss = 0.6537, val_acc = 0.63
+[Task-specific] Epoch 002: loss = 0.6669, acc = 0.61 | val_loss = 0.6464, val_acc = 0.64
+[Task-specific] Epoch 003: loss = 0.6601, acc = 0.62 | val_loss = 0.6438, val_acc = 0.64
+[Task-specific] Epoch 004: loss = 0.6561, acc = 0.62 | val_loss = 0.6422, val_acc = 0.64
+[Task-specific] Epoch 005: loss = 0.6523, acc = 0.63 | val_loss = 0.6410, val_acc = 0.64
+[Task-specific] Epoch 006: loss = 0.6507, acc = 0.63 | val_loss = 0.6406, val_acc = 0.64
+[Task-specific] Epoch 007: loss = 0.6499, acc = 0.63 | val_loss = 0.6397, val_acc = 0.64
+[Task-specific] Epoch 008: loss = 0.6502, acc = 0.63 | val_loss = 0.6386, val_acc = 0.64
+[Task-specific] Epoch 009: loss = 0.6466, acc = 0.63 | val_loss = 0.6391, val_acc = 0.64
+[Task-specific] Epoch 010: loss = 0.6461, acc = 0.64 | val_loss = 0.6393, val_acc = 0.64
+[Task-specific] Epoch 011: loss = 0.6447, acc = 0.64 | val_loss = 0.6385, val_acc = 0.64
+[Task-specific] Epoch 012: loss = 0.6421, acc = 0.64 | val_loss = 0.6383, val_acc = 0.64
+[Task-specific] Epoch 013: loss = 0.6423, acc = 0.64 | val_loss = 0.6370, val_acc = 0.64
+[Task-specific] Epoch 014: loss = 0.6418, acc = 0.64 | val_loss = 0.6372, val_acc = 0.64
+[Task-specific] Epoch 015: loss = 0.6412, acc = 0.64 | val_loss = 0.6370, val_acc = 0.64
+[Task-specific] Epoch 016: loss = 0.6395, acc = 0.64 | val_loss = 0.6365, val_acc = 0.64
+[Task-specific] Epoch 017: loss = 0.6409, acc = 0.64 | val_loss = 0.6364, val_acc = 0.64
+[Task-specific] Epoch 018: loss = 0.6385, acc = 0.64 | val_loss = 0.6373, val_acc = 0.64
+[Task-specific] Epoch 019: loss = 0.6382, acc = 0.64 | val_loss = 0.6366, val_acc = 0.64
+[Task-specific] Epoch 020: loss = 0.6387, acc = 0.64 | val_loss = 0.6355, val_acc = 0.64
+[Task-specific] Epoch 021: loss = 0.6371, acc = 0.65 | val_loss = 0.6350, val_acc = 0.64
+[Task-specific] Epoch 022: loss = 0.6364, acc = 0.65 | val_loss = 0.6352, val_acc = 0.64
+[Task-specific] Epoch 023: loss = 0.6372, acc = 0.64 | val_loss = 0.6348, val_acc = 0.64
+[Task-specific] Epoch 024: loss = 0.6355, acc = 0.64 | val_loss = 0.6342, val_acc = 0.64
+[Task-specific] Epoch 025: loss = 0.6357, acc = 0.64 | val_loss = 0.6348, val_acc = 0.64
+[Task-specific] Epoch 026: loss = 0.6345, acc = 0.65 | val_loss = 0.6344, val_acc = 0.64
+[Task-specific] Epoch 027: loss = 0.6362, acc = 0.65 | val_loss = 0.6337, val_acc = 0.64
+[Task-specific] Epoch 028: loss = 0.6348, acc = 0.65 | val_loss = 0.6337, val_acc = 0.64
+[Task-specific] Epoch 029: loss = 0.6326, acc = 0.65 | val_loss = 0.6336, val_acc = 0.64
+[Task-specific] Epoch 030: loss = 0.6326, acc = 0.65 | val_loss = 0.6342, val_acc = 0.64
+[Task-specific] Epoch 031: loss = 0.6319, acc = 0.65 | val_loss = 0.6342, val_acc = 0.64
+[Task-specific] Epoch 032: loss = 0.6336, acc = 0.65 | val_loss = 0.6336, val_acc = 0.64
+[Task-specific] Epoch 033: loss = 0.6319, acc = 0.65 | val_loss = 0.6330, val_acc = 0.64
+[Task-specific] Epoch 034: loss = 0.6320, acc = 0.65 | val_loss = 0.6321, val_acc = 0.64
+[Task-specific] Epoch 035: loss = 0.6310, acc = 0.65 | val_loss = 0.6331, val_acc = 0.64
+[Task-specific] Epoch 036: loss = 0.6319, acc = 0.65 | val_loss = 0.6325, val_acc = 0.65
+[Task-specific] Epoch 037: loss = 0.6314, acc = 0.65 | val_loss = 0.6321, val_acc = 0.65
+[Task-specific] Epoch 038: loss = 0.6320, acc = 0.65 | val_loss = 0.6323, val_acc = 0.65
+[Task-specific] Epoch 039: loss = 0.6294, acc = 0.65 | val_loss = 0.6315, val_acc = 0.65
+[Task-specific] Epoch 040: loss = 0.6299, acc = 0.65 | val_loss = 0.6316, val_acc = 0.65
+[Task-specific] Epoch 041: loss = 0.6290, acc = 0.65 | val_loss = 0.6317, val_acc = 0.64
+[Task-specific] Epoch 042: loss = 0.6288, acc = 0.66 | val_loss = 0.6308, val_acc = 0.65
+[Task-specific] Epoch 043: loss = 0.6298, acc = 0.65 | val_loss = 0.6310, val_acc = 0.65
+[Task-specific] Epoch 044: loss = 0.6292, acc = 0.65 | val_loss = 0.6306, val_acc = 0.65
+[Task-specific] Epoch 045: loss = 0.6295, acc = 0.65 | val_loss = 0.6308, val_acc = 0.65
+[Task-specific] Epoch 046: loss = 0.6284, acc = 0.65 | val_loss = 0.6312, val_acc = 0.65
+[Task-specific] Epoch 047: loss = 0.6279, acc = 0.65 | val_loss = 0.6309, val_acc = 0.65
+[Task-specific] Epoch 048: loss = 0.6279, acc = 0.66 | val_loss = 0.6305, val_acc = 0.65
+[Task-specific] Epoch 049: loss = 0.6268, acc = 0.65 | val_loss = 0.6300, val_acc = 0.65
+[Task-specific] Epoch 050: loss = 0.6278, acc = 0.65 | val_loss = 0.6304, val_acc = 0.65
+[Task-specific] Epoch 051: loss = 0.6276, acc = 0.66 | val_loss = 0.6296, val_acc = 0.65
+[Task-specific] Epoch 052: loss = 0.6275, acc = 0.65 | val_loss = 0.6295, val_acc = 0.65
+[Task-specific] Epoch 053: loss = 0.6270, acc = 0.66 | val_loss = 0.6296, val_acc = 0.65
+[Task-specific] Epoch 054: loss = 0.6266, acc = 0.66 | val_loss = 0.6296, val_acc = 0.65
+[Task-specific] Epoch 055: loss = 0.6267, acc = 0.65 | val_loss = 0.6298, val_acc = 0.65
+[Task-specific] Epoch 056: loss = 0.6259, acc = 0.66 | val_loss = 0.6302, val_acc = 0.65
+[Task-specific] Epoch 057: loss = 0.6264, acc = 0.65 | val_loss = 0.6296, val_acc = 0.65
+[Task-specific] Epoch 058: loss = 0.6263, acc = 0.66 | val_loss = 0.6301, val_acc = 0.65
+[Task-specific] Epoch 059: loss = 0.6260, acc = 0.66 | val_loss = 0.6293, val_acc = 0.65
+[Task-specific] Epoch 060: loss = 0.6249, acc = 0.66 | val_loss = 0.6290, val_acc = 0.65
+[Task-specific] Epoch 061: loss = 0.6257, acc = 0.66 | val_loss = 0.6286, val_acc = 0.65
+[Task-specific] Epoch 062: loss = 0.6253, acc = 0.66 | val_loss = 0.6282, val_acc = 0.65
+[Task-specific] Epoch 063: loss = 0.6248, acc = 0.66 | val_loss = 0.6299, val_acc = 0.65
+[Task-specific] Epoch 064: loss = 0.6245, acc = 0.66 | val_loss = 0.6291, val_acc = 0.65
+[Task-specific] Epoch 065: loss = 0.6247, acc = 0.66 | val_loss = 0.6287, val_acc = 0.65
+[Task-specific] Epoch 066: loss = 0.6240, acc = 0.66 | val_loss = 0.6283, val_acc = 0.65
+[Task-specific] Epoch 067: loss = 0.6251, acc = 0.66 | val_loss = 0.6282, val_acc = 0.65
+[Task-specific] Epoch 068: loss = 0.6248, acc = 0.66 | val_loss = 0.6280, val_acc = 0.65
+[Task-specific] Epoch 069: loss = 0.6238, acc = 0.66 | val_loss = 0.6279, val_acc = 0.65
+[Task-specific] Epoch 070: loss = 0.6233, acc = 0.66 | val_loss = 0.6278, val_acc = 0.65
+[Task-specific] Epoch 071: loss = 0.6241, acc = 0.66 | val_loss = 0.6275, val_acc = 0.65
+[Task-specific] Epoch 072: loss = 0.6241, acc = 0.66 | val_loss = 0.6273, val_acc = 0.65
+[Task-specific] Epoch 073: loss = 0.6238, acc = 0.66 | val_loss = 0.6280, val_acc = 0.65
+[Task-specific] Epoch 074: loss = 0.6238, acc = 0.66 | val_loss = 0.6271, val_acc = 0.65
+[Task-specific] Epoch 075: loss = 0.6234, acc = 0.66 | val_loss = 0.6274, val_acc = 0.65
+[Task-specific] Epoch 076: loss = 0.6238, acc = 0.66 | val_loss = 0.6272, val_acc = 0.65
+[Task-specific] Epoch 077: loss = 0.6239, acc = 0.66 | val_loss = 0.6278, val_acc = 0.65
+[Task-specific] Epoch 078: loss = 0.6226, acc = 0.66 | val_loss = 0.6281, val_acc = 0.65
+[Task-specific] Epoch 079: loss = 0.6219, acc = 0.66 | val_loss = 0.6267, val_acc = 0.65
+[Task-specific] Epoch 080: loss = 0.6228, acc = 0.66 | val_loss = 0.6271, val_acc = 0.65
+[Task-specific] Epoch 081: loss = 0.6229, acc = 0.66 | val_loss = 0.6266, val_acc = 0.65
+[Task-specific] Epoch 082: loss = 0.6217, acc = 0.66 | val_loss = 0.6266, val_acc = 0.65
+[Task-specific] Epoch 083: loss = 0.6220, acc = 0.66 | val_loss = 0.6267, val_acc = 0.65
+[Task-specific] Epoch 084: loss = 0.6215, acc = 0.66 | val_loss = 0.6268, val_acc = 0.65
+[Task-specific] Epoch 085: loss = 0.6225, acc = 0.66 | val_loss = 0.6271, val_acc = 0.65
+[Task-specific] Epoch 086: loss = 0.6214, acc = 0.66 | val_loss = 0.6268, val_acc = 0.65
+[Task-specific] Epoch 087: loss = 0.6224, acc = 0.66 | val_loss = 0.6268, val_acc = 0.65
+[Task-specific] Epoch 088: loss = 0.6214, acc = 0.66 | val_loss = 0.6285, val_acc = 0.65
+[Task-specific] Epoch 089: loss = 0.6216, acc = 0.66 | val_loss = 0.6262, val_acc = 0.65
+[Task-specific] Epoch 090: loss = 0.6215, acc = 0.66 | val_loss = 0.6270, val_acc = 0.65
+[Task-specific] Epoch 091: loss = 0.6216, acc = 0.66 | val_loss = 0.6259, val_acc = 0.65
+[Task-specific] Epoch 092: loss = 0.6216, acc = 0.66 | val_loss = 0.6272, val_acc = 0.65
+[Task-specific] Epoch 093: loss = 0.6208, acc = 0.66 | val_loss = 0.6260, val_acc = 0.65
+[Task-specific] Epoch 094: loss = 0.6220, acc = 0.66 | val_loss = 0.6270, val_acc = 0.65
+[Task-specific] Epoch 095: loss = 0.6220, acc = 0.66 | val_loss = 0.6266, val_acc = 0.65
+[Task-specific] Epoch 096: loss = 0.6207, acc = 0.66 | val_loss = 0.6261, val_acc = 0.65
+[Task-specific] Epoch 097: loss = 0.6206, acc = 0.66 | val_loss = 0.6256, val_acc = 0.65
+[Task-specific] Epoch 098: loss = 0.6215, acc = 0.66 | val_loss = 0.6259, val_acc = 0.65
+[Task-specific] Epoch 099: loss = 0.6208, acc = 0.66 | val_loss = 0.6258, val_acc = 0.65
+[Task-specific] Epoch 100: loss = 0.6198, acc = 0.66 | val_loss = 0.6263, val_acc = 0.65
+[Trial 0] Params: lr=0.00006, dropout=0.48, weight_decay=0.000847, scheduler=plateau, hidden_dims=(448, 224)
+🏅 New global best found (val_loss=0.6256) – tracked in memory (no files written)
+[I 2025-08-29 04:29:39,439] Trial 0 finished with value: 0.6255994583764876 and parameters: {'lr': 5.6115164153345e-05, 'dropout': 0.4753571532049581, 'weight_decay': 0.0008471801418819979, 'scheduler': 'plateau', 'n_layers': 2, 'base_width': 448}. Best is trial 0 with value: 0.6255994583764876.
+Training model with checkpoint path: None
+[Task-specific] Epoch 001: loss = 0.6916, acc = 0.56 | val_loss = 0.6576, val_acc = 0.62
+[Task-specific] Epoch 002: loss = 0.6668, acc = 0.61 | val_loss = 0.6501, val_acc = 0.63
+[Task-specific] Epoch 003: loss = 0.6615, acc = 0.62 | val_loss = 0.6461, val_acc = 0.63
+[Task-specific] Epoch 004: loss = 0.6553, acc = 0.62 | val_loss = 0.6440, val_acc = 0.64
+[Task-specific] Epoch 005: loss = 0.6540, acc = 0.63 | val_loss = 0.6431, val_acc = 0.64
+[Task-specific] Epoch 006: loss = 0.6505, acc = 0.63 | val_loss = 0.6411, val_acc = 0.64
+[Task-specific] Epoch 007: loss = 0.6483, acc = 0.63 | val_loss = 0.6403, val_acc = 0.64
+[Task-specific] Epoch 008: loss = 0.6475, acc = 0.63 | val_loss = 0.6398, val_acc = 0.64
+[Task-specific] Epoch 009: loss = 0.6457, acc = 0.63 | val_loss = 0.6385, val_acc = 0.64
+[Task-specific] Epoch 010: loss = 0.6456, acc = 0.63 | val_loss = 0.6379, val_acc = 0.64
+[Task-specific] Epoch 011: loss = 0.6427, acc = 0.64 | val_loss = 0.6376, val_acc = 0.64
+[Task-specific] Epoch 012: loss = 0.6438, acc = 0.64 | val_loss = 0.6371, val_acc = 0.64
+[Task-specific] Epoch 013: loss = 0.6429, acc = 0.64 | val_loss = 0.6366, val_acc = 0.64
+[Task-specific] Epoch 014: loss = 0.6401, acc = 0.64 | val_loss = 0.6359, val_acc = 0.64
+[Task-specific] Epoch 015: loss = 0.6396, acc = 0.64 | val_loss = 0.6354, val_acc = 0.64
+[Task-specific] Epoch 016: loss = 0.6391, acc = 0.64 | val_loss = 0.6353, val_acc = 0.64
+[Task-specific] Epoch 017: loss = 0.6380, acc = 0.64 | val_loss = 0.6359, val_acc = 0.64
+[Task-specific] Epoch 018: loss = 0.6386, acc = 0.64 | val_loss = 0.6349, val_acc = 0.64
+[Task-specific] Epoch 019: loss = 0.6378, acc = 0.64 | val_loss = 0.6349, val_acc = 0.64
+[Task-specific] Epoch 020: loss = 0.6382, acc = 0.64 | val_loss = 0.6349, val_acc = 0.65
+[Task-specific] Epoch 021: loss = 0.6359, acc = 0.64 | val_loss = 0.6334, val_acc = 0.64
+[Task-specific] Epoch 022: loss = 0.6358, acc = 0.65 | val_loss = 0.6332, val_acc = 0.65
+[Task-specific] Epoch 023: loss = 0.6351, acc = 0.65 | val_loss = 0.6337, val_acc = 0.65
+[Task-specific] Epoch 024: loss = 0.6354, acc = 0.64 | val_loss = 0.6331, val_acc = 0.65
+[Task-specific] Epoch 025: loss = 0.6359, acc = 0.65 | val_loss = 0.6327, val_acc = 0.64
+[Task-specific] Epoch 026: loss = 0.6340, acc = 0.64 | val_loss = 0.6323, val_acc = 0.65
+[Task-specific] Epoch 027: loss = 0.6338, acc = 0.65 | val_loss = 0.6323, val_acc = 0.65
+[Task-specific] Epoch 028: loss = 0.6336, acc = 0.65 | val_loss = 0.6325, val_acc = 0.65
+[Task-specific] Epoch 029: loss = 0.6323, acc = 0.65 | val_loss = 0.6315, val_acc = 0.65
+[Task-specific] Epoch 030: loss = 0.6320, acc = 0.65 | val_loss = 0.6316, val_acc = 0.65
+[Task-specific] Epoch 031: loss = 0.6317, acc = 0.65 | val_loss = 0.6312, val_acc = 0.65
+[Task-specific] Epoch 032: loss = 0.6319, acc = 0.65 | val_loss = 0.6306, val_acc = 0.65
+[Task-specific] Epoch 033: loss = 0.6315, acc = 0.65 | val_loss = 0.6313, val_acc = 0.65
+[Task-specific] Epoch 034: loss = 0.6312, acc = 0.65 | val_loss = 0.6304, val_acc = 0.65
+[Task-specific] Epoch 035: loss = 0.6311, acc = 0.65 | val_loss = 0.6303, val_acc = 0.65
+[Task-specific] Epoch 036: loss = 0.6296, acc = 0.65 | val_loss = 0.6308, val_acc = 0.65
+[Task-specific] Epoch 037: loss = 0.6299, acc = 0.65 | val_loss = 0.6303, val_acc = 0.65
+[Task-specific] Epoch 038: loss = 0.6297, acc = 0.65 | val_loss = 0.6300, val_acc = 0.65
+[Task-specific] Epoch 039: loss = 0.6297, acc = 0.65 | val_loss = 0.6296, val_acc = 0.65
+[Task-specific] Epoch 040: loss = 0.6284, acc = 0.65 | val_loss = 0.6297, val_acc = 0.65
+[Task-specific] Epoch 041: loss = 0.6294, acc = 0.65 | val_loss = 0.6294, val_acc = 0.65
+[Task-specific] Epoch 042: loss = 0.6296, acc = 0.65 | val_loss = 0.6294, val_acc = 0.65
+[Task-specific] Epoch 043: loss = 0.6287, acc = 0.65 | val_loss = 0.6293, val_acc = 0.65
+[Task-specific] Epoch 044: loss = 0.6284, acc = 0.65 | val_loss = 0.6296, val_acc = 0.65
+[Task-specific] Epoch 045: loss = 0.6284, acc = 0.65 | val_loss = 0.6294, val_acc = 0.65
+[Task-specific] Epoch 046: loss = 0.6274, acc = 0.65 | val_loss = 0.6283, val_acc = 0.65
+[Task-specific] Epoch 047: loss = 0.6278, acc = 0.65 | val_loss = 0.6289, val_acc = 0.65
+[Task-specific] Epoch 048: loss = 0.6276, acc = 0.65 | val_loss = 0.6282, val_acc = 0.65
+[Task-specific] Epoch 049: loss = 0.6280, acc = 0.65 | val_loss = 0.6288, val_acc = 0.65
+[Task-specific] Epoch 050: loss = 0.6258, acc = 0.66 | val_loss = 0.6277, val_acc = 0.65
+[Task-specific] Epoch 051: loss = 0.6263, acc = 0.66 | val_loss = 0.6283, val_acc = 0.65
+[Task-specific] Epoch 052: loss = 0.6271, acc = 0.65 | val_loss = 0.6276, val_acc = 0.65
+[Task-specific] Epoch 053: loss = 0.6270, acc = 0.66 | val_loss = 0.6273, val_acc = 0.65
+[Task-specific] Epoch 054: loss = 0.6264, acc = 0.65 | val_loss = 0.6275, val_acc = 0.65
+[Task-specific] Epoch 055: loss = 0.6266, acc = 0.65 | val_loss = 0.6275, val_acc = 0.65
+[Task-specific] Epoch 056: loss = 0.6269, acc = 0.65 | val_loss = 0.6291, val_acc = 0.65
+[Task-specific] Epoch 057: loss = 0.6261, acc = 0.66 | val_loss = 0.6272, val_acc = 0.65
+[Task-specific] Epoch 058: loss = 0.6254, acc = 0.66 | val_loss = 0.6278, val_acc = 0.65
+[Task-specific] Epoch 059: loss = 0.6257, acc = 0.66 | val_loss = 0.6267, val_acc = 0.65
+[Task-specific] Epoch 060: loss = 0.6255, acc = 0.66 | val_loss = 0.6270, val_acc = 0.65
+[Task-specific] Epoch 061: loss = 0.6242, acc = 0.66 | val_loss = 0.6270, val_acc = 0.65
+[Task-specific] Epoch 062: loss = 0.6251, acc = 0.66 | val_loss = 0.6271, val_acc = 0.65
+[Task-specific] Epoch 063: loss = 0.6249, acc = 0.66 | val_loss = 0.6290, val_acc = 0.65
+[Task-specific] Epoch 064: loss = 0.6246, acc = 0.66 | val_loss = 0.6270, val_acc = 0.65
+[Task-specific] Epoch 065: loss = 0.6248, acc = 0.66 | val_loss = 0.6263, val_acc = 0.65
+[Task-specific] Epoch 066: loss = 0.6239, acc = 0.66 | val_loss = 0.6271, val_acc = 0.65
+[Task-specific] Epoch 067: loss = 0.6249, acc = 0.66 | val_loss = 0.6264, val_acc = 0.65
+[Task-specific] Epoch 068: loss = 0.6248, acc = 0.66 | val_loss = 0.6261, val_acc = 0.65
+[Task-specific] Epoch 069: loss = 0.6229, acc = 0.66 | val_loss = 0.6259, val_acc = 0.65
+[Task-specific] Epoch 070: loss = 0.6244, acc = 0.66 | val_loss = 0.6264, val_acc = 0.65
+[Task-specific] Epoch 071: loss = 0.6238, acc = 0.66 | val_loss = 0.6262, val_acc = 0.65
+[Task-specific] Epoch 072: loss = 0.6236, acc = 0.66 | val_loss = 0.6266, val_acc = 0.65
+[Task-specific] Epoch 073: loss = 0.6234, acc = 0.66 | val_loss = 0.6261, val_acc = 0.65
+[Task-specific] Epoch 074: loss = 0.6230, acc = 0.66 | val_loss = 0.6263, val_acc = 0.65
+[Task-specific] Epoch 075: loss = 0.6229, acc = 0.66 | val_loss = 0.6255, val_acc = 0.65
+[Task-specific] Epoch 076: loss = 0.6226, acc = 0.66 | val_loss = 0.6257, val_acc = 0.65
+[Task-specific] Epoch 077: loss = 0.6230, acc = 0.66 | val_loss = 0.6257, val_acc = 0.65
+[Task-specific] Epoch 078: loss = 0.6226, acc = 0.66 | val_loss = 0.6258, val_acc = 0.65
+[Task-specific] Epoch 079: loss = 0.6234, acc = 0.66 | val_loss = 0.6258, val_acc = 0.65
+[Task-specific] Epoch 080: loss = 0.6234, acc = 0.66 | val_loss = 0.6255, val_acc = 0.65
+[Task-specific] Epoch 081: loss = 0.6235, acc = 0.66 | val_loss = 0.6262, val_acc = 0.65
+[Task-specific] Epoch 082: loss = 0.6232, acc = 0.66 | val_loss = 0.6264, val_acc = 0.65
+[Task-specific] Epoch 083: loss = 0.6215, acc = 0.66 | val_loss = 0.6254, val_acc = 0.65
+[Task-specific] Epoch 084: loss = 0.6216, acc = 0.66 | val_loss = 0.6255, val_acc = 0.65
+[Task-specific] Epoch 085: loss = 0.6223, acc = 0.66 | val_loss = 0.6253, val_acc = 0.65
+[Task-specific] Epoch 086: loss = 0.6217, acc = 0.66 | val_loss = 0.6246, val_acc = 0.65
+[Task-specific] Epoch 087: loss = 0.6212, acc = 0.66 | val_loss = 0.6251, val_acc = 0.65
+[Task-specific] Epoch 088: loss = 0.6218, acc = 0.66 | val_loss = 0.6253, val_acc = 0.65
+[Task-specific] Epoch 089: loss = 0.6207, acc = 0.66 | val_loss = 0.6249, val_acc = 0.65
+[Task-specific] Epoch 090: loss = 0.6221, acc = 0.66 | val_loss = 0.6244, val_acc = 0.65
+[Task-specific] Epoch 091: loss = 0.6210, acc = 0.66 | val_loss = 0.6251, val_acc = 0.65
+[Task-specific] Epoch 092: loss = 0.6223, acc = 0.66 | val_loss = 0.6246, val_acc = 0.65
+[Task-specific] Epoch 093: loss = 0.6212, acc = 0.66 | val_loss = 0.6244, val_acc = 0.65
+[Task-specific] Epoch 094: loss = 0.6209, acc = 0.66 | val_loss = 0.6250, val_acc = 0.65
+[Task-specific] Epoch 095: loss = 0.6213, acc = 0.66 | val_loss = 0.6244, val_acc = 0.65
+[Task-specific] Epoch 096: loss = 0.6210, acc = 0.66 | val_loss = 0.6242, val_acc = 0.65
+[Task-specific] Epoch 097: loss = 0.6199, acc = 0.66 | val_loss = 0.6245, val_acc = 0.65
+[Task-specific] Epoch 098: loss = 0.6210, acc = 0.66 | val_loss = 0.6240, val_acc = 0.65
+[Task-specific] Epoch 099: loss = 0.6200, acc = 0.66 | val_loss = 0.6242, val_acc = 0.65
+[Task-specific] Epoch 100: loss = 0.6202, acc = 0.66 | val_loss = 0.6254, val_acc = 0.65
+[Trial 1] Params: lr=0.00016, dropout=0.35, weight_decay=0.000001, scheduler=plateau, hidden_dims=(128, 64)
+🏅 New global best found (val_loss=0.6240) – tracked in memory (no files written)
+[I 2025-08-29 04:31:31,538] Trial 1 finished with value: 0.624007853241716 and parameters: {'lr': 0.00015930522616241006, 'dropout': 0.35403628889802274, 'weight_decay': 1.2087541473056965e-06, 'scheduler': 'plateau', 'n_layers': 2, 'base_width': 128}. Best is trial 1 with value: 0.624007853241716.
+✅ Optuna search finished – best val_loss=0.6240. Best model kept in memory.
+🔍 Prediction counts: {'label_0': 2743, 'label_1': 2716}
+Saving results …
+✅ Pipeline completed successfully to the path Results/tuh-ctm_cma_avg!
+Results will be saved to: Results/tuh-c22
+Loading raw EEG data …
+Loading train data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl...
+Loaded 53622 samples from train split
+Loading eval data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl...
+Loaded 5459 samples from eval split
+Loaded 53622 training samples and 5459 evaluation samples from tuh dataset
+Extracting latent features …
+Evaluating latent features …
+Results will be saved to: Results/tuh-jr_avg
+Loading raw EEG data …
+Loading train data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl...
+Loaded 53622 samples from train split
+Loading eval data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl...
+Loaded 5459 samples from eval split
+Loaded 53622 training samples and 5459 evaluation samples from tuh dataset
+Extracting latent features …
+Evaluating latent features …
+Results will be saved to: Results/tuh-hopf_avg
+Loading raw EEG data …
+Loading train data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl...
+Loaded 53622 samples from train split
+Loading eval data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl...
+Loaded 5459 samples from eval split
+Loaded 53622 training samples and 5459 evaluation samples from tuh dataset
+Extracting latent features …
+Evaluating latent features …
+Results will be saved to: Results/tuh-wong_wang_avg
+Loading raw EEG data …
+Loading train data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl...
+Loaded 53622 samples from train split
+Loading eval data from /rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl...
+Loaded 5459 samples from eval split
+Loaded 53622 training samples and 5459 evaluation samples from tuh dataset
+Extracting latent features …
+Evaluating latent features …
+
+====================================
+CPU Time used: 398:44:51
+CPU Percent: 6324%
+Memory usage: 36904584kb
+Approx Power usage: 4.784800000000001
+Walltime usage: 07:17:31
+
+====================================

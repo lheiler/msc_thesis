@@ -65,7 +65,7 @@ def independence_of_features(xs: torch.Tensor, save_path, device: str = "cpu", m
     # Subsample for computational efficiency if dataset is large
     original_n = n
     if n > max_samples:
-        print(f"📊 HSIC: Subsampling {max_samples:,} from {n:,} samples for efficiency")
+        print(f"HSIC: Subsampling {max_samples:,} from {n:,} samples for efficiency")
         # Use seeded random sampling for reproducibility
         torch.manual_seed(42)
         idx = torch.randperm(n, device=device)[:max_samples]
@@ -75,34 +75,74 @@ def independence_of_features(xs: torch.Tensor, save_path, device: str = "cpu", m
     # 1. z-score each coordinate
     xs_std = (xs - xs.mean(0, keepdim=True)) / xs.std(0, keepdim=True).clamp_min(1e-8)
 
-    H = torch.eye(n, device=device) - 1.0 / n          # centring matrix
-    Ks = []                                            # list of centred kernels
+    # Implicit centering helper: HKH = K - row_mean - col_mean + global_mean
+    def _center_kernel_inplace(K: torch.Tensor) -> None:
+        row_mean = K.mean(dim=1, keepdim=True)
+        col_mean = K.mean(dim=0, keepdim=True)
+        global_mean = K.mean()
+        K -= row_mean
+        K -= col_mean
+        K += global_mean
 
-    for j in range(d):
-        col = xs_std[:, j:j + 1]              # (n, 1)
-
-        if col.std() < 1e-6:                  # constant feature
-            Ks.append(torch.zeros(n, n, device=device))
-            continue
-
-        # --- fix: pair-wise squared distances (n × n) ---------------
-        d2 = (col - col.T).pow(2)             # ← broadcasting, shape (n,n)
-
-        # median of non-zero distances
-        nz = d2[d2 > 0]
-        sigma = torch.sqrt(0.5 * nz.median() + 1e-7) if nz.numel() else torch.tensor(1.0, device=device)
-
-        K = torch.exp(-d2 / (2 * sigma ** 2)) # (n,n)
-        Ks.append(H @ K @ H)
-    Ks = torch.stack(Ks)                               # (d,n,n)
-
-    # 2. biased HSIC
+    # Compute HSIC exactly using block-wise kernels to keep memory bounded.
+    # No approximation: we compute the same centered Gaussian kernels and exact Frobenius inner products.
     hsic = torch.zeros(d, d, device=device)
     norm = (n - 1) ** 2
-    for i in range(d):
-        for j in range(i + 1, d):
-            val = (Ks[i] * Ks[j]).sum() / norm
-            hsic[i, j] = hsic[j, i] = val
+
+    # Fixed block size chosen to fit ~419 dims with n≈10,000 on 24GB VRAM
+    block_dim = 16
+
+    # Precompute standardized columns for stability
+    cols = [xs_std[:, j:j + 1] for j in range(d)]
+    const_dim = [bool(col.std() < 1e-6) for col in cols]
+
+    # Process dimensions in blocks
+    for i_start in range(0, d, block_dim):
+        i_end = min(d, i_start + block_dim)
+        # Build and center kernels for i-block
+        Ki_list = []
+        for i in range(i_start, i_end):
+            if const_dim[i]:
+                Ki = torch.zeros(n, n, device=device)
+            else:
+                col_i = cols[i]
+                d2_i = (col_i - col_i.T).pow(2)
+                nz_i = d2_i[d2_i > 0]
+                sigma_i = torch.sqrt(0.5 * nz_i.median() + 1e-7) if nz_i.numel() else torch.tensor(1.0, device=device)
+                Ki = torch.exp(-d2_i / (2 * sigma_i ** 2))
+                _center_kernel_inplace(Ki)
+            Ki_list.append(Ki)
+
+        # Inner loop over j >= i_start to fill upper triangle; also process subsequent blocks to avoid storing all Ks
+        for j_start in range(i_start, d, block_dim):
+            j_end = min(d, j_start + block_dim)
+
+            Kj_list = []
+            for j in range(j_start, j_end):
+                if const_dim[j]:
+                    Kj = torch.zeros(n, n, device=device)
+                else:
+                    col_j = cols[j]
+                    d2_j = (col_j - col_j.T).pow(2)
+                    nz_j = d2_j[d2_j > 0]
+                    sigma_j = torch.sqrt(0.5 * nz_j.median() + 1e-7) if nz_j.numel() else torch.tensor(1.0, device=device)
+                    Kj = torch.exp(-d2_j / (2 * sigma_j ** 2))
+                    _center_kernel_inplace(Kj)
+                Kj_list.append(Kj)
+
+            # Compute block Frobenius inner products
+            for bi, i in enumerate(range(i_start, i_end)):
+                for bj, j in enumerate(range(j_start, j_end)):
+                    if j <= i:
+                        continue
+                    val = (Ki_list[bi] * Kj_list[bj]).sum() / norm
+                    hsic[i, j] = hsic[j, i] = val
+
+            # Free Kj_list promptly
+            del Kj_list
+
+        # Free Ki_list promptly
+        del Ki_list
 
     # 3. global score (mean off-diagonal, ignore zeros from constant dims)
     mask = hsic != 0
@@ -254,6 +294,16 @@ def _distance_correlation(X_high: np.ndarray, X_low: np.ndarray, max_samples: in
 
 def evaluate_latent_features(t_latent_features, e_latent_features, results_path: str | os.PathLike[str], 
                             subsample_config: Dict[str, int] = None) -> Dict[str, Any]:
+    # Memory monitoring helper
+    def _log_memory_usage(stage: str):
+        try:
+            import psutil
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            print(f"  Memory usage at {stage}: {memory_mb:.1f} MB")
+        except ImportError:
+            pass  # psutil not available
+    
     """Compute a practical subset of latent-evaluation metrics that do not require labels or original inputs.
 
     Implemented metrics:
@@ -268,12 +318,14 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             - 'hsic': max samples for HSIC calculation (default: 10000)
             - 'geometry': max samples for geometry metrics (default: 5000)
             - 'tsne': max samples for t-SNE (default: 2000)
+            - 'shepard': max samples for Shepard plots (default: 10000)
             Setting to None uses full dataset (may be slow for large datasets).
             
     Note on subsampling validity:
         - Random subsampling preserves statistical properties for visualization and most metrics
         - HSIC independence: 10k samples typically sufficient for latent dimension analysis
         - Geometry metrics: 5k samples adequate for neighborhood structure assessment
+        - Shepard plots: 10k samples adequate for distance preservation analysis
         - For critical analysis, consider using larger subsets or full dataset
         - All subsampling uses seeded random selection for reproducibility
     """
@@ -282,7 +334,8 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         subsample_config = {
             'hsic': 10000,
             'geometry': 5000, 
-            'tsne': 2000
+            'tsne': 2000,
+            'shepard': 10000  # Limit for Shepard plot pairwise distances
         }
     #convert to numpy arrays, but only the first element of each sample
     train_latent_features = np.array([sample[0] for sample in t_latent_features.dataset])
@@ -304,7 +357,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         eval_set = set(eval_sample_ids)
         overlap = train_set.intersection(eval_set)
         if overlap:
-            print(f"⚠️  WARNING: Found {len(overlap)} overlapping sample IDs between train and eval sets.")
+            print(f"WARNING: Found {len(overlap)} overlapping sample IDs between train and eval sets.")
             print(f"   This may indicate data leakage. Overlapping IDs: {list(overlap)[:5]}{'...' if len(overlap) > 5 else ''}")
         else:
             print(f"✓ No sample overlap detected between train ({len(train_set)}) and eval ({len(eval_set)}) sets.")
@@ -339,20 +392,27 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
     active_tr = int((var_tr > 1e-3).sum())
     active_ev = int((var_ev > 1e-3).sum())
 
-    print(f"📊 Computing HSIC independence metrics...")
+    print(f"Computing HSIC independence metrics...")
+    _log_memory_usage("before HSIC")
     hsic_max = subsample_config.get('hsic', None)  # None means no subsampling
-    hsic_tr = independence_of_features(z_tr, save_path=str(train_dir), device="cpu", 
+    auto_device = "cuda" if torch.cuda.is_available() else "cpu"
+    hsic_tr = independence_of_features(z_tr, save_path=str(train_dir), device=auto_device, 
                                       max_samples=hsic_max if hsic_max else z_tr.shape[0])
-    hsic_ev = independence_of_features(z_ev, save_path=str(eval_dir), device="cpu", 
+    hsic_ev = independence_of_features(z_ev, save_path=str(eval_dir), device=auto_device, 
                                       max_samples=hsic_max if hsic_max else z_ev.shape[0])
+    
+    # Force garbage collection after memory-intensive HSIC computations
+    import gc
+    gc.collect()
+    _log_memory_usage("after HSIC cleanup")
 
     # Cluster metrics (unsupervised)
-    print(f"📊 Computing clustering metrics...")
+    print(f"Computing clustering metrics...")
     clus_tr = _cluster_metrics(z_tr.cpu().numpy(), n_clusters=5)
     clus_ev = _cluster_metrics(z_ev.cpu().numpy(), n_clusters=5)
 
     # PCA explained variance (fit on train, evaluate on both splits to avoid data leakage)
-    print(f"📊 Computing PCA analysis...")
+    print(f"Computing PCA analysis...")
     try:
         z_tr_np = z_tr.cpu().numpy()
         z_ev_np = z_ev.cpu().numpy()
@@ -375,6 +435,9 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             "eval_shape": z_ev_np.shape,
             "note": "PCA fitted on training data only to avoid data leakage"
         }
+        
+        # Clear PCA transformation results to free memory
+        del z_tr_pca, z_ev_pca
 
         # Create more meaningful latent space analysis plots
         try:
@@ -402,7 +465,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             ax1.set_ylim(0, 1.05)
             
             # Add warning about interpretation
-            ax1.text(0.02, 0.5, "⚠️ Note: High linear variance ≠ semantic importance\nLatent features may use nonlinear structure", 
+            ax1.text(0.02, 0.5, "WARNING: High linear variance ≠ semantic importance\nLatent features may use nonlinear structure", 
                     transform=ax1.transAxes, fontsize=8, 
                     bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))
             
@@ -507,19 +570,19 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             correlation = np.corrcoef(np.log(var_tr + 1e-10), np.log(var_ev + 1e-10))[0, 1]
             
             summary_text = f"""
-            🔍 LATENT SPACE ANALYSIS SUMMARY:
+            LATENT SPACE ANALYSIS SUMMARY:
             
-            📊 Dimension Utilization:
+            Dimension Utilization:
             • Active in both train & eval: {active_both}/{len(var_tr)} ({100*active_both/len(var_tr):.1f}%)
             • Active only in training: {active_train_only} (potential overfitting)
             • Active only in evaluation: {active_eval_only} (unusual)
             • Inactive in both: {inactive_both} (unused capacity)
             
-            📈 Generalization Analysis:
+            Generalization Analysis:
             • Train-eval variance correlation: {correlation:.3f}
             • Mean variance ratio (eval/train): {np.mean(var_ev)/np.mean(var_tr):.3f}
             
-            💡 What This Means:
+            What This Means:
             • High correlation (>0.8): Good generalization of latent structure
             • Many train-only active dims: Possible overfitting
             • Low overall dimensionality: Efficient representation
@@ -529,7 +592,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                     verticalalignment='top', fontfamily='monospace',
                     bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
             
-            plt.tight_layout()
+            # Remove tight_layout() to avoid gridspec conflicts
             plt.savefig(os.path.join(results_dir, "latent_space_analysis.png"), 
                        dpi=300, bbox_inches='tight')
             plt.close()
@@ -552,9 +615,9 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         # Use subsampling for large datasets to make geometry calculations feasible
         geom_max_samples = subsample_config.get('geometry', None)
         if geom_max_samples:
-            print(f"📊 Computing geometry metrics (subsampling to {geom_max_samples:,} if needed)")
+            print(f"Computing geometry metrics (subsampling to {geom_max_samples:,} if needed)")
         else:
-            print(f"📊 Computing geometry metrics (using full dataset)")
+            print(f"Computing geometry metrics (using full dataset)")
             geom_max_samples = max(z_tr.shape[0], z_ev.shape[0])
         
         geom_tr = {
@@ -622,6 +685,12 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                                os.path.join(train_dir, "pca2_scatter.png"), geom_tr)
         _create_improved_scatter(z_ev_2d, "Evaluation", 
                                os.path.join(eval_dir, "pca2_scatter.png"), geom_ev)
+        
+        # Clear 2D PCA results to free memory before Shepard plots
+        del z_tr_2d, z_ev_2d
+        
+        # Force garbage collection after geometry metrics
+        gc.collect()
 
         # Improved t-SNE (subsample if needed)
         def _tsne_scatter(Z: np.ndarray, out_path: str, title_suffix: str):
@@ -676,25 +745,48 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             except Exception:
                 pass
 
-        print(f"📊 Computing t-SNE projections...")
+        print(f"Computing t-SNE projections...")
         _tsne_scatter(z_tr_np, os.path.join(train_dir, "tsne_scatter.png"), "Training")
         _tsne_scatter(z_ev_np, os.path.join(eval_dir, "tsne_scatter.png"), "Evaluation")
 
         # Improved Shepard plot: pairwise distances high-d vs 2D
-        def _shepard(Z_hd: np.ndarray, Z_2d: np.ndarray, out_path: str, title_suffix: str):
+        def _shepard(Z_hd: np.ndarray, Z_2d: np.ndarray, out_path: str, title_suffix: str, max_pairs: int = None):
             try:
-                Dh = pairwise_distances(Z_hd)
-                Dl = pairwise_distances(Z_2d)
+                # Use configurable subsampling for memory efficiency
+                if max_pairs is None:
+                    max_pairs = 10000  # Default fallback
+                
+                # Subsample data before computing pairwise distances to save memory
+                n_samples = Z_hd.shape[0]
+                if n_samples > max_pairs:
+                    print(f"  Shepard: Subsampling to {max_pairs:,} samples for memory efficiency")
+                    idx = np.random.RandomState(42).choice(n_samples, size=max_pairs, replace=False)
+                    Z_hd_sub = Z_hd[idx]
+                    Z_2d_sub = Z_2d[idx]
+                else:
+                    Z_hd_sub = Z_hd
+                    Z_2d_sub = Z_2d
+                
+                # Compute pairwise distances on subsampled data
+                print(f"    Computing pairwise distances for {Z_hd_sub.shape[0]:,} samples...")
+                Dh = pairwise_distances(Z_hd_sub)
+                Dl = pairwise_distances(Z_2d_sub)
+                
+                # Extract upper triangle indices and values
                 iu = np.triu_indices_from(Dh, k=1)
                 a, b = Dh[iu], Dl[iu]
                 m = a.shape[0]
                 original_m = m
                 
-                if m > 20000:
-                    idx = np.random.RandomState(42).choice(m, size=20000, replace=False)
+                # Clear distance matrices immediately to free memory
+                del Dh, Dl
+                
+                # Additional safety check for very large datasets
+                if m > 50000:  # Hard limit to prevent memory issues
+                    idx = np.random.RandomState(42).choice(m, size=50000, replace=False)
                     a = a[idx]
                     b = b[idx]
-                    m = 20000
+                    m = 50000
                 
                 plt.figure(figsize=(10, 8))
                 
@@ -744,9 +836,25 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             except Exception:
                 pass
 
-        print(f"📊 Computing Shepard plots...")
-        _shepard(z_tr_np, z_tr_2d, os.path.join(train_dir, "shepard_plot.png"), "Training")
-        _shepard(z_ev_np, z_ev_2d, os.path.join(eval_dir, "shepard_plot.png"), "Evaluation")
+        print(f"Computing Shepard plots...")
+        _log_memory_usage("before Shepard plots")
+        shepard_max = subsample_config.get('shepard', 10000)
+        
+        # Recreate 2D projections just for Shepard plots (memory efficient)
+        pca2_shepard = PCA(n_components=2)
+        pca2_shepard.fit(z_tr_np)  # Fit on training data only
+        z_tr_2d_shepard = pca2_shepard.transform(z_tr_np)
+        z_ev_2d_shepard = pca2_shepard.transform(z_ev_np)
+        
+        _shepard(z_tr_np, z_tr_2d_shepard, os.path.join(train_dir, "shepard_plot.png"), "Training", shepard_max)
+        _shepard(z_ev_np, z_ev_2d_shepard, os.path.join(eval_dir, "shepard_plot.png"), "Evaluation", shepard_max)
+        
+        # Clear Shepard-specific arrays
+        del z_tr_2d_shepard, z_ev_2d_shepard, pca2_shepard
+        
+        # Final memory cleanup after all heavy computations
+        gc.collect()
+        _log_memory_usage("after Shepard plots cleanup")
     except Exception:
         geom_tr, geom_ev = {}, {}
 
@@ -875,7 +983,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             except:
                 pass
     
-    print(f"📊 Creating variance distribution plots...")
+    print(f"Creating variance distribution plots...")
     try:
         _create_variance_plot(var_tr, "Training", 
                             os.path.join(train_dir, "variance_hist.png"), 
@@ -886,7 +994,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
     except Exception:
         pass
 
-    print(f"📊 Computing mutual information metrics...")
+    print(f"Computing mutual information metrics...")
     # Supervised mutual information I(Z;Y) per available target
     def _compute_mi(Z: np.ndarray, y: np.ndarray, task: str):
         if task in {"gender", "abnormal"}:
@@ -952,6 +1060,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         "hsic_max_samples": subsample_config.get('hsic'),
         "geometry_max_samples": subsample_config.get('geometry'), 
         "tsne_max_samples": subsample_config.get('tsne'),
+        "shepard_max_samples": subsample_config.get('shepard'),
         "note": "None means no subsampling was applied. Subsampling uses seeded random sampling for reproducibility."
     }
     
@@ -982,9 +1091,9 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         metrics["analysis_recommendations"] = recommendations
     
     print(f"✅ Latent feature evaluation completed!")
-    print(f"📈 Dataset size: {n_total:,} total samples")
+    print(f"Dataset size: {n_total:,} total samples")
     if n_total > 20000:
-        print(f"💡 For large datasets, focus on: HSIC heatmap, latent space analysis, variance distributions, and train/eval comparisons")
-        print(f"🎯 The new latent space analysis plot shows dimension utilization and generalization patterns")
+        print(f"For large datasets, focus on: HSIC heatmap, latent space analysis, variance distributions, and train/eval comparisons")
+        print(f"The new latent space analysis plot shows dimension utilization and generalization patterns")
     
     return metrics

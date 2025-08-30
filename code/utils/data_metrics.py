@@ -36,13 +36,29 @@ def compute_dataset_stats(loader, *, age_bins=None) -> Dict[str, Any]:
     ages = np.asarray(ages)
     abns = np.asarray(abns)
 
-    stats = {
-        "n_samples": int(len(ages)),
-        "gender_counts": {
+    # Detect gender coding scheme: legacy {1,2} or cleaned {0,1}
+    gender_values = set(np.unique(genders).tolist())
+    if gender_values.issubset({1.0, 2.0}):
+        gender_counts = {
             "female(2)": int((genders == 2).sum()),
             "male(1)": int((genders == 1).sum()),
-            "unknown(0)": int((genders == 0).sum()),
-        },
+        }
+    elif gender_values.issubset({0.0, 1.0}):
+        gender_counts = {
+            "female(0)": int((genders == 0).sum()),
+            "male(1)": int((genders == 1).sum()),
+        }
+    else:
+        # Mixed or unexpected labels; report raw bins
+        gender_counts = {
+            "label_0": int((genders == 0).sum()),
+            "label_1": int((genders == 1).sum()),
+            "label_2": int((genders == 2).sum()),
+        }
+
+    stats = {
+        "n_samples": int(len(ages)),
+        "gender_counts": gender_counts,
         "abnormal_counts": {
             "abnormal(1)": int((abns == 1).sum()),
             "normal(0)": int((abns == 0).sum()),
