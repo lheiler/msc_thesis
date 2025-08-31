@@ -1,6 +1,16 @@
 Metric,Best Method,Value,Methods Compared
-Hsic Global Score,ctm_nn_avg,0.0624,7
-Active Units,hopf_avg,15.0000,7
-Silhouette,wong_wang_avg,0.6359,7
-Trustworthiness,wong_wang_avg,0.9973,7
-Dist Corr,wong_wang_avg,1.0000,7
+Hsic Global Score (Lower Better),pca_avg,0.0046,7
+Active Units (Higher Better),hopf_avg,15.0000,7
+Silhouette (Higher Better),wong_wang_avg,0.6359,7
+Davies Bouldin (Lower Better),wong_wang_avg,0.4831,7
+Calinski Harabasz (Higher Better),wong_wang_avg,55897.6875,7
+Trustworthiness (Higher Better),wong_wang_avg,0.9973,7
+Continuity (Higher Better),wong_wang_avg,0.9991,7
+Dist Corr (Higher Better),wong_wang_avg,1.0000,7
+Variance Entropy (Higher Better),psd_ae_avg,2.0145,7
+Effective Dim Variance (Higher Better),psd_ae_avg,7.4971,7
+Variance Concentration (Higher = More Concentrated),wong_wang_avg,0.9998,7
+Mi Gender Mean (Higher Better),ctm_nn_avg,0.0283,7
+Mi Abnormal Mean (Higher Better),ctm_nn_avg,0.0670,7
+Mi Gender Concentration (Higher = More Concentrated),ctm_cma_avg,0.5783,7
+Mi Abnormal Concentration (Higher = More Concentrated),hopf_avg,0.5407,7

@@ -14,7 +14,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from math import pi
 import warnings
-warnings.filterwarnings('ignore')
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from functools import partial
+import time
+import shutil
+#arnings.filterwarnings('ignore')
 
 # Import pairwise comparison functions
 from sklearn.metrics import pairwise_distances
@@ -22,10 +27,237 @@ from sklearn.cross_decomposition import CCA
 from sklearn.decomposition import PCA
 from scipy.spatial import procrustes
 
+# Try to import CUDA libraries for GPU acceleration
+try:
+    import torch
+    CUDA_AVAILABLE = torch.cuda.is_available()
+    if CUDA_AVAILABLE:
+        print(f"CUDA detected: {torch.cuda.get_device_name(0)}")
+except ImportError:
+    CUDA_AVAILABLE = False
+
+# =================================================================
+# PAIRWISE SIMILARITY ACCELERATION SETTINGS
+# =================================================================
+# Choose your preferred acceleration method:
+
+# Option 1: GPU Acceleration (fastest for large datasets)
+PAIRWISE_USE_GPU = False  # Set to True to use CUDA GPU
+
+# Option 2: CPU Multiprocessing (great for 16-core systems)  
+PAIRWISE_N_WORKERS = 32 # Conservative setting (1 = sequential)
+
+# Option 3: Automatic (tries GPU first, then multicore, then sequential)
+PAIRWISE_AUTO = False    # Set to False to use manual settings above
+
 # Set style for plots
 plt.style.use('seaborn-v0_8')
 sns.set_palette("husl")
 plt.rcParams['figure.figsize'] = (10, 8)
+
+# =================================================================
+# GLOBAL WORKER FUNCTION FOR MULTIPROCESSING
+# =================================================================
+
+def _global_compute_pair_worker(args):
+    """Global worker function for multiprocessing (needs to be picklable)."""
+    import numpy as np
+    from sklearn.metrics import pairwise_distances
+    from sklearn.cross_decomposition import CCA
+    from sklearn.decomposition import PCA
+    from scipy.spatial import procrustes
+    
+    pair_info, method_data, k = args
+    i, j, method1, method2 = pair_info
+    
+    # Helper functions (copied from class)
+    def _center_rows(X):
+        X = np.asarray(X, dtype=np.float64)
+        return X - X.mean(axis=0, keepdims=True)
+
+    def _hsic_linear(X, Y):
+        Xc = _center_rows(X)
+        Yc = _center_rows(Y)
+        K = Xc @ Xc.T
+        L = Yc @ Yc.T
+        n = K.shape[0]
+        H = np.eye(n) - np.ones((n, n)) / n
+        KH = H @ K @ H
+        LH = H @ L @ H
+        return float(np.sum(KH * LH))
+
+    def linear_cka(Z1, Z2):
+        hsic_xy = _hsic_linear(Z1, Z2)
+        hsic_xx = _hsic_linear(Z1, Z1)
+        hsic_yy = _hsic_linear(Z2, Z2)
+        denom = np.sqrt(hsic_xx * hsic_yy) + 1e-12
+        val = hsic_xy / denom
+        return float(np.clip(val, -1.0, 1.0))
+
+    def rbf_cka(Z1, Z2):
+        def _rbf_kernel(Z, gamma=None):
+            D2 = pairwise_distances(Z, metric="sqeuclidean")
+            if gamma is None:
+                nz = D2[D2 > 0]
+                if nz.size == 0:
+                    gamma_eff = 1.0
+                else:
+                    gamma_eff = 1.0 / (2.0 * np.median(nz))
+            else:
+                gamma_eff = gamma
+            return np.exp(-gamma_eff * D2)
+
+        K = _rbf_kernel(Z1)
+        L = _rbf_kernel(Z2)
+        n = K.shape[0]
+        H = np.eye(n) - np.ones((n, n)) / n
+        KH = H @ K @ H
+        LH = H @ L @ H
+        hsic_xy = float(np.sum(KH * LH))
+        hsic_xx = float(np.sum(KH * KH))
+        hsic_yy = float(np.sum(LH * LH))
+        val = hsic_xy / (np.sqrt(hsic_xx * hsic_yy) + 1e-12)
+        return float(np.clip(val, -1.0, 1.0))
+
+    def cca_maxcorr(Z1, Z2):
+        Z1 = np.asarray(Z1, dtype=np.float64)
+        Z2 = np.asarray(Z2, dtype=np.float64)
+        n, d1 = Z1.shape
+        _, d2 = Z2.shape
+        if n < 2 or d1 == 0 or d2 == 0:
+            return 0.0
+        k_comp = min(d1, d2, n - 1)
+        if k_comp < 1:
+            return 0.0
+        cca = CCA(n_components=k_comp, max_iter=500)
+        Xc = _center_rows(Z1)
+        Yc = _center_rows(Z2)
+        try:
+            Xc, Yc = cca.fit_transform(Xc, Yc)
+            corrs = []
+            for i in range(Xc.shape[1]):
+                x = Xc[:, i]
+                y = Yc[:, i]
+                if np.std(x) < 1e-12 or np.std(y) < 1e-12:
+                    corrs.append(0.0)
+                else:
+                    corrs.append(float(np.corrcoef(x, y)[0, 1]))
+            return float(np.max(np.abs(corrs))) if corrs else 0.0
+        except:
+            return 0.0
+
+    def distance_geometry_corr(Z1, Z2):
+        D1 = pairwise_distances(Z1)
+        D2 = pairwise_distances(Z2)
+        iu = np.triu_indices_from(D1, k=1)
+        a, b = D1[iu], D2[iu]
+        if a.std() < 1e-12 or b.std() < 1e-12:
+            return 0.0
+        return float(np.corrcoef(a, b)[0, 1])
+
+    def knn_jaccard_overlap(Z1, Z2, k):
+        n = Z1.shape[0]
+        if n <= 1 or k < 1:
+            return 0.0
+        k = min(k, n - 1)
+        D1 = pairwise_distances(Z1)
+        D2 = pairwise_distances(Z2)
+        np.fill_diagonal(D1, np.inf)
+        np.fill_diagonal(D2, np.inf)
+        idx1 = np.argsort(D1, axis=1)[:, :k]
+        idx2 = np.argsort(D2, axis=1)[:, :k]
+        scores = []
+        for i in range(n):
+            s1 = set(idx1[i].tolist())
+            s2 = set(idx2[i].tolist())
+            inter = len(s1 & s2)
+            union = len(s1 | s2)
+            scores.append(inter / union if union > 0 else 0.0)
+        return float(np.mean(scores)) if scores else 0.0
+
+    def procrustes_disparity(Z1, Z2):
+        try:
+            A, B = Z1, Z2
+            if A.shape[1] != B.shape[1]:
+                k_comp = min(A.shape[1], B.shape[1])
+                if k_comp < 1:
+                    return 0.0
+                p1 = PCA(n_components=k_comp, random_state=42)
+                p2 = PCA(n_components=k_comp, random_state=42)
+                A = p1.fit_transform(A)
+                B = p2.fit_transform(B)
+            _, _, disparity = procrustes(A, B)
+            return float(disparity)
+        except Exception:
+            return 0.0
+
+    def _align_latent_features_by_ids(Z1, ids1, Z2, ids2):
+        if not ids1 or not ids2:
+            raise ValueError("Missing sample IDs for alignment.")
+        
+        idx1_map = {sid: i for i, sid in enumerate(ids1)}
+        idx2_map = {sid: i for i, sid in enumerate(ids2)}
+        
+        common_ids = [sid for sid in ids1 if sid in idx2_map]
+        
+        if not common_ids:
+            raise ValueError("No overlapping sample IDs between methods; cannot align.")
+        
+        aligned_idx1 = np.array([idx1_map[sid] for sid in common_ids], dtype=int)
+        aligned_idx2 = np.array([idx2_map[sid] for sid in common_ids], dtype=int)
+        
+        return Z1[aligned_idx1], Z2[aligned_idx2]
+
+    try:
+        data1 = method_data[method1]
+        data2 = method_data[method2]
+        
+        Z1, ids1 = data1['features'], data1['ids']
+        Z2, ids2 = data2['features'], data2['ids']
+        
+        if i == j:
+            # Same method
+            similarities = {
+                "cka_linear": 1.0,
+                "cka_rbf": 1.0, 
+                "cca_maxcorr": 1.0,
+                "dist_geom_corr": 1.0,
+                f"knn_jaccard_k{k}": 1.0,
+                "procrustes_disparity": 0.0,
+            }
+            aligned_samples = len(ids1)
+        else:
+            # Different methods - align and compute
+            Z1_aligned, Z2_aligned = _align_latent_features_by_ids(Z1, ids1, Z2, ids2)
+            aligned_samples = Z1_aligned.shape[0]
+            
+            # Compute similarities
+            similarities = {
+                "cka_linear": linear_cka(Z1_aligned, Z2_aligned),
+                "cka_rbf": rbf_cka(Z1_aligned, Z2_aligned),
+                "cca_maxcorr": cca_maxcorr(Z1_aligned, Z2_aligned),
+                "dist_geom_corr": distance_geometry_corr(Z1_aligned, Z2_aligned),
+                f"knn_jaccard_k{k}": knn_jaccard_overlap(Z1_aligned, Z2_aligned, k),
+                "procrustes_disparity": procrustes_disparity(Z1_aligned, Z2_aligned),
+            }
+        
+        # Return results with metadata
+        results = []
+        for metric, value in similarities.items():
+            results.append({
+                'method1': method1,
+                'method2': method2,
+                'method1_clean': method1.replace('tuh-', ''),
+                'method2_clean': method2.replace('tuh-', ''),
+                'metric': metric,
+                'value': value,
+                'samples_used': aligned_samples
+            })
+        return results
+        
+    except Exception as e:
+        print(f"    ✗ Error in worker for {method1} vs {method2}: {e}")
+        return []
 plt.rcParams['font.size'] = 12
 
 class MetricsComparison:
@@ -216,8 +448,8 @@ class MetricsComparison:
         rows = []
         
         for method, data in self.available_methods.items():
-            if 'pca' in data:
-                pca_data = data['pca']
+            if 'latent' in data and 'pca' in data['latent']:
+                pca_data = data['latent']['pca']
                 row = {
                     'method': method,
                     'top5_ratio_sum': pca_data.get('top5_ratio_sum'),
@@ -1048,8 +1280,8 @@ class MetricsComparison:
                 best_corr_idx = corr_df['correlation'].abs().idxmax()
                 best_data = corr_df.loc[best_corr_idx]
                 
-                scatter = ax2.scatter(best_data['variance_vec'], best_data['mi_vec'],
-                                    alpha=0.7, s=100, color='darkblue')
+                ax2.scatter(best_data['variance_vec'], best_data['mi_vec'],
+                           alpha=0.7, s=100, color='darkblue')
                 
                 # Add trend line
                 z = np.polyfit(best_data['variance_vec'], best_data['mi_vec'], 1)
@@ -2013,19 +2245,162 @@ class MetricsComparison:
         except Exception:
             return 0.0
 
-    def compute_pairwise_summary(self, Z1: np.ndarray, Z2: np.ndarray, k: int = 10) -> Dict[str, float]:
+    def compute_pairwise_summary(self, Z1: np.ndarray, Z2: np.ndarray, k: int = 10, use_gpu: bool = False) -> Dict[str, float]:
         """Compute comprehensive pairwise similarity metrics."""
-        return {
-            "cka_linear": self.linear_cka(Z1, Z2),
-            "cka_rbf": self.rbf_cka(Z1, Z2),
-            "cca_maxcorr": self.cca_maxcorr(Z1, Z2),
-            "dist_geom_corr": self.distance_geometry_corr(Z1, Z2),
-            f"knn_jaccard_k{k}": self.knn_jaccard_overlap(Z1, Z2, k=k),
-            "procrustes_disparity": self.procrustes_disparity(Z1, Z2),
-        }
+        if use_gpu and CUDA_AVAILABLE:
+            return self._compute_pairwise_summary_gpu(Z1, Z2, k)
+        else:
+            return {
+                "cka_linear": self.linear_cka(Z1, Z2),
+                "cka_rbf": self.rbf_cka(Z1, Z2),
+                "cca_maxcorr": self.cca_maxcorr(Z1, Z2),
+                "dist_geom_corr": self.distance_geometry_corr(Z1, Z2),
+                f"knn_jaccard_k{k}": self.knn_jaccard_overlap(Z1, Z2, k=k),
+                "procrustes_disparity": self.procrustes_disparity(Z1, Z2),
+            }
     
-    def _load_latent_features(self, method: str, split: str = 'eval') -> Optional[np.ndarray]:
-        """Load latent features for a method."""
+    def _compute_pairwise_summary_gpu(self, Z1: np.ndarray, Z2: np.ndarray, k: int = 10) -> Dict[str, float]:
+        """GPU-accelerated version of pairwise similarity computation."""
+        device = torch.cuda.current_device()
+        
+        # Convert to tensors and move to GPU
+        Z1_gpu = torch.tensor(Z1, dtype=torch.float32, device=device)
+        Z2_gpu = torch.tensor(Z2, dtype=torch.float32, device=device)
+        
+        results = {}
+        
+        # GPU-accelerated CKA (most expensive computation)
+        results["cka_linear"] = self._linear_cka_gpu(Z1_gpu, Z2_gpu)
+        results["cka_rbf"] = self._rbf_cka_gpu(Z1_gpu, Z2_gpu)
+        
+        # Distance correlation (can be GPU accelerated)
+        results["dist_geom_corr"] = self._distance_geometry_corr_gpu(Z1_gpu, Z2_gpu)
+        
+        # k-NN Jaccard (GPU accelerated)
+        results[f"knn_jaccard_k{k}"] = self._knn_jaccard_overlap_gpu(Z1_gpu, Z2_gpu, k)
+        
+        # For CCA and Procrustes, fall back to CPU (complex decompositions)
+        results["cca_maxcorr"] = self.cca_maxcorr(Z1, Z2)
+        results["procrustes_disparity"] = self.procrustes_disparity(Z1, Z2)
+        
+        return results
+    
+    def _linear_cka_gpu(self, Z1: torch.Tensor, Z2: torch.Tensor) -> float:
+        """GPU-accelerated Linear CKA."""
+        # Center the data
+        Z1_centered = Z1 - Z1.mean(dim=0, keepdim=True)
+        Z2_centered = Z2 - Z2.mean(dim=0, keepdim=True)
+        
+        # Compute gram matrices
+        K = torch.mm(Z1_centered, Z1_centered.t())
+        L = torch.mm(Z2_centered, Z2_centered.t())
+        
+        # Center the gram matrices
+        n = K.shape[0]
+        H = torch.eye(n, device=K.device) - torch.ones(n, n, device=K.device) / n
+        K_centered = torch.mm(torch.mm(H, K), H)
+        L_centered = torch.mm(torch.mm(H, L), H)
+        
+        # Compute HSIC values
+        hsic_xy = torch.sum(K_centered * L_centered)
+        hsic_xx = torch.sum(K_centered * K_centered)
+        hsic_yy = torch.sum(L_centered * L_centered)
+        
+        # CKA
+        cka = hsic_xy / (torch.sqrt(hsic_xx * hsic_yy) + 1e-12)
+        return float(torch.clamp(cka, -1.0, 1.0).cpu())
+    
+    def _rbf_cka_gpu(self, Z1: torch.Tensor, Z2: torch.Tensor) -> float:
+        """GPU-accelerated RBF CKA."""
+        # Compute pairwise squared distances
+        def pairwise_sq_distances(X):
+            X_norm_sq = torch.sum(X**2, dim=1, keepdim=True)
+            return X_norm_sq + X_norm_sq.t() - 2 * torch.mm(X, X.t())
+        
+        D1_sq = pairwise_sq_distances(Z1)
+        D2_sq = pairwise_sq_distances(Z2)
+        
+        # Median heuristic for bandwidth
+        gamma1 = 1.0 / (2.0 * torch.median(D1_sq[D1_sq > 0]))
+        gamma2 = 1.0 / (2.0 * torch.median(D2_sq[D2_sq > 0]))
+        
+        # RBF kernels
+        K = torch.exp(-gamma1 * D1_sq)
+        L = torch.exp(-gamma2 * D2_sq)
+        
+        # Center kernels
+        n = K.shape[0]
+        H = torch.eye(n, device=K.device) - torch.ones(n, n, device=K.device) / n
+        K_centered = torch.mm(torch.mm(H, K), H)
+        L_centered = torch.mm(torch.mm(H, L), H)
+        
+        # Compute HSIC values
+        hsic_xy = torch.sum(K_centered * L_centered)
+        hsic_xx = torch.sum(K_centered * K_centered)
+        hsic_yy = torch.sum(L_centered * L_centered)
+        
+        # CKA
+        cka = hsic_xy / (torch.sqrt(hsic_xx * hsic_yy) + 1e-12)
+        return float(torch.clamp(cka, -1.0, 1.0).cpu())
+    
+    def _distance_geometry_corr_gpu(self, Z1: torch.Tensor, Z2: torch.Tensor) -> float:
+        """GPU-accelerated distance geometry correlation."""
+        def pairwise_distances_gpu(X):
+            X_norm_sq = torch.sum(X**2, dim=1, keepdim=True)
+            return torch.sqrt(X_norm_sq + X_norm_sq.t() - 2 * torch.mm(X, X.t()) + 1e-12)
+        
+        D1 = pairwise_distances_gpu(Z1)
+        D2 = pairwise_distances_gpu(Z2)
+        
+        # Get upper triangle indices
+        n = D1.shape[0]
+        triu_indices = torch.triu_indices(n, n, offset=1, device=D1.device)
+        
+        d1_flat = D1[triu_indices[0], triu_indices[1]]
+        d2_flat = D2[triu_indices[0], triu_indices[1]]
+        
+        # Compute correlation
+        if torch.std(d1_flat) < 1e-12 or torch.std(d2_flat) < 1e-12:
+            return 0.0
+        
+        corr = torch.corrcoef(torch.stack([d1_flat, d2_flat]))[0, 1]
+        return float(corr.cpu())
+    
+    def _knn_jaccard_overlap_gpu(self, Z1: torch.Tensor, Z2: torch.Tensor, k: int) -> float:
+        """GPU-accelerated k-NN Jaccard overlap."""
+        def pairwise_distances_gpu(X):
+            X_norm_sq = torch.sum(X**2, dim=1, keepdim=True)
+            return torch.sqrt(X_norm_sq + X_norm_sq.t() - 2 * torch.mm(X, X.t()) + 1e-12)
+        
+        n = Z1.shape[0]
+        if n <= 1 or k < 1:
+            return 0.0
+        k = min(k, n - 1)
+        
+        D1 = pairwise_distances_gpu(Z1)
+        D2 = pairwise_distances_gpu(Z2)
+        
+        # Set diagonal to infinity
+        D1.fill_diagonal_(float('inf'))
+        D2.fill_diagonal_(float('inf'))
+        
+        # Get k nearest neighbors
+        _, idx1 = torch.topk(D1, k, dim=1, largest=False)
+        _, idx2 = torch.topk(D2, k, dim=1, largest=False)
+        
+        # Compute Jaccard overlaps
+        scores = []
+        for i in range(n):
+            set1 = set(idx1[i].cpu().numpy())
+            set2 = set(idx2[i].cpu().numpy())
+            intersection = len(set1 & set2)
+            union = len(set1 | set2)
+            scores.append(intersection / union if union > 0 else 0.0)
+        
+        return float(np.mean(scores)) if scores else 0.0
+    
+    def _load_latent_features(self, method: str, split: str = 'eval') -> Optional[Tuple[np.ndarray, List[str]]]:
+        """Load latent features and sample IDs for a method."""
         cache_key = f"{method}_{split}"
         if cache_key in self.latent_features_cache:
             return self.latent_features_cache[cache_key]
@@ -2038,96 +2413,227 @@ class MetricsComparison:
             return None
         
         try:
-            # Simple JSON loading - assume JSONL format with latent vectors
+            # Load JSONL format: [latent_vector, gender, age, abnormal, sample_id]
             latent_vectors = []
+            sample_ids = []
+            
             with open(latent_file, 'r') as f:
                 for line in f:
                     data = json.loads(line.strip())
-                    if 'latent' in data:
-                        latent_vectors.append(data['latent'])
-                    elif 'features' in data:  # Alternative key name
-                        latent_vectors.append(data['features'])
+                    if isinstance(data, list) and len(data) >= 5:
+                        # Format: [latent_vector, gender, age, abnormal, sample_id]
+                        latent_vector = data[0]
+                        sample_id = data[4]
+                        latent_vectors.append(latent_vector)
+                        sample_ids.append(str(sample_id))
+                    elif isinstance(data, dict):
+                        # Alternative dictionary format
+                        if 'latent' in data and 'sample_id' in data:
+                            latent_vectors.append(data['latent'])
+                            sample_ids.append(str(data['sample_id']))
+                        elif 'features' in data and 'sample_id' in data:
+                            latent_vectors.append(data['features'])
+                            sample_ids.append(str(data['sample_id']))
             
-            if latent_vectors:
+            if latent_vectors and sample_ids:
                 Z = np.array(latent_vectors, dtype=np.float32)
-                self.latent_features_cache[cache_key] = Z
-                print(f"  ✓ Loaded {method} ({split}): {Z.shape}")
-                return Z
+                result = (Z, sample_ids)
+                self.latent_features_cache[cache_key] = result
+                print(f"  ✓ Loaded {method} ({split}): {Z.shape}, {len(sample_ids)} samples")
+                return result
             else:
-                print(f"  ✗ No latent vectors found in {method} ({split})")
+                print(f"  ✗ No latent vectors or sample IDs found in {method} ({split})")
                 return None
                 
         except Exception as e:
             print(f"  ✗ Error loading {method} ({split}): {e}")
             return None
     
-    def compute_pairwise_similarities(self, split: str = 'eval', k: int = 10) -> pd.DataFrame:
+    def _align_latent_features_by_ids(self, Z1: np.ndarray, ids1: List[str], Z2: np.ndarray, ids2: List[str]) -> Tuple[np.ndarray, np.ndarray]:
+        """Align two sets of latent features by their sample IDs."""
+        if not ids1 or not ids2:
+            raise ValueError("Missing sample IDs for alignment.")
+        
+        # Build index by ID
+        idx1_map = {sid: i for i, sid in enumerate(ids1)}
+        idx2_map = {sid: i for i, sid in enumerate(ids2)}
+        
+        # Find common sample IDs
+        common_ids = [sid for sid in ids1 if sid in idx2_map]
+        
+        if not common_ids:
+            raise ValueError("No overlapping sample IDs between methods; cannot align.")
+        
+        if len(common_ids) < min(len(ids1), len(ids2)):
+            print(f"    ⚠️  Aligning on {len(common_ids)} common sample IDs (method1={len(ids1)}, method2={len(ids2)})")
+        
+        # Get aligned indices
+        aligned_idx1 = np.array([idx1_map[sid] for sid in common_ids], dtype=int)
+        aligned_idx2 = np.array([idx2_map[sid] for sid in common_ids], dtype=int)
+        
+        return Z1[aligned_idx1], Z2[aligned_idx2]
+    
+    def compute_pairwise_similarities(self, split: str = 'eval', k: int = 10, use_gpu: bool = True, n_workers: int = None) -> pd.DataFrame:
         """Compute pairwise similarities between all methods in the group."""
         print(f"\nComputing pairwise similarities for {split} split...")
         
-        # Load latent features for all available methods
-        method_features = {}
+        # Load latent features and sample IDs for all available methods
+        method_data = {}
         for method in self.methods:
-            Z = self._load_latent_features(method, split)
-            if Z is not None:
-                method_features[method] = Z
+            result = self._load_latent_features(method, split)
+            if result is not None:
+                Z, sample_ids = result
+                method_data[method] = {'features': Z, 'ids': sample_ids}
         
-        if len(method_features) < 2:
-            print(f"  ✗ Need at least 2 methods with latent features, found {len(method_features)}")
+        if len(method_data) < 2:
+            print(f"  ✗ Need at least 2 methods with latent features, found {len(method_data)}")
             return pd.DataFrame()
         
-        print(f"  ✓ Computing similarities for {len(method_features)} methods")
+        print(f"  ✓ Computing similarities for {len(method_data)} methods")
         
-        # Compute all pairwise comparisons
-        similarity_data = []
-        methods_list = list(method_features.keys())
+        # Calculate total number of pairs (including diagonal)
+        n_methods = len(method_data)
+        total_pairs = n_methods * (n_methods + 1) // 2
+        print(f"  → Total pairs to compute: {total_pairs} ({n_methods}×{n_methods} upper triangle)")
         
+        # Determine processing mode
+        if n_workers is None:
+            n_workers = min(16, mp.cpu_count())  # Use up to 16 cores
+        
+        use_gpu_final = use_gpu and CUDA_AVAILABLE
+        use_parallel = n_workers > 1 and total_pairs > 10  # Only parallelize for larger workloads
+        
+        if use_gpu_final:
+            print(f"  → Using GPU acceleration (CUDA)")
+        elif use_parallel:
+            print(f"  → Using CPU parallelization ({n_workers} workers)")
+        else:
+            print(f"  → Using sequential processing")
+        
+        methods_list = list(method_data.keys())
+        
+        # Generate list of pairs to compute
+        pairs_to_compute = []
         for i, method1 in enumerate(methods_list):
             for j, method2 in enumerate(methods_list):
                 if i <= j:  # Include diagonal and upper triangle
-                    Z1 = method_features[method1]
-                    Z2 = method_features[method2]
-                    
-                    # Align samples (use minimum overlapping samples)
-                    min_samples = min(Z1.shape[0], Z2.shape[0])
-                    Z1_aligned = Z1[:min_samples]
-                    Z2_aligned = Z2[:min_samples]
-                    
-                    if i == j:
-                        # Diagonal - perfect similarity for most metrics
-                        similarities = {
-                            "cka_linear": 1.0,
-                            "cka_rbf": 1.0, 
-                            "cca_maxcorr": 1.0,
-                            "dist_geom_corr": 1.0,
-                            f"knn_jaccard_k{k}": 1.0,
-                            "procrustes_disparity": 0.0,  # Lower is better
-                        }
-                    else:
-                        # Compute actual similarities
-                        similarities = self.compute_pairwise_summary(Z1_aligned, Z2_aligned, k=k)
-                    
-                    # Store results
-                    for metric, value in similarities.items():
-                        similarity_data.append({
-                            'method1': method1,
-                            'method2': method2,
-                            'method1_clean': self.clean_method_name(method1),
-                            'method2_clean': self.clean_method_name(method2),
-                            'metric': metric,
-                            'value': value,
-                            'samples_used': min_samples
-                        })
+                    pairs_to_compute.append((i, j, method1, method2))
         
+        start_time = time.time()
+        
+        if use_parallel and not use_gpu_final:
+            # Parallel CPU processing
+            similarity_data = self._compute_similarities_parallel(pairs_to_compute, method_data, k, n_workers)
+        else:
+            # Sequential processing (GPU or CPU)
+            similarity_data = self._compute_similarities_sequential(pairs_to_compute, method_data, k, use_gpu_final)
+        
+        elapsed_time = time.time() - start_time
+        print(f"  ✓ Completed {len(pairs_to_compute)} pairwise comparisons in {elapsed_time:.1f}s ({len(similarity_data)} metric values)")
         return pd.DataFrame(similarity_data)
     
-    def create_pairwise_similarity_analysis(self, split: str = 'eval'):
+    def _compute_similarities_sequential(self, pairs_to_compute: List[Tuple], method_data: Dict, k: int, use_gpu: bool) -> List[Dict]:
+        """Sequential computation of similarities."""
+        similarity_data = []
+        total_pairs = len(pairs_to_compute)
+        
+        for pair_idx, (i, j, method1, method2) in enumerate(pairs_to_compute, 1):
+            # Progress indication
+            method1_clean = self.clean_method_name(method1)
+            method2_clean = self.clean_method_name(method2)
+            print(f"    [{pair_idx}/{total_pairs}] Computing: {method1_clean} vs {method2_clean}")
+            
+            data1 = method_data[method1]
+            data2 = method_data[method2]
+            
+            Z1, ids1 = data1['features'], data1['ids']
+            Z2, ids2 = data2['features'], data2['ids']
+            
+            if i == j:
+                # Same method - perfect similarity for most metrics
+                similarities = {
+                    "cka_linear": 1.0,
+                    "cka_rbf": 1.0, 
+                    "cca_maxcorr": 1.0,
+                    "dist_geom_corr": 1.0,
+                    f"knn_jaccard_k{k}": 1.0,
+                    "procrustes_disparity": 0.0,  # Lower is better
+                }
+                aligned_samples = len(ids1)
+            else:
+                # Different methods - need proper alignment by sample IDs
+                try:
+                    Z1_aligned, Z2_aligned = self._align_latent_features_by_ids(Z1, ids1, Z2, ids2)
+                    aligned_samples = Z1_aligned.shape[0]
+                    
+                    print(f"      → Aligned {aligned_samples} samples, computing 6 similarity metrics...")
+                    
+                    if aligned_samples < 10:
+                        print(f"      ⚠️  Warning: Only {aligned_samples} aligned samples")
+                    
+                    # Compute actual similarities on aligned data
+                    similarities = self.compute_pairwise_summary(Z1_aligned, Z2_aligned, k=k, use_gpu=use_gpu)
+                    
+                except ValueError as e:
+                    print(f"    ✗ Alignment failed for {method1} vs {method2}: {e}")
+                    # Skip this pair
+                    continue
+            
+            # Store results
+            for metric, value in similarities.items():
+                similarity_data.append({
+                    'method1': method1,
+                    'method2': method2,
+                    'method1_clean': self.clean_method_name(method1),
+                    'method2_clean': self.clean_method_name(method2),
+                    'metric': metric,
+                    'value': value,
+                    'samples_used': aligned_samples
+                })
+        
+        return similarity_data
+    
+    def _compute_similarities_parallel(self, pairs_to_compute: List[Tuple], method_data: Dict, k: int, n_workers: int) -> List[Dict]:
+        """Parallel computation of similarities using multiprocessing."""
+        print(f"    → Launching {n_workers} worker processes...")
+        
+        # Prepare arguments for the global worker function
+        worker_args = [(pair, method_data, k) for pair in pairs_to_compute]
+        
+        # Execute in parallel
+        similarity_data = []
+        completed = 0
+        total_pairs = len(pairs_to_compute)
+        
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            # Submit all jobs to the global worker function
+            future_to_pair = {executor.submit(_global_compute_pair_worker, args): args[0] for args in worker_args}
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_pair):
+                pair = future_to_pair[future]
+                completed += 1
+                
+                try:
+                    results = future.result()
+                    similarity_data.extend(results)
+                    
+                    if completed % 5 == 0 or completed == total_pairs:  # Progress every 5 pairs
+                        print(f"    → Completed {completed}/{total_pairs} pairs")
+                        
+                except Exception as e:
+                    method1, method2 = pair[2], pair[3]
+                    print(f"    ✗ Failed to compute {method1} vs {method2}: {e}")
+        
+        return similarity_data
+    
+    def create_pairwise_similarity_analysis(self, split: str = 'eval', use_gpu: bool = True, n_workers: int = None):
         """Create comprehensive pairwise similarity analysis and visualizations."""
         print("\n" + "="*60)
         print("PAIRWISE SIMILARITY ANALYSIS")
         print("="*60)
         
-        similarity_df = self.compute_pairwise_similarities(split)
+        similarity_df = self.compute_pairwise_similarities(split, use_gpu=use_gpu, n_workers=n_workers)
         if similarity_df.empty:
             print("No pairwise similarities computed - skipping analysis")
             return
@@ -2165,20 +2671,27 @@ class MetricsComparison:
             # Make symmetric by filling lower triangle
             pivot_matrix = pivot_matrix.fillna(pivot_matrix.T)
             
-            # Choose appropriate colormap based on metric
+            # Choose appropriate colormap and bounds based on metric
             if 'disparity' in metric:
-                # Lower is better - use reversed colormap
+                # Lower is better (>=0)
                 cmap = 'Reds_r'
-                vmin, vmax = 0, pivot_matrix.max().max()
+                vmin, vmax = 0, float(pivot_matrix.max().max())
+                center = None
+            elif 'dist_geom_corr' in metric:
+                # Pearson correlation in [-1, 1]
+                cmap = 'RdBu_r'
+                vmin, vmax = -1, 1
+                center = 0
             else:
-                # Higher is better
+                # Similarity scores in [0, 1]
                 cmap = 'RdYlGn'
                 vmin, vmax = 0, 1
+                center = None
             
             # Create heatmap
             sns.heatmap(pivot_matrix, annot=True, cmap=cmap, fmt='.3f',
                        square=True, cbar_kws={"shrink": .8}, ax=ax,
-                       vmin=vmin, vmax=vmax)
+                       vmin=vmin, vmax=vmax, center=center)
             
             ax.set_title(f'{metric.replace("_", " ").title()}', fontweight='bold')
             ax.set_xlabel('')
@@ -2266,7 +2779,6 @@ class MetricsComparison:
     def _create_similarity_correlations_plot(self, similarity_df: pd.DataFrame, metrics: List[str]):
         """Create correlation analysis between different similarity metrics."""
         # Create correlation matrix between metrics
-        correlation_data = []
         
         # Get all unique method pairs (excluding self-comparisons)
         pairs_data = similarity_df[similarity_df['method1_clean'] != similarity_df['method2_clean']]
@@ -2378,7 +2890,7 @@ class MetricsComparison:
             pivot_matrix.to_csv(self.output_dir / filename)
         
         print(f"  ✓ Saved {len(metrics)} similarity matrices as CSV files")
-
+    
     def create_dimensionality_comparison_plots(self, latent_df: pd.DataFrame, pca_df: pd.DataFrame):
         """Create individual dimensionality comparison plots."""
         eval_data = latent_df[latent_df['split'] == 'eval'].copy()
@@ -2796,8 +3308,13 @@ class MetricsComparison:
         if not latent_df.empty or not pca_df.empty:
             self.create_dimensionality_comparison_plots(latent_df, pca_df)
         
-        # Create pairwise similarity analysis
-        self.create_pairwise_similarity_analysis()
+        # Create pairwise similarity analysis with acceleration
+        if PAIRWISE_AUTO:
+            # Automatic mode selection
+            self.create_pairwise_similarity_analysis()
+        else:
+            # Manual configuration
+            self.create_pairwise_similarity_analysis(use_gpu=PAIRWISE_USE_GPU, n_workers=PAIRWISE_N_WORKERS)
         
         # Create summary tables
         if not class_df.empty and not latent_df.empty:
@@ -2838,14 +3355,20 @@ def main():
     medium_unrestricted.reverse()
 
 
-    #method_group = {"small_aggregated": small_aggregated}
-    method_group = {"medium_unrestricted": medium_unrestricted}
+    method_groups= [{"small_aggregated": small_aggregated}, {"medium_unrestricted": medium_unrestricted}]
+
+
 
     # =================================================================
-    
-    # Initialize and run the comparison
-    comparison = MetricsComparison(method_group=method_group)
-    comparison.generate_comprehensive_report()
+    for method_group in method_groups:
+        # Initialize and run the comparison  
+        comparison = MetricsComparison(method_group=method_group)
+        # Delete the output directory for the current group before running the comparison
+        if comparison.output_dir.exists() and comparison.output_dir.is_dir():
+            shutil.rmtree(comparison.output_dir)
+            print(f"Deleted output directory for method group: {comparison.output_dir}")
+            comparison.output_dir.mkdir(exist_ok=True)
+        comparison.generate_comprehensive_report()
 
 
 if __name__ == "__main__":
