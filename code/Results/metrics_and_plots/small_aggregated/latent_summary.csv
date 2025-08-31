@@ -1,0 +1,6 @@
+Metric,Best Method,Value,Methods Compared
+Hsic Global Score,ctm_nn_avg,0.0624,7
+Active Units,hopf_avg,15.0000,7
+Silhouette,wong_wang_avg,0.6359,7
+Trustworthiness,wong_wang_avg,0.9973,7
+Dist Corr,wong_wang_avg,1.0000,7

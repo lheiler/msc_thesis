@@ -1,50 +1,50 @@
 {
   "metrics_per_task": {
     "gender": {
-      "loss": 0.6864930277649005,
-      "accuracy": 0.5396592782560908,
+      "loss": 0.6881099776440781,
+      "accuracy": 0.5301337241252977,
       "pred_counts": {
-        "label_0": 1699,
-        "label_1": 3760
+        "label_0": 2617,
+        "label_1": 2842
       },
-      "precision": 0.5539893617021276,
-      "recall": 0.7136005481329223,
-      "f1": 0.6237460697709238,
-      "f1_macro": 0.5154587862419139,
-      "roc_auc": 0.5626437432730981,
-      "pr_auc": 0.6062960297804536,
+      "precision": 0.5622800844475722,
+      "recall": 0.5474477560808496,
+      "f1": 0.5547647977781636,
+      "f1_macro": 0.528691299412642,
+      "roc_auc": 0.5560443658571455,
+      "pr_auc": 0.5874745365970386,
       "confusion": [
         [
-          863,
-          1677
+          1296,
+          1244
         ],
         [
-          836,
-          2083
+          1321,
+          1598
         ]
       ]
     },
     "abnormal": {
-      "loss": 0.5781053643367255,
-      "accuracy": 0.6973804726140319,
+      "loss": 0.5772897420861516,
+      "accuracy": 0.6957318190144716,
       "pred_counts": {
-        "label_0": 2869,
-        "label_1": 2590
+        "label_0": 2922,
+        "label_1": 2537
       },
-      "precision": 0.661003861003861,
-      "recall": 0.6886564762670957,
-      "f1": 0.6745468873128447,
-      "f1_macro": 0.6958835087026394,
-      "roc_auc": 0.7651992090790838,
-      "pr_auc": 0.7161291276366443,
+      "precision": 0.6625936145053213,
+      "recall": 0.6761866452131939,
+      "f1": 0.6693211228349591,
+      "f1_macro": 0.6937784579399562,
+      "roc_auc": 0.7658795071438063,
+      "pr_auc": 0.7149905578861095,
       "confusion": [
         [
-          2095,
-          878
+          2117,
+          856
         ],
         [
-          774,
-          1712
+          805,
+          1681
         ]
       ]
     }
@@ -55,11 +55,11 @@
         "input_dim": 6,
         "output_type": "classification",
         "hidden_dims": [
-          192,
-          96,
-          48
+          128,
+          64,
+          32
         ],
-        "dropout": 0.2216880452009041
+        "dropout": 0.23400353488508985
       }
     },
     "abnormal": {
@@ -67,21 +67,19 @@
         "input_dim": 6,
         "output_type": "classification",
         "hidden_dims": [
-          256,
-          128,
-          64,
-          32
+          448,
+          224,
+          112
         ],
-        "dropout": 0.05760666785391132
+        "dropout": 0.19767635519733534
       }
     }
   },
   "train_dataset_stats": {
     "n_samples": 53622,
     "gender_counts": {
-      "female(2)": 0,
-      "male(1)": 28583,
-      "unknown(0)": 25039
+      "female(0)": 25039,
+      "male(1)": 28583
     },
     "abnormal_counts": {
       "abnormal(1)": 26545,
@@ -102,9 +100,8 @@
   "eval_dataset_stats": {
     "n_samples": 5459,
     "gender_counts": {
-      "female(2)": 0,
-      "male(1)": 2919,
-      "unknown(0)": 2540
+      "female(0)": 2540,
+      "male(1)": 2919
     },
     "abnormal_counts": {
       "abnormal(1)": 2486,
@@ -135,7 +132,7 @@
         2.543639898300171
       ],
       "active_units": 6,
-      "hsic_global_score": 0.008826866745948792,
+      "hsic_global_score": 0.008800186216831207,
       "cluster": {
         "silhouette": 0.3068161904811859,
         "davies_bouldin": 1.0512293592288207,
@@ -183,7 +180,7 @@
         2.383784055709839
       ],
       "active_units": 6,
-      "hsic_global_score": 0.0088728042319417,
+      "hsic_global_score": 0.008872805163264275,
       "cluster": {
         "silhouette": 0.30668097734451294,
         "davies_bouldin": 1.0466551083123448,
@@ -241,7 +238,7 @@
     },
     "train_vs_eval_comparison": {
       "active_units_ratio": 1.0,
-      "hsic_score_ratio": 1.0052042799914243,
+      "hsic_score_ratio": 1.008251978383614,
       "variance_distribution": {
         "train_mean": 827.376708984375,
         "eval_mean": 828.1919555664062,

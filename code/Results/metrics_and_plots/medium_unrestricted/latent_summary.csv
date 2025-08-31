@@ -1,0 +1,6 @@
+Metric,Best Method,Value,Methods Compared
+Hsic Global Score,ctm_nn_pc,0.0362,5
+Active Units,c22,394.0000,5
+Silhouette,c22,0.3158,5
+Trustworthiness,ctm_nn_pc,0.9122,5
+Dist Corr,ctm_nn_pc,0.9396,5
