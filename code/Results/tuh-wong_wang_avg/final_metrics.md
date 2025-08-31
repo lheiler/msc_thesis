@@ -5,29 +5,29 @@
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.683047 |
-| Accuracy   | 0.563656 |
+| Loss (BCE) | 0.686689 |
+| Accuracy   | 0.55523  |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |    1764 | 32.3% |
-| label_1 |    3695 | 67.7% |
+| label_0 |    1890 | 34.6% |
+| label_1 |    3569 | 65.4% |
 
 ## Task: abnormal
 
 | Metric     |    Value |
 |------------|----------|
-| Loss (BCE) | 0.647351 |
-| Accuracy   | 0.618978 |
+| Loss (BCE) | 0.649982 |
+| Accuracy   | 0.613116 |
 
 Model prediction distribution
 
 | Label   |   Count | %     |
 |---------|---------|-------|
-| label_0 |    2727 | 50.0% |
-| label_1 |    2732 | 50.0% |
+| label_0 |    2779 | 50.9% |
+| label_1 |    2680 | 49.1% |
 
 ## Dataset statistics – train
 
@@ -38,9 +38,8 @@ Gender counts
 
 | Gender code   |   Count | %     |
 |---------------|---------|-------|
-| female(2)     |       0 | 0.0%  |
+| female(0)     |   25039 | 46.7% |
 | male(1)       |   28583 | 53.3% |
-| unknown(0)    |   25039 | 46.7% |
 
 Abnormal counts
 
@@ -72,9 +71,8 @@ Gender counts
 
 | Gender code   |   Count | %     |
 |---------------|---------|-------|
-| female(2)     |       0 | 0.0%  |
+| female(0)     |    2540 | 46.5% |
 | male(1)       |    2919 | 53.5% |
-| unknown(0)    |    2540 | 46.5% |
 
 Abnormal counts
 

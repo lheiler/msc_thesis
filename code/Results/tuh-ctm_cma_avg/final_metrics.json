@@ -1,50 +1,50 @@
 {
   "metrics_per_task": {
     "gender": {
-      "loss": 0.6828573353999393,
-      "accuracy": 0.5587103865176772,
+      "loss": 0.6852508749492789,
+      "accuracy": 0.5561458142516944,
       "pred_counts": {
-        "label_0": 1695,
-        "label_1": 3764
+        "label_0": 1977,
+        "label_1": 3482
       },
-      "precision": 0.5677470775770457,
-      "recall": 0.7321000342583076,
-      "f1": 0.6395331437976957,
-      "f1_macro": 0.5353509874832634,
-      "roc_auc": 0.5750989309789514,
-      "pr_auc": 0.595747593994185,
+      "precision": 0.5712234348075819,
+      "recall": 0.6813977389516958,
+      "f1": 0.62146539603187,
+      "f1_macro": 0.5425237097493865,
+      "roc_auc": 0.5649848400244933,
+      "pr_auc": 0.5894123940088225,
       "confusion": [
         [
-          913,
-          1627
+          1047,
+          1493
         ],
         [
-          782,
-          2137
+          930,
+          1989
         ]
       ]
     },
     "abnormal": {
-      "loss": 0.5774018577460208,
-      "accuracy": 0.696281370214325,
+      "loss": 0.5772689358287076,
+      "accuracy": 0.6995786774134457,
       "pred_counts": {
-        "label_0": 2607,
-        "label_1": 2852
+        "label_0": 2631,
+        "label_1": 2828
       },
-      "precision": 0.6451612903225806,
-      "recall": 0.7401448109412712,
-      "f1": 0.689396777819408,
-      "f1_macro": 0.6961320806659764,
-      "roc_auc": 0.7632196743066251,
-      "pr_auc": 0.6926187274596112,
+      "precision": 0.6495756718528995,
+      "recall": 0.7389380530973452,
+      "f1": 0.6913812570568311,
+      "f1_macro": 0.6993665742814491,
+      "roc_auc": 0.761763757973004,
+      "pr_auc": 0.6860790224155865,
       "confusion": [
         [
-          1961,
-          1012
+          1982,
+          991
         ],
         [
-          646,
-          1840
+          649,
+          1837
         ]
       ]
     }
@@ -55,12 +55,11 @@
         "input_dim": 8,
         "output_type": "classification",
         "hidden_dims": [
-          448,
-          224,
-          112,
-          56
+          128,
+          64,
+          32
         ],
-        "dropout": 0.018504197465246803
+        "dropout": 0.2962767816866261
       }
     },
     "abnormal": {
@@ -68,21 +67,20 @@
         "input_dim": 8,
         "output_type": "classification",
         "hidden_dims": [
-          320,
-          160,
-          80,
-          40
+          448,
+          224,
+          112,
+          56
         ],
-        "dropout": 0.052942623857299476
+        "dropout": 0.09775293485903341
       }
     }
   },
   "train_dataset_stats": {
     "n_samples": 53622,
     "gender_counts": {
-      "female(2)": 0,
-      "male(1)": 28583,
-      "unknown(0)": 25039
+      "female(0)": 25039,
+      "male(1)": 28583
     },
     "abnormal_counts": {
       "abnormal(1)": 26545,
@@ -103,9 +101,8 @@
   "eval_dataset_stats": {
     "n_samples": 5459,
     "gender_counts": {
-      "female(2)": 0,
-      "male(1)": 2919,
-      "unknown(0)": 2540
+      "female(0)": 2540,
+      "male(1)": 2919
     },
     "abnormal_counts": {
       "abnormal(1)": 2486,
@@ -138,7 +135,7 @@
         0.00026364970835857093
       ],
       "active_units": 7,
-      "hsic_global_score": 0.011391653679311275,
+      "hsic_global_score": 0.011186572723090649,
       "cluster": {
         "silhouette": 0.4648517668247223,
         "davies_bouldin": 0.6698309836106512,
@@ -192,7 +189,7 @@
         0.00028275843942537904
       ],
       "active_units": 7,
-      "hsic_global_score": 0.011409090831875801,
+      "hsic_global_score": 0.011409091763198376,
       "cluster": {
         "silhouette": 0.47327274084091187,
         "davies_bouldin": 0.6669159622006344,
@@ -256,7 +253,7 @@
     },
     "train_vs_eval_comparison": {
       "active_units_ratio": 1.0,
-      "hsic_score_ratio": 1.0015306954596235,
+      "hsic_score_ratio": 1.019891618784046,
       "variance_distribution": {
         "train_mean": 898.1569213867188,
         "eval_mean": 868.1319580078125,

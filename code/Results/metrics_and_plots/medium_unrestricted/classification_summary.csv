@@ -1,0 +1,9 @@
+Task,Metric,Best Method,Value
+Gender,Accuracy,c22,0.6204
+Gender,F1,eegnet,0.6255
+Gender,Roc Auc,c22,0.6692
+Gender,Pr Auc,c22,0.6920
+Abnormal,Accuracy,c22,0.7928
+Abnormal,F1,c22,0.7586
+Abnormal,Roc Auc,eegnet,0.8634
+Abnormal,Pr Auc,eegnet,0.8640

@@ -68,7 +68,7 @@ def tune_hyperparameters(
     def objective(trial: optuna.Trial):
         # ---------------- Hyper-parameter suggestions -----------------
         lr           = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
-        dropout      = trial.suggest_float("dropout", 0.0, 0.5)
+        dropout      = trial.suggest_float("dropout", 0.0, 0.3)
         weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
         scheduler     = trial.suggest_categorical("scheduler", ["plateau", "cosine", "none"])
         hidden_dims  = _suggest_hidden_dims(trial, input_dim)

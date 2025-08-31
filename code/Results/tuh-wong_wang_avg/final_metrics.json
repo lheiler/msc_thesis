@@ -1,50 +1,50 @@
 {
   "metrics_per_task": {
     "gender": {
-      "loss": 0.6830469434526426,
-      "accuracy": 0.5636563473163583,
+      "loss": 0.6866888993933734,
+      "accuracy": 0.555229895585272,
       "pred_counts": {
-        "label_0": 1764,
-        "label_1": 3695
+        "label_0": 1890,
+        "label_1": 3569
       },
-      "precision": 0.5726657645466847,
-      "recall": 0.7249057896539911,
-      "f1": 0.639854853341397,
-      "f1_macro": 0.54320809581568,
-      "roc_auc": 0.57522915301055,
-      "pr_auc": 0.5916783053466502,
+      "precision": 0.5687867750070048,
+      "recall": 0.6954436450839329,
+      "f1": 0.62577065351418,
+      "f1_macro": 0.538844694702914,
+      "roc_auc": 0.5645129790430872,
+      "pr_auc": 0.5896062517263183,
       "confusion": [
         [
-          961,
-          1579
+          1001,
+          1539
         ],
         [
-          803,
-          2116
+          889,
+          2030
         ]
       ]
     },
     "abnormal": {
-      "loss": 0.6473514300319471,
-      "accuracy": 0.6189778347682726,
+      "loss": 0.649981871173591,
+      "accuracy": 0.6131159553031691,
       "pred_counts": {
-        "label_0": 2727,
-        "label_1": 2732
+        "label_0": 2779,
+        "label_1": 2680
       },
-      "precision": 0.5743045387994143,
-      "recall": 0.6311343523732904,
-      "f1": 0.6013798390187811,
-      "f1_macro": 0.6182337791585133,
-      "roc_auc": 0.6649353432704477,
-      "pr_auc": 0.6092808478773033,
+      "precision": 0.5697761194029851,
+      "recall": 0.6142397425583266,
+      "f1": 0.5911730545876888,
+      "f1_macro": 0.6119982101867512,
+      "roc_auc": 0.6582759179626563,
+      "pr_auc": 0.6017973136197664,
       "confusion": [
         [
-          1810,
-          1163
+          1820,
+          1153
         ],
         [
-          917,
-          1569
+          959,
+          1527
         ]
       ]
     }
@@ -55,12 +55,12 @@
         "input_dim": 5,
         "output_type": "classification",
         "hidden_dims": [
-          512,
-          256,
-          128,
-          64
+          64,
+          32,
+          16,
+          16
         ],
-        "dropout": 0.049895171900147625
+        "dropout": 0.2319292318978257
       }
     },
     "abnormal": {
@@ -68,21 +68,20 @@
         "input_dim": 5,
         "output_type": "classification",
         "hidden_dims": [
-          256,
-          128,
-          64,
-          32
+          448,
+          224,
+          112,
+          56
         ],
-        "dropout": 0.011617847511116771
+        "dropout": 0.05515467124479303
       }
     }
   },
   "train_dataset_stats": {
     "n_samples": 53622,
     "gender_counts": {
-      "female(2)": 0,
-      "male(1)": 28583,
-      "unknown(0)": 25039
+      "female(0)": 25039,
+      "male(1)": 28583
     },
     "abnormal_counts": {
       "abnormal(1)": 26545,
@@ -103,9 +102,8 @@
   "eval_dataset_stats": {
     "n_samples": 5459,
     "gender_counts": {
-      "female(2)": 0,
-      "male(1)": 2919,
-      "unknown(0)": 2540
+      "female(0)": 2540,
+      "male(1)": 2919
     },
     "abnormal_counts": {
       "abnormal(1)": 2486,
@@ -135,7 +133,7 @@
         0.00015262444503605366
       ],
       "active_units": 4,
-      "hsic_global_score": 0.007614378817379475,
+      "hsic_global_score": 0.007189212832599878,
       "cluster": {
         "silhouette": 0.645646870136261,
         "davies_bouldin": 0.4707096999485548,
@@ -180,7 +178,7 @@
         0.00017138695693574846
       ],
       "active_units": 4,
-      "hsic_global_score": 0.007233289536088705,
+      "hsic_global_score": 0.007233288139104843,
       "cluster": {
         "silhouette": 0.6359460949897766,
         "davies_bouldin": 0.48313030663513123,
@@ -235,7 +233,7 @@
     },
     "train_vs_eval_comparison": {
       "active_units_ratio": 1.0,
-      "hsic_score_ratio": 0.9499513630158575,
+      "hsic_score_ratio": 1.0061307555543637,
       "variance_distribution": {
         "train_mean": 264.2041015625,
         "eval_mean": 267.2498779296875,

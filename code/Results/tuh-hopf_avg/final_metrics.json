@@ -1,50 +1,50 @@
 {
   "metrics_per_task": {
     "gender": {
-      "loss": 0.7094553810027214,
-      "accuracy": 0.5442388715882029,
+      "loss": 0.673279548973189,
+      "accuracy": 0.5955303169078586,
       "pred_counts": {
-        "label_0": 2190,
-        "label_1": 3269
+        "label_0": 1880,
+        "label_1": 3579
       },
-      "precision": 0.5659223003976751,
-      "recall": 0.6337786913326482,
-      "f1": 0.5979314802844214,
-      "f1_macro": 0.5359636259773058,
-      "roc_auc": 0.5487979919776216,
-      "pr_auc": 0.5862135463319231,
+      "precision": 0.5993294216261525,
+      "recall": 0.7348406988694759,
+      "f1": 0.6602031394275162,
+      "f1_macro": 0.5803278140576495,
+      "roc_auc": 0.6070574136865985,
+      "pr_auc": 0.6227089978504754,
       "confusion": [
         [
-          1121,
-          1419
+          1106,
+          1434
         ],
         [
-          1069,
-          1850
+          774,
+          2145
         ]
       ]
     },
     "abnormal": {
-      "loss": 0.5330790389717488,
-      "accuracy": 0.7406118336691702,
+      "loss": 0.5375604527755237,
+      "accuracy": 0.7389631800696098,
       "pred_counts": {
-        "label_0": 2791,
-        "label_1": 2668
+        "label_0": 2858,
+        "label_1": 2601
       },
-      "precision": 0.7005247376311844,
-      "recall": 0.7518101367658889,
-      "f1": 0.7252619324796274,
-      "f1_macro": 0.7397995991336375,
-      "roc_auc": 0.8095380548833304,
-      "pr_auc": 0.7723573654578544,
+      "precision": 0.7039600153787005,
+      "recall": 0.7365245374094932,
+      "f1": 0.7198741891094947,
+      "f1_macro": 0.7377453607183557,
+      "roc_auc": 0.8068069855841214,
+      "pr_auc": 0.7680664181477646,
       "confusion": [
         [
-          2174,
-          799
+          2203,
+          770
         ],
         [
-          617,
-          1869
+          655,
+          1831
         ]
       ]
     }
@@ -55,11 +55,11 @@
         "input_dim": 16,
         "output_type": "classification",
         "hidden_dims": [
-          320,
-          160,
-          80
+          384,
+          192,
+          96
         ],
-        "dropout": 0.10875197087416794
+        "dropout": 0.2892497682378908
       }
     },
     "abnormal": {
@@ -67,19 +67,20 @@
         "input_dim": 16,
         "output_type": "classification",
         "hidden_dims": [
-          448,
-          224
+          384,
+          192,
+          96,
+          48
         ],
-        "dropout": 0.29637550204880325
+        "dropout": 0.11549037093671591
       }
     }
   },
   "train_dataset_stats": {
     "n_samples": 53622,
     "gender_counts": {
-      "female(2)": 0,
-      "male(1)": 28583,
-      "unknown(0)": 25039
+      "female(0)": 25039,
+      "male(1)": 28583
     },
     "abnormal_counts": {
       "abnormal(1)": 26545,
@@ -100,9 +101,8 @@
   "eval_dataset_stats": {
     "n_samples": 5459,
     "gender_counts": {
-      "female(2)": 0,
-      "male(1)": 2919,
-      "unknown(0)": 2540
+      "female(0)": 2540,
+      "male(1)": 2919
     },
     "abnormal_counts": {
       "abnormal(1)": 2486,
@@ -143,7 +143,7 @@
         0.00027636392042040825
       ],
       "active_units": 15,
-      "hsic_global_score": 0.004772911313921213,
+      "hsic_global_score": 0.004791144747287035,
       "cluster": {
         "silhouette": 0.5240861773490906,
         "davies_bouldin": 0.7537823120822991,
@@ -221,7 +221,7 @@
         0.00046904353075660765
       ],
       "active_units": 15,
-      "hsic_global_score": 0.004789716098457575,
+      "hsic_global_score": 0.004789714235812426,
       "cluster": {
         "silhouette": 0.5628688931465149,
         "davies_bouldin": 0.7081863277597635,
@@ -309,7 +309,7 @@
     },
     "train_vs_eval_comparison": {
       "active_units_ratio": 1.0,
-      "hsic_score_ratio": 1.0035208667061017,
+      "hsic_score_ratio": 0.9997014259534907,
       "variance_distribution": {
         "train_mean": 17.012596130371094,
         "eval_mean": 17.18804168701172,

@@ -1,0 +1,296 @@
+{
+  "metrics_per_task": {
+    "gender": {
+      "loss": 0.6752614407535874,
+      "accuracy": 0.5698845942480307,
+      "pred_counts": {
+        "label_0": 2394,
+        "label_1": 3065
+      },
+      "precision": 0.5931484502446982,
+      "recall": 0.6228160328879754,
+      "f1": 0.607620320855615,
+      "f1_macro": 0.5658693416195384,
+      "roc_auc": 0.5969830434864707,
+      "pr_auc": 0.6311622016742493,
+      "confusion": [
+        [
+          1293,
+          1247
+        ],
+        [
+          1101,
+          1818
+        ]
+      ]
+    },
+    "abnormal": {
+      "loss": 0.5327094824765274,
+      "accuracy": 0.7354826891372046,
+      "pred_counts": {
+        "label_0": 2889,
+        "label_1": 2570
+      },
+      "precision": 0.7027237354085603,
+      "recall": 0.7264682220434433,
+      "f1": 0.7143987341772152,
+      "f1_macro": 0.7340332121926676,
+      "roc_auc": 0.8145637094807952,
+      "pr_auc": 0.7826893968863078,
+      "confusion": [
+        [
+          2209,
+          764
+        ],
+        [
+          680,
+          1806
+        ]
+      ]
+    }
+  },
+  "hyperparams_per_task": {
+    "gender": {
+      "architecture": {
+        "input_dim": 8,
+        "output_type": "classification",
+        "hidden_dims": [
+          128,
+          64,
+          32,
+          16
+        ],
+        "dropout": 0.1863906221523832
+      }
+    },
+    "abnormal": {
+      "architecture": {
+        "input_dim": 8,
+        "output_type": "classification",
+        "hidden_dims": [
+          256,
+          128,
+          64
+        ],
+        "dropout": 0.2697089396987792
+      }
+    }
+  },
+  "train_dataset_stats": {
+    "n_samples": 53622,
+    "gender_counts": {
+      "female(0)": 25039,
+      "male(1)": 28583
+    },
+    "abnormal_counts": {
+      "abnormal(1)": 26545,
+      "normal(0)": 27077
+    },
+    "age_bin_counts": {
+      "0\u201310": 53622,
+      "10\u201320": 0,
+      "20\u201330": 0,
+      "30\u201340": 0,
+      "40\u201350": 0,
+      "50\u201360": 0,
+      "60\u201370": 0,
+      "70\u201380": 0,
+      "80\u2013120": 0
+    }
+  },
+  "eval_dataset_stats": {
+    "n_samples": 5459,
+    "gender_counts": {
+      "female(0)": 2540,
+      "male(1)": 2919
+    },
+    "abnormal_counts": {
+      "abnormal(1)": 2486,
+      "normal(0)": 2973
+    },
+    "age_bin_counts": {
+      "0\u201310": 5459,
+      "10\u201320": 0,
+      "20\u201330": 0,
+      "30\u201340": 0,
+      "40\u201350": 0,
+      "50\u201360": 0,
+      "60\u201370": 0,
+      "70\u201380": 0,
+      "80\u2013120": 0
+    }
+  },
+  "latent": {
+    "train": {
+      "n_samples": 53622,
+      "dim": 8,
+      "variance_per_dim": [
+        28.056522369384766,
+        12.641829490661621,
+        9.768400192260742,
+        6.038440704345703,
+        4.480739116668701,
+        3.822160482406616,
+        2.5197036266326904,
+        1.966022253036499
+      ],
+      "active_units": 8,
+      "hsic_global_score": 0.0036725483369082212,
+      "cluster": {
+        "silhouette": 0.19443702697753906,
+        "davies_bouldin": 1.4860656082719756,
+        "calinski_harabasz": 12672.0302734375
+      },
+      "geometry": {
+        "trustworthiness": 0.8272324365533152,
+        "continuity": 0.966636364730665,
+        "dist_corr": 0.9004829842660158
+      },
+      "mi_zy": {
+        "gender": {
+          "mean": 0.003289202891704479,
+          "per_dim": [
+            0.0007670034538023174,
+            0.003570102620869875,
+            0.006996344309300184,
+            0.002788559766486287,
+            0.004621208645403385,
+            0.0,
+            0.003343105548992753,
+            0.004227298311889172
+          ]
+        },
+        "abnormal": {
+          "mean": 0.045577618490295235,
+          "per_dim": [
+            0.06397917121648788,
+            0.08878451585769653,
+            0.03792262077331543,
+            0.028744788840413094,
+            0.042582884430885315,
+            0.04572126641869545,
+            0.03392967954277992,
+            0.02295602113008499
+          ]
+        }
+      }
+    },
+    "eval": {
+      "n_samples": 5459,
+      "dim": 8,
+      "variance_per_dim": [
+        30.861759185791016,
+        23.051406860351562,
+        10.824968338012695,
+        7.924971580505371,
+        4.55003023147583,
+        5.247415065765381,
+        2.9310226440429688,
+        2.012099027633667
+      ],
+      "active_units": 8,
+      "hsic_global_score": 0.004566158168017864,
+      "cluster": {
+        "silhouette": 0.20767804980278015,
+        "davies_bouldin": 1.3983580212209301,
+        "calinski_harabasz": 1629.6771240234375
+      },
+      "geometry": {
+        "trustworthiness": 0.8310031778513391,
+        "continuity": 0.9719744207041829,
+        "dist_corr": 0.9278199932136281
+      },
+      "mi_zy": {
+        "gender": {
+          "mean": 0.01563700053604722,
+          "per_dim": [
+            0.02989973872900009,
+            0.020070452243089676,
+            0.028511900454759598,
+            0.014762084931135178,
+            0.017234254628419876,
+            0.002748990897089243,
+            0.011868583969771862,
+            0.0
+          ]
+        },
+        "abnormal": {
+          "mean": 0.052046891648426796,
+          "per_dim": [
+            0.056924477219581604,
+            0.09538521617650986,
+            0.057579364627599716,
+            0.02647196128964424,
+            0.04097142070531845,
+            0.04027258977293968,
+            0.06093931198120117,
+            0.037830792367458344
+          ]
+        }
+      }
+    },
+    "pca": {
+      "top5_ratio_sum": 0.886234700679779,
+      "explained_variance_ratio": [
+        0.4093414843082428,
+        0.18409733474254608,
+        0.14246906340122223,
+        0.08436442911624908,
+        0.06596242636442184,
+        0.05228948965668678,
+        0.0358293391764164,
+        0.025646479800343513
+      ],
+      "train_shape": [
+        53622,
+        8
+      ],
+      "eval_shape": [
+        5459,
+        8
+      ],
+      "note": "PCA fitted on training data only to avoid data leakage"
+    },
+    "train_vs_eval_comparison": {
+      "active_units_ratio": 1.0,
+      "hsic_score_ratio": 1.243321462138178,
+      "variance_distribution": {
+        "train_mean": 8.661727905273438,
+        "eval_mean": 10.925458908081055,
+        "ratio": 1.2613486624798513
+      },
+      "geometry_preservation": {
+        "trustworthiness_ratio": 1.0045582609329669,
+        "continuity_ratio": 1.005522299975757
+      }
+    },
+    "subsampling_info": {
+      "hsic_max_samples": 10000,
+      "geometry_max_samples": 5000,
+      "tsne_max_samples": 2000,
+      "shepard_max_samples": 10000,
+      "note": "None means no subsampling was applied. Subsampling uses seeded random sampling for reproducibility."
+    },
+    "analysis_recommendations": {
+      "dataset_size": "large",
+      "most_useful_plots": [
+        "HSIC heatmap: Shows latent independence patterns",
+        "Latent space analysis: Reveals dimension utilization and generalization",
+        "Variance histograms: Identifies active vs inactive dimensions",
+        "Train vs eval scatter: Detects overfitting in latent space"
+      ],
+      "less_useful_at_scale": [
+        "Individual scatter points: Too dense to interpret",
+        "t-SNE: Representative but subsampled",
+        "Shepard plots: Shows overall trends but subsampled"
+      ],
+      "key_metrics_to_focus_on": [
+        "Active units ratio (train vs eval)",
+        "HSIC global score",
+        "Dimension utilization patterns",
+        "Train-eval variance correlation",
+        "Effective dimensionality"
+      ]
+    }
+  }
+}
