@@ -1,7 +1,8 @@
 #!/bin/bash
 #PBS -N final_eval
 #PBS -lwalltime=24:00:00
-#PBS -lselect=1:ncpus=16:ngpus=1:mem=32gb
+#PBS -q v1_large24
+#PBS -lselect=1:ncpus=64:mem=64gb
 
 cd /rds/general/user/lrh24/home/thesis/code || exit
 
@@ -13,7 +14,8 @@ LOGFILE="all_methods.log"
 echo "=== Starting run at $(date) ===" | tee -a "$LOGFILE"
 
 METHODS=(
-  "c22"
+  "jr_pc"
+  "hopf_pc"
 )
 
 for METHOD in "${METHODS[@]}"; do

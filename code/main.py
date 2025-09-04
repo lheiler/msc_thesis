@@ -124,6 +124,7 @@ def main():
         print("❌ Not enough training or evaluation samples were loaded.")
         return
 
+    
     # ------------------------------------------------------------------
     # 6) Latent evaluation (disabled)
     # ------------------------------------------------------------------
