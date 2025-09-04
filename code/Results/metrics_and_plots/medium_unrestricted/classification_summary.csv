@@ -1,6 +1,6 @@
 Task,Metric,Best Method,Value
 Gender,Accuracy,c22,0.6204
-Gender,F1,eegnet,0.6255
+Gender,F1,hopf_pc,0.6355
 Gender,Roc Auc,c22,0.6692
 Gender,Pr Auc,c22,0.6920
 Abnormal,Accuracy,c22,0.7928

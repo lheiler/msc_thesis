@@ -1,16 +1,16 @@
 Metric,Best Method,Value,Methods Compared
-Hsic Global Score (Lower Better),eegnet,0.0010,5
-Active Units (Higher Better),c22,394.0000,5
-Silhouette (Higher Better),c22,0.3158,5
-Davies Bouldin (Lower Better),ctm_nn_pc,1.1896,5
-Calinski Harabasz (Higher Better),ctm_nn_pc,2462.4688,5
-Trustworthiness (Higher Better),ctm_nn_pc,0.9122,5
-Continuity (Higher Better),ctm_nn_pc,0.9769,5
-Dist Corr (Higher Better),ctm_nn_pc,0.9396,5
-Variance Entropy (Higher Better),psd_ae_pc,4.9512,5
-Effective Dim Variance (Higher Better),psd_ae_pc,141.3449,5
-Variance Concentration (Higher = More Concentrated),eegnet,0.9916,5
-Mi Gender Mean (Higher Better),ctm_nn_pc,0.0247,5
-Mi Abnormal Mean (Higher Better),c22,0.0733,5
-Mi Gender Concentration (Higher = More Concentrated),eegnet,0.5959,5
-Mi Abnormal Concentration (Higher = More Concentrated),eegnet,0.5975,5
+Hsic Global Score (Lower Better),eegnet,0.0010,7
+Active Units (Higher Better),c22,394.0000,7
+Silhouette (Higher Better),c22,0.3158,7
+Davies Bouldin (Lower Better),ctm_nn_pc,1.1896,7
+Calinski Harabasz (Higher Better),ctm_nn_pc,2462.4688,7
+Trustworthiness (Higher Better),ctm_nn_pc,0.9122,7
+Continuity (Higher Better),ctm_nn_pc,0.9769,7
+Dist Corr (Higher Better),ctm_nn_pc,0.9396,7
+Variance Entropy (Higher Better),psd_ae_pc,4.9512,7
+Effective Dim Variance (Higher Better),psd_ae_pc,141.3449,7
+Variance Concentration (Higher = More Concentrated),eegnet,0.9916,7
+Mi Gender Mean (Higher Better),ctm_nn_pc,0.0247,7
+Mi Abnormal Mean (Higher Better),c22,0.0733,7
+Mi Gender Concentration (Higher = More Concentrated),eegnet,0.5959,7
+Mi Abnormal Concentration (Higher = More Concentrated),eegnet,0.5975,7

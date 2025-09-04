@@ -13,7 +13,7 @@ import argparse
 import yaml
 from utils.latent_loading import load_latent_parameters_array
 from utils.data_metrics import compute_dataset_stats
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.decomposition import PCA
 import evaluation.metrix as metrics
 from pathlib import Path
@@ -124,6 +124,7 @@ def main():
         print("❌ Not enough training or evaluation samples were loaded.")
         return
 
+    
     # ------------------------------------------------------------------
     # 6) Latent evaluation (disabled)
     # ------------------------------------------------------------------
@@ -141,15 +142,39 @@ def main():
     hyperparams_all = {}
     device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 
-    # Fixed global train/val index split
-    all_indices = list(range(len(t_latent_features.dataset)))
-    val_split_frac = val_split_opt
-    train_indices_global, val_indices_global = train_test_split(
-        all_indices,
-        test_size=val_split_frac,
-        random_state=42,
-        shuffle=True,
-    )
+    # Fixed global train/val index split – SUBJECT-WISE to avoid leakage
+    def _extract_subject_id(sample_id: str) -> str:
+        # Try to extract base subject before session/trial markers
+        # e.g., "aaaaapjb_s001_t001_epoch0000" → "aaaaapjb"
+        m = re.match(r"^([A-Za-z0-9]+)_s\d+", sample_id)
+        if m:
+            return m.group(1)
+        # Fallback: split at "_t" (trial) if present
+        if "_t" in sample_id:
+            return sample_id.split("_t", 1)[0].split("_s", 1)[0]
+        # Fallback: split at first underscore
+        if "_" in sample_id:
+            return sample_id.split("_", 1)[0]
+        return sample_id
+
+    sample_ids_train = getattr(t_latent_features, "sample_ids", None)
+    if sample_ids_train and len(sample_ids_train) == len(t_latent_features.dataset):
+        subject_groups = [_extract_subject_id(sid) for sid in sample_ids_train]
+        gss = GroupShuffleSplit(n_splits=1, test_size=val_split_opt, random_state=42)
+        split_iter = gss.split(list(range(len(subject_groups))), groups=subject_groups)
+        train_indices_global, val_indices_global = next(split_iter)
+        print(f"Using subject-wise split: {len(set([subject_groups[i] for i in train_indices_global]))} subjects train | "
+              f"{len(set([subject_groups[i] for i in val_indices_global]))} subjects val")
+    else:
+        # Safe fallback to per-epoch random split if IDs missing
+        all_indices = list(range(len(t_latent_features.dataset)))
+        train_indices_global, val_indices_global = train_test_split(
+            all_indices,
+            test_size=val_split_opt,
+            random_state=42,
+            shuffle=True,
+        )
+        print("WARNING: sample_ids missing; falling back to per-epoch random split.")
 
     # Hard-coded tasks: 0) gender (clf), 1) age (regr), 2) abnormal (clf)
     task_map = {
@@ -164,7 +189,17 @@ def main():
         return X, y
 
     def map_class_labels(y_tensor):
-        return (y_tensor == 2).float() if torch.all((y_tensor == 1) | (y_tensor == 2)) else y_tensor
+        """
+        Normalize gender labels to binary 0/1 with 1=male, 0=female.
+        - If labels are {1,2} (legacy: 1=male, 2=female), map to (y==1).
+        - If labels are {0,1} (current cleanup: 0=female, 1=male), leave as-is.
+        - Otherwise, return unchanged (caller may handle unknown/missing).
+        """
+        if torch.all((y_tensor == 1) | (y_tensor == 2)):
+            return (y_tensor == 1).float()
+        if torch.all((y_tensor == 0) | (y_tensor == 1)):
+            return y_tensor.float()
+        return y_tensor
 
     for task_idx in range(num_tasks):
         if task_idx == 1:
