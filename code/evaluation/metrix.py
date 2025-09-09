@@ -601,16 +601,73 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
     except Exception:
         pca_summary = {}
 
-    # Geometry preservation metrics with a 2D PCA projection (deterministic)
+    # Geometry preservation metrics with PSD-based reference space (instead of PCA(2))
     try:
-        # Fit 2D PCA on training data only, then transform both splits
-        pca2 = PCA(n_components=2)
         z_tr_np = z_tr.cpu().numpy()
         z_ev_np = z_ev.cpu().numpy()
         
-        pca2.fit(z_tr_np)  # Fit only on training data
-        z_tr_2d = pca2.transform(z_tr_np)
-        z_ev_2d = pca2.transform(z_ev_np)
+        # Load and compute PSD features as reference space
+        print(f"Computing PSD-based geometry metrics...")
+        
+        # Import PSD computation functions
+        import sys
+        sys.path.append('/rds/general/user/lrh24/home/thesis/code')
+        from Results.recompute_geometry_with_psd import (
+            load_and_compute_psd_features, align_features_by_sample_id
+        )
+        
+        # Get sample IDs for alignment
+        train_sample_ids = getattr(t_latent_features, "sample_ids", None)
+        eval_sample_ids = getattr(e_latent_features, "sample_ids", None)
+        
+        if train_sample_ids is None or eval_sample_ids is None:
+            print("  Warning: No sample IDs available, falling back to PCA(2) reference space")
+            # Fallback to original PCA approach
+            pca2 = PCA(n_components=2)
+            pca2.fit(z_tr_np)
+            z_tr_ref = pca2.transform(z_tr_np)
+            z_ev_ref = pca2.transform(z_ev_np)
+            reference_type = "PCA(2) - fallback"
+        else:
+            # Determine data path (adjust if needed for your setup)
+            data_path = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean"
+            
+            # Compute PSD features for train split
+            try:
+                psd_tr, psd_tr_ids = load_and_compute_psd_features(
+                    data_path, split='train', max_samples=10000, use_average=True
+                )
+                
+                # Align latent and PSD features for training set
+                z_tr_aligned, psd_tr_aligned, common_tr_ids = align_features_by_sample_id(
+                    z_tr_np, train_sample_ids, psd_tr, psd_tr_ids
+                )
+                print(f"  ✓ Training: aligned {len(common_tr_ids)} samples with PSD features")
+                
+                # Compute PSD features for eval split  
+                psd_ev, psd_ev_ids = load_and_compute_psd_features(
+                    data_path, split='eval', max_samples=10000, use_average=True
+                )
+                
+                # Align latent and PSD features for eval set
+                z_ev_aligned, psd_ev_aligned, common_ev_ids = align_features_by_sample_id(
+                    z_ev_np, eval_sample_ids, psd_ev, psd_ev_ids
+                )
+                print(f"  ✓ Evaluation: aligned {len(common_ev_ids)} samples with PSD features")
+                
+                # Use aligned PSD features as reference space
+                z_tr_np, z_tr_ref = z_tr_aligned, psd_tr_aligned
+                z_ev_np, z_ev_ref = z_ev_aligned, psd_ev_aligned
+                reference_type = f"PSD features ({psd_tr_aligned.shape[1]} dims)"
+                
+            except Exception as e:
+                print(f"  Warning: PSD computation failed ({e}), falling back to PCA(2)")
+                # Fallback to PCA approach
+                pca2 = PCA(n_components=2)
+                pca2.fit(z_tr_np)
+                z_tr_ref = pca2.transform(z_tr_np)
+                z_ev_ref = pca2.transform(z_ev_np)
+                reference_type = "PCA(2) - fallback"
         
         # Use subsampling for large datasets to make geometry calculations feasible
         geom_max_samples = subsample_config.get('geometry', None)
@@ -618,76 +675,38 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             print(f"Computing geometry metrics (subsampling to {geom_max_samples:,} if needed)")
         else:
             print(f"Computing geometry metrics (using full dataset)")
-            geom_max_samples = max(z_tr.shape[0], z_ev.shape[0])
+            geom_max_samples = max(z_tr_np.shape[0], z_ev_np.shape[0])
         
+        # Compute geometry metrics: latent space → reference space
         geom_tr = {
-            "trustworthiness": _trustworthiness(z_tr_np, z_tr_2d, n_neighbors=10, 
+            "trustworthiness": _trustworthiness(z_tr_ref, z_tr_np, n_neighbors=10, 
                                               max_samples=geom_max_samples),
-            "continuity": _continuity(z_tr_np, z_tr_2d, n_neighbors=10, 
+            "continuity": _continuity(z_tr_ref, z_tr_np, n_neighbors=10, 
                                     max_samples=geom_max_samples),
-            "dist_corr": _distance_correlation(z_tr_np, z_tr_2d, 
+            "dist_corr": _distance_correlation(z_tr_ref, z_tr_np, 
                                              max_samples=geom_max_samples),
+            "reference_space": reference_type
         }
         geom_ev = {
-            "trustworthiness": _trustworthiness(z_ev_np, z_ev_2d, n_neighbors=10, 
+            "trustworthiness": _trustworthiness(z_ev_ref, z_ev_np, n_neighbors=10, 
                                               max_samples=geom_max_samples),
-            "continuity": _continuity(z_ev_np, z_ev_2d, n_neighbors=10, 
+            "continuity": _continuity(z_ev_ref, z_ev_np, n_neighbors=10, 
                                     max_samples=geom_max_samples),
-            "dist_corr": _distance_correlation(z_ev_np, z_ev_2d, 
+            "dist_corr": _distance_correlation(z_ev_ref, z_ev_np, 
                                              max_samples=geom_max_samples),
+            "reference_space": reference_type
         }
-        # Save improved scatter plots
-        def _create_improved_scatter(data_2d, title_suffix, save_path, geometry_metrics=None):
-            plt.figure(figsize=(10, 8))
-            
-            # Create density-based coloring
-            from scipy.stats import gaussian_kde
-            try:
-                xy = data_2d.T
-                density = gaussian_kde(xy)(xy)
-                idx = density.argsort()
-                x_sorted, y_sorted, density_sorted = data_2d[idx, 0], data_2d[idx, 1], density[idx]
-            except:
-                x_sorted, y_sorted = data_2d[:, 0], data_2d[:, 1]
-                density_sorted = None
-            
-            if density_sorted is not None:
-                scatter = plt.scatter(x_sorted, y_sorted, c=density_sorted, s=25, alpha=0.7, 
-                                    cmap='viridis', edgecolors='white', linewidth=0.1)
-                plt.colorbar(scatter, label='Density', shrink=0.8)
-            else:
-                plt.scatter(data_2d[:, 0], data_2d[:, 1], s=25, alpha=0.7, 
-                          color='#2E86AB', edgecolors='white', linewidth=0.1)
-            
-            plt.xlabel(f"PC1 ({pca2.explained_variance_ratio_[0]:.1%} variance)", 
-                      fontweight='bold', fontsize=12)
-            plt.ylabel(f"PC2 ({pca2.explained_variance_ratio_[1]:.1%} variance)", 
-                      fontweight='bold', fontsize=12)
-            plt.title(f"PCA 2D Projection – {title_suffix}\n"
-                     f"Total variance explained: {pca2.explained_variance_ratio_.sum():.1%}", 
-                     fontweight='bold', fontsize=13)
-            
-            # Add metrics text if available
-            if geometry_metrics:
-                metrics_text = (f"Trustworthiness: {geometry_metrics.get('trustworthiness', 0):.3f}\n"
-                              f"Continuity: {geometry_metrics.get('continuity', 0):.3f}\n"
-                              f"Distance Correlation: {geometry_metrics.get('dist_corr', 0):.3f}")
-                plt.text(0.02, 0.98, metrics_text, transform=plt.gca().transAxes, 
-                        fontsize=10, verticalalignment='top', 
-                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-            
-            plt.grid(True, alpha=0.3)
-            plt.tight_layout()
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.close()
+        # Save improved scatter plots - skip since we're using PSD reference space
+        # The geometry metrics now compare latent space to PSD features (not 2D projections)
+        print(f"  ✓ Geometry computation completed using {reference_type} as reference space")
+        print(f"  Training geometry: T={geom_tr.get('trustworthiness', 0):.3f}, C={geom_tr.get('continuity', 0):.3f}, DC={geom_tr.get('dist_corr', 0):.3f}")
+        print(f"  Evaluation geometry: T={geom_ev.get('trustworthiness', 0):.3f}, C={geom_ev.get('continuity', 0):.3f}, DC={geom_ev.get('dist_corr', 0):.3f}")
         
-        _create_improved_scatter(z_tr_2d, "Training", 
-                               os.path.join(train_dir, "pca2_scatter.png"), geom_tr)
-        _create_improved_scatter(z_ev_2d, "Evaluation", 
-                               os.path.join(eval_dir, "pca2_scatter.png"), geom_ev)
-        
-        # Clear 2D PCA results to free memory before Shepard plots
-        del z_tr_2d, z_ev_2d
+        # Clear reference space arrays to free memory
+        try:
+            del z_tr_ref, z_ev_ref
+        except:
+            pass
         
         # Force garbage collection after geometry metrics
         gc.collect()
@@ -840,12 +859,14 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         _log_memory_usage("before Shepard plots")
         shepard_max = subsample_config.get('shepard', 10000)
         
-        # Recreate 2D projections just for Shepard plots (memory efficient)
+        # Create 2D PCA projections just for Shepard plots (for visualization)
+        # Note: Shepard plots show distance preservation in 2D for visualization purposes
         pca2_shepard = PCA(n_components=2)
         pca2_shepard.fit(z_tr_np)  # Fit on training data only
         z_tr_2d_shepard = pca2_shepard.transform(z_tr_np)
         z_ev_2d_shepard = pca2_shepard.transform(z_ev_np)
         
+        print(f"  Creating Shepard plots (PCA 2D visualization only)...")
         _shepard(z_tr_np, z_tr_2d_shepard, os.path.join(train_dir, "shepard_plot.png"), "Training", shepard_max)
         _shepard(z_ev_np, z_ev_2d_shepard, os.path.join(eval_dir, "shepard_plot.png"), "Evaluation", shepard_max)
         

@@ -185,9 +185,9 @@
         "calinski_harabasz": 55897.6875
       },
       "geometry": {
-        "trustworthiness": 0.9972797873407564,
-        "continuity": 0.999085256294513,
-        "dist_corr": 0.9999994700139344
+        "trustworthiness": 0.608153222991273,
+        "continuity": 0.6647658421105427,
+        "dist_corr": 0.12432435501968093
       },
       "mi_zy": {
         "gender": {

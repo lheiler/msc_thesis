@@ -20,10 +20,13 @@ Research-grade, end-to-end pipeline for EEG latent-feature extraction and downst
 ---
 
 ## Features
-- **Modular pipeline**: data loading → latent extraction → Optuna search → evaluation → reports.
-- **Many extraction options**: mechanistic models (CTM/JR/Wong–Wang/Hopf), statistical (Catch22, PCA), and learned (EEGNet-AE, EEG2Rep, PSD-AE).
+- **Modular pipeline**: data loading → latent extraction → Optuna hyperparameter search → evaluation → reports.
+- **Many extraction options**: mechanistic models (CTM-CMA, CTM-NN, JR, Wong–Wang, Hopf), statistical (Catch22, PCA), and learned (EEGNet-AE, PSD-AE).
 - **Config/CLI driven**: choose dataset root, method, and optimisation knobs via YAML/flags.
 - **Caching**: latent features written as JSONL and reused on subsequent runs.
+- **Parallel processing**: CPU-based methods support parallel extraction for faster processing.
+- **Subject-wise splitting**: Proper subject-level train/validation splits to prevent data leakage.
+- **Comprehensive evaluation**: Unsupervised metrics (clustering, geometry) + supervised tasks (abnormal classification, gender classification).
 - **Reproducible reports**: text, markdown, JSON, and figures per run under `Results/`.
 
 ---
@@ -83,174 +86,289 @@ save_path       = "/abs/path/to/tuh-eeg-ab-clean"  # will contain train/ and eva
 load_data(data_path_train, data_path_eval, save_path, sfreq=128, epoch_len_s=7.0)
 ```
 
-This produces `.npz` epoch datasets for train/eval. The main pipeline (`main.py`) currently expects `.fif` files under `paths.data_path/{train,eval}`; use the preprocessing utility if you need cleaned epochs or to standardise raw EDF data ahead of `.fif` conversion.
+This produces cleaned epoch data that can be saved as pickle files for the main pipeline. The preprocessing utility creates standardized epochs with consistent channelization, artifact removal, and quality control.
 
 ---
 
 ## Data expectations
-The current pipeline expects a TUH-style directory with preconverted `.fif` files and a simple split:
+The current pipeline expects a TUH-style directory with preprocessed pickle files:
 ```
 <data_path>/
-├── train/
-│   ├── abnormal/  # .fif files
-│   └── normal/    # .fif files
-└── eval/
-    ├── abnormal/
-    └── normal/
+├── train_epochs.pkl  # List of tuples: (raw, gender, age, abnormal, sample_id)
+└── eval_epochs.pkl   # List of tuples: (raw, gender, age, abnormal, sample_id)
 ```
-Each `.fif` should have `raw.info['subject_info']['sex']` as 1 or 2. Abnormal/normal is inferred from the folder name. Age is currently a placeholder (0) in the TUH path.
 
-If starting from raw TUH EDFs, see `utils/cleanup_real_eeg_tuh.py` for a comprehensive cleaning pipeline and epoch export (produces `.npz`). That utility is separate from the `.fif` loader used by `main.py`.
+**Data format**: Each tuple contains:
+- `raw`: MNE Raw object with standardized EEG data
+- `gender`: 0=female, 1=male
+- `age`: Always 0 (placeholder for compatibility)
+- `abnormal`: 0=normal, 1=abnormal
+- `sample_id`: Unique epoch identifier
+
+If starting from raw TUH EDFs, see `utils/cleanup_real_eeg_tuh.py` for a comprehensive cleaning pipeline and epoch export.
 
 ---
 
 ## Configuration
-Minimal current schema (example `config.yaml`):
+Current schema (example `config.yaml`):
 ```yaml
-# Choose one of the supported methods (see Extraction methods)
+# Choose one of the supported methods (see Extraction methods section)
+# Available: ctm_cma_avg, ctm_cma_pc, ctm_nn_avg, ctm_nn_pc, jr_avg, jr_pc,
+#           wong_wang_avg, wong_wang_pc, hopf_avg, hopf_pc, c22, 
+#           pca_avg, pca_pc, psd_ae_avg, psd_ae_pc, eegnet
 method: wong_wang_avg
 
-# Dataset corpus flag (kept for consistency; current path is TUH-centric)
+# Dataset corpus identifier (used for result directory naming)
 data_corp: tuh
 
 paths:
-  # Root containing train/ and eval/ subfolders of .fif files
-  data_path: "/absolute/path/to/tuh-eeg-ab-clean"
-  # Where to write run artifacts
+  # Root directory containing train_epochs.pkl and eval_epochs.pkl
+  data_path: "~/thesis/Datasets/tuh-eeg-ab-clean"
+  # Directory where all results will be written  
   results_root: "Results"
 
-# Optuna/loader knobs (used by main.py)
+# Hyperparameter optimization settings
 optuna:
-  n_trials: 10      # per task
-  val_split: 0.1    # fixed split used globally
-  patience: 7
-  batch_size: 64
-
-# Whether to ignore cached JSONL latent files and recompute
-# (can also use CLI flag --reset)
-# reset: false
+  n_trials: 50      # Number of optimization trials per task
+  val_split: 0.15   # Fraction of training data for validation (subject-wise split)
+  patience: 7       # Early stopping patience for each trial
+  batch_size: 512   # Batch size for data loading and training
 ```
 
-CLI overrides:
+**CLI Usage:**
 ```bash
-python main.py --config config.yaml                 # normal run
-python main.py --config config.yaml --reset         # force re-extraction
-python main.py --config config.yaml --method c22    # override YAML method
+# Basic run with config file
+python main.py --config config.yaml
+
+# Force re-extraction of latent features (ignore cache)
+python main.py --config config.yaml --reset
+
+# Override method from command line
+python main.py --config config.yaml --method c22
+
+# Run with default config.yaml
+python main.py --method jr_avg
 ```
 
-Legacy configs under `configs/` include keys like `data_train`, `data_eval`, or `data_harvard`. The current loader reads `paths.data_path` and assumes `train/` and `eval/` inside it. Update older files accordingly before use.
+**Important Notes:**
+- The pipeline expects preprocessed pickle files (`train_epochs.pkl`, `eval_epochs.pkl`) in the data directory
+- Results are organized as `{results_root}/{data_corp}-{method}/`
+- Latent features are cached as JSONL files and reused unless `--reset` is specified
+- Subject-wise train/validation splitting prevents data leakage
 
 ---
 
 ## Running
-Basic run:
+
+### Single Method Execution
 ```bash
+# Run with specific method
+python main.py --method wong_wang_avg
+
+# Run with config file
 python main.py --config config.yaml
+
+# Force re-extraction (ignore cached latent features)
+python main.py --method c22 --reset
 ```
 
-Batch run across several methods (PBS example in this repo):
+### Batch Execution
+For running multiple methods, use the provided shell scripts:
+
 ```bash
-bash run_cleanup.sh     # enumerates many methods using --reset
-bash run_all_configs.sh # if you update configs to the current schema
+# Example batch script (run.sh) - customize methods as needed
+bash run.sh
+
+# Force re-extraction for multiple methods
+bash run_cleanup.sh
 ```
 
-What happens during a run:
-1. Load TUH `.fif` files from `paths.data_path/{train,eval}`.
-2. Extract latent features for each file using the chosen `method`.
-3. Cache JSONL latents to `Results/<data_corp>-<method>/temp_latent_features_{train,eval}.json`.
-4. Run Optuna to pick simple head hyperparameters per task (classification heads for gender and abnormal; age head is currently skipped).
-5. Evaluate and write reports/plots.
+### Pipeline Workflow
+1. **Data Loading**: Loads preprocessed pickle files from `data_path`
+2. **Latent Extraction**: Extracts features using specified method (with caching)
+3. **Hyperparameter Search**: Optuna optimization for downstream tasks
+4. **Evaluation**: 
+   - Unsupervised metrics (clustering, geometry, independence)
+   - Supervised tasks (abnormal classification, gender classification)
+5. **Results**: Saves metrics, plots, and reports to `Results/{data_corp}-{method}/`
 
-Caching: If the cache files exist and `--reset` is not passed, cached latents are reused. If counts mismatch the dataset size, latents are regenerated automatically.
+### Performance Optimization
+- **Parallel Processing**: CPU-based methods support parallel extraction via `n_workers` parameter
+- **GPU Acceleration**: Neural network methods automatically use GPU when available
+- **Caching**: Latent features are cached to avoid re-computation across runs
+
+**Execution Details:**
+1. **Data Loading**: Load preprocessed pickle files (`train_epochs.pkl`, `eval_epochs.pkl`)
+2. **Latent Extraction**: Extract features using the specified method (with optional parallel processing)
+3. **Caching**: Save latent features as JSONL files for reuse across runs
+4. **Hyperparameter Search**: Optuna optimization for downstream task heads
+5. **Evaluation**: Compute unsupervised and supervised metrics
+6. **Reporting**: Generate plots, summaries, and structured results
+
+**Caching Behavior**: Cached latent features are reused unless `--reset` is specified or dataset size changes.
 
 ---
 
 ## Outputs
-Per run directory: `Results/<data_corp>-<method>/`
+Results are organized in: `Results/{data_corp}-{method}/`
+
+### Core Files
 ```
-├── temp_latent_features_train.json
-├── temp_latent_features_eval.json
-├── final_metrics.txt     # flat text with inline descriptions
-├── final_metrics.md      # human-friendly report
-├── final_metrics.json    # raw metrics
-├── pca_explained_variance_curve.png
-├── train/
-│   ├── hsic_matrix.png
-│   ├── variance_hist.png
-│   ├── pca2_scatter.png
-│   └── tsne_scatter.png
-├── eval/
-│   ├── hsic_matrix.png
-│   ├── variance_hist.png
-│   ├── pca2_scatter.png
-│   └── tsne_scatter.png
-└── plots_<task>/         # per-task evaluation plots (if produced)
+├── temp_latent_features_train.json    # Cached training latent features
+├── temp_latent_features_eval.json     # Cached evaluation latent features  
+├── final_metrics.txt                  # Human-readable metrics with descriptions
+├── final_metrics.md                   # Markdown summary report
+├── final_metrics.json                 # Structured metrics in JSON format
+└── study.db                          # Optuna hyperparameter search database
 ```
 
-Metrics included (subset):
-- Latent quality: active units, HSIC global score, KMeans cluster scores, PCA explained variance, geometry preservation.
-- Dataset stats: sample counts and simple label distributions.
-- Per-task head metrics for classification tasks (gender, abnormal).
+### Visualization Outputs
+```
+├── pca_explained_variance_curve.png   # PCA analysis of latent features
+├── train/                            # Training set visualizations
+│   ├── hsic_matrix.png              # Feature independence heatmap
+│   ├── variance_hist.png            # Latent feature variance distribution
+│   ├── pca2_scatter.png             # 2D PCA projection
+│   └── tsne_scatter.png             # t-SNE embedding
+├── eval/                             # Evaluation set visualizations
+│   └── (same as train/)
+├── plots_abnormal/                   # Abnormal classification results
+│   ├── confusion_matrix.png
+│   ├── roc_curve.png
+│   └── classification_report.png
+└── plots_gender/                     # Gender classification results
+    └── (same structure as abnormal/)
+```
+
+### Evaluation Metrics Summary
+- **Latent Quality**: Active units, feature independence (HSIC), clustering scores, geometry preservation
+- **Downstream Performance**: Classification accuracy, F1-scores, ROC-AUC for abnormal/gender tasks
+- **Dataset Statistics**: Sample counts, label distributions, train/eval splits
 
 ---
 
 ## Extraction methods
 Method names accepted by `--method` and `config.yaml`:
-- Mechanistic
-  - `ctm_cma_avg`, `ctm_cma_pc`: Cortico–Thalamic Model fitted with CMA-ES (average vs per-channel PSD).
-  - `ctm_nn_avg`, `ctm_nn_pc`: CTM parameters via amortised regressor.
-  - `jr_avg`, `jr_pc`: Jansen–Rit model fits.
-  - `wong_wang_avg`, `wong_wang_pc`: Wong–Wang model fits.
-  - `hopf_avg`, `hopf_pc`: Hopf oscillator model fits.
-- Statistical
-  - `c22`: Catch22 feature vector.
-  - `pca_avg`, `pca_pc`: PCA features over PSD (frozen model files under `latent_extraction/pca/models/`).
-- Learned
-  - `psd_ae_avg`, `psd_ae_pc`: PSD autoencoder latents.
-  - `eegnet`: EEGNet-based autoencoder.
-  - `eeg2rep`: EEG2Rep representation extractor (requires `EEG2REP_CKPT` env var).
 
-Notes:
-- Some methods rely on local model files (e.g., `ctm_nn` regressor, PCA/PSD-AE checkpoints) already included under `latent_extraction/`.
-- `eeg2rep` and `eegnet` may require GPU and additional assets; make sure dependencies are installed.
+### Mechanistic Models (Computational Brain Models)
+- **`ctm_cma_avg`, `ctm_cma_pc`**: Cortico–Thalamic Model fitted with CMA-ES optimization
+  - `avg`: Fit to average PSD across channels
+  - `pc`: Fit separately per channel
+- **`ctm_nn_avg`, `ctm_nn_pc`**: CTM parameters via pre-trained neural network regressor
+  - Fast amortized inference alternative to CMA-ES fitting
+- **`jr_avg`, `jr_pc`**: Jansen–Rit neural mass model fits
+- **`wong_wang_avg`, `wong_wang_pc`**: Wong–Wang mean-field model fits  
+- **`hopf_avg`, `hopf_pc`**: Hopf (Stuart-Landau) oscillator model fits
+
+### Statistical Methods
+- **`c22`**: Catch22 time-series feature extraction (22 canonical features)
+- **`pca_avg`, `pca_pc`**: Principal Component Analysis over power spectral density
+  - Uses frozen PCA models under `latent_extraction/pca/models/`
+
+### Learned Representations (Deep Learning)
+- **`psd_ae_avg`, `psd_ae_pc`**: Power Spectral Density Autoencoder
+  - `avg`: Average features across channels
+  - `pc`: Per-channel features (concatenated)
+- **`eegnet`**: EEGNet-based autoencoder for raw EEG
+
+### Performance Notes
+- **Parallel processing**: Methods marked with ⚡ support multi-core processing when `n_workers > 1`
+  - ⚡ `ctm_cma_pc`, `ctm_cma_avg`, `jr_pc`, `jr_avg`, `wong_wang_pc`, `wong_wang_avg`, `hopf_pc`, `hopf_avg`, `c22`
+- **GPU acceleration**: `ctm_nn_*`, `psd_ae_*`, `eegnet` methods benefit from GPU when available
+- **Model dependencies**: Some methods require pre-trained models included in the repository
 
 ---
 
-## HPC usage
-Two example job scripts are provided; update paths/modules to your cluster:
+## HPC Usage
+Example job scripts are provided for cluster environments. Update paths and modules for your system:
 
-- `run_all_configs.sh` (PBS): activates `~/env_thesis`, loads CUDA, and rebuilds `pycatch22` from source for compatibility:
+### PBS Scripts
+- **`run.sh`**: Basic PBS script for running specific methods
+  ```bash
+  #!/bin/bash
+  #PBS -lwalltime=24:00:00
+  #PBS -q v1_large24
+  #PBS -lselect=1:ncpus=64:mem=64gb
+  
+  cd /path/to/thesis/code
+  source ~/env_thesis/bin/activate
+  
+  python main.py --method jr_pc
+  python main.py --method hopf_pc
+  ```
+
+- **`run_cleanup.sh`**: Force re-extraction across multiple methods using `--reset`
+
+### Key HPC Considerations
+- **Memory**: Large datasets may require 32-64GB RAM for parallel processing
+- **CPU cores**: Parallelizable methods benefit from high core counts (set `n_workers=64`)
+- **GPU**: Neural network methods (`ctm_nn_*`, `psd_ae_*`, `eegnet`) benefit from GPU acceleration
+- **pycatch22**: May need compilation from source on some clusters:
   ```bash
   pip uninstall -y pycatch22
   pip install --no-cache-dir --no-binary=:all: pycatch22
   ```
-  Then iterates configs with `python main.py --config ...`.
-
-- `run_cleanup.sh` (PBS): calls `python main.py --reset --method <name>` across many methods.
-
-- `run_latent_extraction.sh` (SLURM example): uses a different environment path; treat it as a template and adjust `cd` and `source` lines.
-
-Tip: If `pycatch22` wheels are unavailable on your node, compile from source as shown above.
 
 ---
 
 ## Troubleshooting
-- Missing/invalid labels: The TUH `.fif` loader expects `raw.info['subject_info']['sex']` ∈ {1,2}. Files outside this convention will emit warnings.
-- Cache mismatch: If you move or change the dataset, pass `--reset` to recompute latents.
-- CUDA OOM: Reduce `optuna.batch_size` in `config.yaml`.
-- Slow CMA-ES fits: Use the amortised `ctm_nn_*` methods or statistical/learned methods for faster iteration.
-- Legacy configs: Update `paths` to use `data_path` with `train/` and `eval/` inside. Remove unused keys like `data_harvard`.
+
+### Common Issues
+- **Missing pickle files**: Ensure `train_epochs.pkl` and `eval_epochs.pkl` exist in `data_path`
+- **Cache mismatch**: If dataset changes, use `--reset` to recompute latent features
+- **Memory errors**: 
+  - Reduce `optuna.batch_size` in config
+  - Use fewer parallel workers for CPU methods
+  - Ensure sufficient RAM for large datasets
+- **GPU issues**:
+  - CUDA OOM: Reduce batch size or use CPU-only methods
+  - Missing GPU: Pipeline automatically falls back to CPU
+- **Slow extraction**: 
+  - Use `ctm_nn_*` instead of `ctm_cma_*` for faster CTM fitting
+  - Enable parallel processing for supported methods
+  - Consider statistical methods (`c22`, `pca_*`) for quick iteration
+
+### Data Format Issues
+- **Invalid gender labels**: Pipeline expects 0=female, 1=male
+- **Missing sample IDs**: May fall back to per-epoch rather than subject-wise splits
+- **Age placeholder**: Age is currently set to 0 for all samples (compatibility)
+
+### Dependencies
+- **pycatch22**: May require source compilation on some systems
+- **MNE**: Ensure compatible version for EEG data loading
+- **CUDA**: Optional but recommended for neural network methods
 
 ---
 
 ## Dependencies
-See `requirements.txt`. Notable:
-- `torch`, `scikit-learn`, `optuna`, `mne`, `mne-bids`
-- `pycatch22` (may require source build on HPC)
-- `cma` (for CMA-ES model fits)
-- `matplotlib`, `seaborn`
+See `requirements.txt` for complete list. Key dependencies:
+
+### Core Libraries
+- **`torch`**: PyTorch for neural network methods and tensor operations
+- **`scikit-learn`**: Machine learning utilities, PCA, clustering
+- **`optuna`**: Hyperparameter optimization framework
+- **`numpy`, `scipy`**: Numerical computing
+
+### EEG Processing
+- **`mne`, `mne-bids`**: EEG data loading and preprocessing
+- **`braindecode==0.7.1`**: EEG-specific deep learning utilities
+
+### Method-Specific
+- **`pycatch22`**: Catch22 time-series features (may require source build)
+- **`cma`**: CMA-ES optimization for mechanistic model fitting
+- **`torcheeg`**: Additional EEG processing utilities
+
+### Visualization & Utilities
+- **`matplotlib`, `seaborn`**: Plotting and visualization
+- **`PyYAML`**: Configuration file parsing
+- **`tqdm`**: Progress bars
+
+### Installation Notes
+- Some clusters may require `pycatch22` compilation from source
+- GPU acceleration requires CUDA-compatible PyTorch installation
+- Virtual environment recommended: `python -m venv ~/env_thesis`
 
 ---
 
 ## Citation
-If you use this code, please cite the thesis/work corresponding to this repository.
+If you use this code, please cite the corresponding thesis/publication.

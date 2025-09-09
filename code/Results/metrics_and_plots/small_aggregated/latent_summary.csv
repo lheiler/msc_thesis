@@ -4,9 +4,9 @@ Active Units (Higher Better),hopf_avg,15.0000,7
 Silhouette (Higher Better),wong_wang_avg,0.6359,7
 Davies Bouldin (Lower Better),wong_wang_avg,0.4831,7
 Calinski Harabasz (Higher Better),wong_wang_avg,55897.6875,7
-Trustworthiness (Higher Better),wong_wang_avg,0.9973,7
-Continuity (Higher Better),wong_wang_avg,0.9991,7
-Dist Corr (Higher Better),wong_wang_avg,1.0000,7
+Trustworthiness (Higher Better),psd_ae_avg,0.9838,7
+Continuity (Higher Better),pca_avg,0.9955,7
+Dist Corr (Higher Better),pca_avg,0.9746,7
 Variance Entropy (Higher Better),psd_ae_avg,2.0145,7
 Effective Dim Variance (Higher Better),psd_ae_avg,7.4971,7
 Variance Concentration (Higher = More Concentrated),wong_wang_avg,0.9998,7
