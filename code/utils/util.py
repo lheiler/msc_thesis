@@ -70,7 +70,6 @@ def normalize_psd(psd: np.ndarray) -> np.ndarray:
       then apply this function internally to avoid double normalization
     - Learned models (PSD-AE, CTM-NN, PCA): Use normalize=True in compute_psd_from_raw 
       for consistency with their training data
-    - EEGNet: Uses this function in training loss computation
     """
     if np.any(np.isnan(psd)) or np.any(np.isinf(psd)):
         print(f"⚠️  Warning: PSD contains NaN/Inf values, replacing with safe defaults")

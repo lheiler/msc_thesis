@@ -305,12 +305,10 @@ class MetricsComparison:
         self.output_dir = self.results_dir / "metrics_and_plots"
         self.output_dir.mkdir(exist_ok=True)
         
-        # Define all available methods
-        self.all_methods = [
-            "tuh-psd_ae_pc", "tuh-psd_ae_avg", "tuh-ctm_nn_pc", "tuh-ctm_nn_avg",
-            "tuh-ctm_cma_avg", "tuh-eegnet", "tuh-hopf_avg", "tuh-jr_avg",
-            "tuh-pca_avg", "tuh-pca_pc", "tuh-wong_wang_avg", "tuh-c22"
-        ]
+        # Define all available methods (ordered by method groups)
+        small_aggregated = ["tuh-ctm_cma_avg", "tuh-ctm_nn_avg", "tuh-hopf_avg", "tuh-jr_avg", "tuh-wong_wang_avg", "tuh-pca_avg", "tuh-psd_ae_avg"]
+        medium_unrestricted = ["tuh-ctm_nn_pc", "tuh-hopf_pc", "tuh-jr_pc", "tuh-c22", "tuh-pca_pc", "tuh-psd_ae_pc", "tuh-eegnet"]
+        self.all_methods = small_aggregated + medium_unrestricted
         
         # Set up method filtering and output directory
         if method_group:
@@ -334,6 +332,81 @@ class MetricsComparison:
         # Remove 'tuh-' prefix only
         cleaned = method_name.replace('tuh-', '')
         return cleaned
+    
+    def get_canonical_method_order(self, methods: list) -> list:
+        """Return methods in canonical order, falling back to alphabetical for unknown methods."""
+        # Create a mapping from method name to canonical order
+        canonical_full = self.all_methods
+        canonical_clean = [self.clean_method_name(m) for m in canonical_full]
+        
+        # Create order mapping
+        order_map = {}
+        for i, method in enumerate(canonical_clean):
+            order_map[method] = i
+        
+        # Sort input methods by canonical order, unknown methods go to end alphabetically
+        def sort_key(method):
+            clean_method = self.clean_method_name(method) if method.startswith('tuh-') else method
+            return (order_map.get(clean_method, 1000), clean_method)
+        
+        return sorted(methods, key=sort_key)
+    
+    def get_method_color(self, method_name: str) -> str:
+        """Get color for method name based on method type."""
+        # Define method groups
+        data_driven_methods = {
+            'psd_ae_avg', 'psd_ae_pc', 'c22', 'pca_avg', 'pca_pc', 'eegnet'
+        }
+        mechanistic_methods = {
+            'hopf_avg', 'hopf_pc', 'jr_avg', 'jr_pc', 'wong_wang_avg','ctm_cma_avg', 'ctm_nn_avg', 'ctm_nn_pc'
+        }
+        
+        # Clean the method name
+        clean_name = self.clean_method_name(method_name)
+        
+        # Return appropriate color
+        if clean_name in data_driven_methods:
+            return '#1F4E79'  # methodblue (data-driven: blue)
+        elif clean_name in mechanistic_methods:
+            return '#BC3B00'  # methodorange (mechanistic: orange)
+        else:
+            return '#5B9BD5'  # Muted blue
+    
+    def get_professional_colors(self):
+        """Get a minimal, consistent color palette for plots."""
+        return {
+            'primary_blue':    '#3566a8',  # Professional blue for main elements
+            'primary_purple':  '#6C5B7B',  # Muted purple for contrast
+            'secondary_blue':  '#4A90E2',  # Lighter blue for secondary elements
+            'secondary_purple':'#8E7CC3',  # Softer purple for secondary
+            'accent_green':    '#3CAEA3',  # Teal-green accent
+            'accent_orange':   '#F5A623',  # Warm orange accent
+            'accent_red':      '#D7263D',  # Professional red accent
+            'neutral_gray':    '#7B8A8B',  # Muted gray for neutral elements
+            'light_gray':      '#D6DBDF',  # Light gray for highlights
+            'dark_gray':       '#2C3E50'   # Dark gray for text/elements
+        }
+        
+    
+    def set_colored_xticklabels(self, ax, methods, **kwargs):
+        """Set x-tick labels with method-specific colors."""
+        ax.set_xticklabels(methods, **kwargs)
+        
+        # Apply colors to each tick label
+        for i, method in enumerate(methods):
+            color = self.get_method_color(method)
+            ax.get_xticklabels()[i].set_color(color)
+            ax.get_xticklabels()[i].set_fontweight('bold')
+    
+    def set_colored_yticklabels(self, ax, methods, **kwargs):
+        """Set y-tick labels with method-specific colors."""
+        ax.set_yticklabels(methods, **kwargs)
+        
+        # Apply colors to each tick label
+        for i, method in enumerate(methods):
+            color = self.get_method_color(method)
+            ax.get_yticklabels()[i].set_color(color)
+            ax.get_yticklabels()[i].set_fontweight('bold')
         
     def load_metrics(self) -> Dict[str, Dict]:
         """Load metrics from all available methods."""
@@ -557,13 +630,14 @@ class MetricsComparison:
             gender_acc = comp_df['gender_accuracy'].fillna(0)
             abnormal_acc = comp_df['abnormal_accuracy'].fillna(0)
             
+            colors = self.get_professional_colors()
             bars1a = ax1.bar([x - width/2 for x in x_pos], gender_acc, width,
-                           label='Gender Task', alpha=0.8, color='lightblue')
+                           label='Gender Task', alpha=0.8, color=colors['primary_blue'])
             bars1b = ax1.bar([x + width/2 for x in x_pos], abnormal_acc, width,
-                           label='Abnormal Task', alpha=0.8, color='lightcoral')
+                           label='Abnormal Task', alpha=0.8, color=colors['primary_purple'])
             
             ax1.set_xticks(x_pos)
-            ax1.set_xticklabels(methods, rotation=45, ha='right')
+            self.set_colored_xticklabels(ax1, methods, rotation=45, ha='right')
             ax1.set_ylabel('Accuracy', fontweight='bold')
             ax1.set_title('A) Classification Accuracy', fontweight='bold', pad=15)
             ax1.legend(frameon=True, fancybox=True, shadow=True)
@@ -576,12 +650,12 @@ class MetricsComparison:
             abnormal_f1 = comp_df['abnormal_f1'].fillna(0)
             
             bars2a = ax2.bar([x - width/2 for x in x_pos], gender_f1, width,
-                           label='Gender Task', alpha=0.8, color='lightgreen')
+                           label='Gender Task', alpha=0.8, color=colors['primary_blue'])
             bars2b = ax2.bar([x + width/2 for x in x_pos], abnormal_f1, width,
-                           label='Abnormal Task', alpha=0.8, color='orange')
+                           label='Abnormal Task', alpha=0.8, color=colors['primary_purple'])
             
             ax2.set_xticks(x_pos)
-            ax2.set_xticklabels(methods, rotation=45, ha='right')
+            self.set_colored_xticklabels(ax2, methods, rotation=45, ha='right')
             ax2.set_ylabel('F1 Score', fontweight='bold')
             ax2.set_title('B) F1 Score Performance', fontweight='bold', pad=15)
             ax2.legend(frameon=True, fancybox=True, shadow=True)
@@ -594,12 +668,12 @@ class MetricsComparison:
             abnormal_auc = comp_df['abnormal_roc_auc'].fillna(0)
             
             bars3a = ax3.bar([x - width/2 for x in x_pos], gender_auc, width,
-                           label='Gender Task', alpha=0.8, color='gold')
+                           label='Gender Task', alpha=0.8, color=colors['primary_blue'])
             bars3b = ax3.bar([x + width/2 for x in x_pos], abnormal_auc, width,
-                           label='Abnormal Task', alpha=0.8, color='mediumpurple')
+                           label='Abnormal Task', alpha=0.8, color=colors['primary_purple'])
             
             ax3.set_xticks(x_pos)
-            ax3.set_xticklabels(methods, rotation=45, ha='right')
+            self.set_colored_xticklabels(ax3, methods, rotation=45, ha='right')
             ax3.set_ylabel('ROC AUC', fontweight='bold')
             ax3.set_title('C) ROC AUC Performance', fontweight='bold', pad=15)
             ax3.legend(frameon=True, fancybox=True, shadow=True)
@@ -622,9 +696,9 @@ class MetricsComparison:
                 
                 avg_performance.append(np.mean(scores) if scores else 0)
             
-            bars4 = ax4.bar(x_pos, avg_performance, alpha=0.8, color='darkseagreen')
+            bars4 = ax4.bar(x_pos, avg_performance, alpha=0.8, color='#5B9BD5')
             ax4.set_xticks(x_pos)
-            ax4.set_xticklabels(methods, rotation=45, ha='right')
+            self.set_colored_xticklabels(ax4, methods, rotation=45, ha='right')
             ax4.set_ylabel('Average Performance', fontweight='bold')
             ax4.set_title('D) Overall Classification Performance\n(Average of Accuracy & F1)', fontweight='bold', pad=15)
             ax4.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5)
@@ -662,7 +736,7 @@ class MetricsComparison:
         angles += angles[:1]  # Complete the circle
         
         # Colors for each method
-        colors = plt.cm.Set3(np.linspace(0, 1, len(data)))
+        colors = ['#5B9BD5'] * len(data)
         
         for idx, (_, row) in enumerate(data.iterrows()):
             values = [row[metric] for metric in metrics]
@@ -691,9 +765,10 @@ class MetricsComparison:
         
         if metric in ['accuracy', 'f1']:
             # Horizontal bar plot for accuracy and F1
-            bars = ax.barh(range(len(data)), data[metric], color='skyblue', alpha=0.8)
+            colors = self.get_professional_colors()
+            bars = ax.barh(range(len(data)), data[metric], color=colors['primary_blue'], alpha=0.8)
             ax.set_yticks(range(len(data)))
-            ax.set_yticklabels(data['method_clean'])
+            self.set_colored_yticklabels(ax, data['method_clean'])
             ax.set_xlabel(metric.replace('_', ' ').title())
             ax.set_title(f'{task.title()} Task - {metric.replace("_", " ").title()}', 
                         fontsize=16, fontweight='bold')
@@ -706,7 +781,7 @@ class MetricsComparison:
             # Highlight best performance
             best_idx = data[metric].idxmax()
             best_pos = list(data.index).index(best_idx)
-            bars[best_pos].set_color('gold')
+            bars[best_pos].set_color('#87CEEB')
             bars[best_pos].set_alpha(1.0)
             
         else:  # roc_auc, pr_auc
@@ -717,11 +792,11 @@ class MetricsComparison:
             # Create stems
             ax.hlines(y_pos, 0, sorted_data[metric], colors='gray', alpha=0.4, linewidth=2)
             # Create circles
-            colors = ['gold' if val == sorted_data[metric].max() else 'coral' for val in sorted_data[metric]]
+            colors = ['#87CEEB' if val == sorted_data[metric].max() else '#5B9BD5' for val in sorted_data[metric]]
             ax.scatter(sorted_data[metric], y_pos, color=colors, s=100, alpha=0.9, zorder=5)
             
             ax.set_yticks(y_pos)
-            ax.set_yticklabels(sorted_data['method_clean'])
+            self.set_colored_yticklabels(ax, sorted_data['method_clean'])
             ax.set_xlabel(metric.replace('_', ' ').title())
             ax.set_title(f'{task.title()} Task - {metric.replace("_", " ").title()}', 
                         fontsize=16, fontweight='bold')
@@ -793,8 +868,7 @@ class MetricsComparison:
             if not bubble_data.empty:
                 efficiency = bubble_data['active_units'] / bubble_data['dim']
                 scatter = ax.scatter(bubble_data['dim'], bubble_data['active_units'], 
-                                   s=efficiency*500, alpha=0.6, c=range(len(bubble_data)), 
-                                   cmap='viridis')
+                                   s=efficiency*500, alpha=0.6, c='#5B9BD5')
                 
                 # Add method labels
                 for i, (_, row) in enumerate(bubble_data.iterrows()):
@@ -818,7 +892,7 @@ class MetricsComparison:
             y_pos = range(len(sorted_data))
             
             # Create dot plot
-            colors = plt.cm.RdYlGn(sorted_data[metric] / sorted_data[metric].max())
+            colors = ['#5B9BD5'] * len(sorted_data)
             ax.scatter(sorted_data[metric], y_pos, color=colors, s=150, alpha=0.8)
             
             # Add connecting lines
@@ -826,7 +900,7 @@ class MetricsComparison:
                 ax.plot([0, val], [i, i], color='gray', alpha=0.3, linewidth=1)
             
             ax.set_yticks(y_pos)
-            ax.set_yticklabels(sorted_data['method_clean'])
+            self.set_colored_yticklabels(ax, sorted_data['method_clean'])
             ax.set_xlabel(metric.replace('_', ' ').title())
             ax.set_title(f'Latent Space Quality - {metric.replace("_", " ").title()}', 
                         fontsize=16, fontweight='bold')
@@ -838,11 +912,11 @@ class MetricsComparison:
         else:  # hsic_global_score
             # Horizontal bar plot for HSIC score
             sorted_data = data.sort_values(metric, ascending=True)
-            colors = plt.cm.plasma(sorted_data[metric] / sorted_data[metric].max())
+            colors = ['#5B9BD5'] * len(sorted_data)
             
             bars = ax.barh(range(len(sorted_data)), sorted_data[metric], color=colors, alpha=0.8)
             ax.set_yticks(range(len(sorted_data)))
-            ax.set_yticklabels(sorted_data['method_clean'])
+            self.set_colored_yticklabels(ax, sorted_data['method_clean'])
             ax.set_xlabel(metric.replace('_', ' ').title())
             ax.set_title(f'Feature Independence - {metric.replace("_", " ").title()}', 
                         fontsize=16, fontweight='bold')
@@ -880,7 +954,7 @@ class MetricsComparison:
             x_pos = range(len(methods))
             
             # Plot 1: Mean vs Std
-            colors1 = plt.cm.viridis(methods_with_variance['variance_concentration'])
+            colors1 = ['#5B9BD5'] * len(methods_with_variance)
             scatter1 = ax1.scatter(methods_with_variance['variance_mean'], 
                                  methods_with_variance['variance_std'],
                                  c=colors1, s=150, alpha=0.8, edgecolors='black')
@@ -896,10 +970,11 @@ class MetricsComparison:
                            textcoords='offset points', fontsize=8)
             
             # Plot 2: Variance Concentration
+            colors = self.get_professional_colors()
             bars2 = ax2.bar(x_pos, methods_with_variance['variance_concentration'], 
-                          alpha=0.8, color='lightcoral')
+                          alpha=0.8, color=colors['primary_purple'])
             ax2.set_xticks(x_pos)
-            ax2.set_xticklabels(methods, rotation=45, ha='right')
+            self.set_colored_xticklabels(ax2, methods, rotation=45, ha='right')
             ax2.set_ylabel('Variance Concentration (Top 20%)')
             ax2.set_title('Variance Concentration in Top Dimensions')
             ax2.grid(True, alpha=0.3, axis='y')
@@ -913,9 +988,9 @@ class MetricsComparison:
             cv_data = methods_with_variance.dropna(subset=['variance_cv'])
             if not cv_data.empty:
                 bars3 = ax3.bar(range(len(cv_data)), cv_data['variance_cv'], 
-                              alpha=0.8, color='lightblue')
+                              alpha=0.8, color=colors['primary_blue'])
                 ax3.set_xticks(range(len(cv_data)))
-                ax3.set_xticklabels(cv_data['method_clean'], rotation=45, ha='right')
+                self.set_colored_xticklabels(ax3, cv_data['method_clean'], rotation=45, ha='right')
                 ax3.set_ylabel('Coefficient of Variation')
                 ax3.set_title('Variance Distribution Uniformity')
                 ax3.grid(True, alpha=0.3, axis='y')
@@ -926,11 +1001,11 @@ class MetricsComparison:
                 width = 0.35
                 x_pos4 = np.arange(len(minmax_data))
                 bars4a = ax4.bar(x_pos4 - width/2, minmax_data['variance_min'], 
-                               width, label='Min Variance', alpha=0.8, color='lightgreen')
+                               width, label='Min Variance', alpha=0.8, color=colors['primary_blue'])
                 bars4b = ax4.bar(x_pos4 + width/2, minmax_data['variance_max'], 
-                               width, label='Max Variance', alpha=0.8, color='lightsteelblue')
+                               width, label='Max Variance', alpha=0.8, color=colors['primary_purple'])
                 ax4.set_xticks(x_pos4)
-                ax4.set_xticklabels(minmax_data['method_clean'], rotation=45, ha='right')
+                self.set_colored_xticklabels(ax4, minmax_data['method_clean'], rotation=45, ha='right')
                 ax4.set_ylabel('Variance Value')
                 ax4.set_title('Min vs Max Dimension Variance')
                 ax4.legend()
@@ -972,7 +1047,7 @@ class MetricsComparison:
             ax.set_xticks(range(max_dims))
             ax.set_xticklabels([f'Dim {i+1}' for i in range(max_dims)])
             ax.set_yticks(range(len(method_names)))
-            ax.set_yticklabels(method_names)
+            self.set_colored_yticklabels(ax, method_names)
             
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax)
@@ -1005,10 +1080,11 @@ class MetricsComparison:
             x_pos = range(len(methods))
             
             # Plot 1: Variance Entropy
+            colors = self.get_professional_colors()
             bars1 = ax1.bar(x_pos, entropy_data['variance_entropy'], 
-                           alpha=0.8, color='skyblue')
+                           alpha=0.8, color=colors['primary_blue'])
             ax1.set_xticks(x_pos)
-            ax1.set_xticklabels(methods, rotation=45, ha='right')
+            self.set_colored_xticklabels(ax1, methods, rotation=45, ha='right')
             ax1.set_ylabel('Variance Entropy')
             ax1.set_title('Variance Distribution Entropy\n(Higher = More Uniform)')
             ax1.grid(True, alpha=0.3, axis='y')
@@ -1024,8 +1100,8 @@ class MetricsComparison:
             
             # Scatter plot with efficiency line
             scatter = ax2.scatter(actual_dims, effective_dims, 
-                                s=150, alpha=0.7, c=range(len(entropy_data)), 
-                                cmap='viridis', edgecolors='black')
+                                s=150, alpha=0.7, c='#5B9BD5', 
+                                edgecolors='black')
             
             # Add diagonal line for reference (perfect efficiency)
             max_dim = max(actual_dims.max(), effective_dims.max())
@@ -1093,7 +1169,7 @@ class MetricsComparison:
             ax.set_xticks(range(max_dims))
             ax.set_xticklabels([f'Dim {i+1}' for i in range(max_dims)])
             ax.set_yticks(range(len(method_names)))
-            ax.set_yticklabels(method_names)
+            self.set_colored_yticklabels(ax, method_names)
             
             # Add colorbar
             cbar = plt.colorbar(im, ax=ax)
@@ -1140,7 +1216,7 @@ class MetricsComparison:
             width = 0.35
             
             # Plot concentrations for each task
-            colors = ['lightblue', 'lightcoral']
+            colors = ['#5B9BD5', '#87CEEB']
             bars = []
             for i, task in enumerate(tasks):
                 conc_col = f'{task}_concentration'
@@ -1154,7 +1230,7 @@ class MetricsComparison:
                         bars.extend(task_bars)
             
             ax.set_xticks(x_pos + width/2)
-            ax.set_xticklabels(conc_df['method'], rotation=45, ha='right')
+            self.set_colored_xticklabels(ax, conc_df['method'], rotation=45, ha='right')
             ax.set_ylabel('MI Concentration (Top 20% Dimensions)')
             ax.set_title('Mutual Information Concentration Analysis', 
                         fontsize=16, fontweight='bold')
@@ -1211,10 +1287,11 @@ class MetricsComparison:
             sorted_data = sorted(zip(method_names, high_info_counts), key=lambda x: x[1], reverse=True)
             method_names_sorted, high_info_counts_sorted = zip(*sorted_data)
             
+            colors = self.get_professional_colors()
             bars = ax.bar(range(len(method_names_sorted)), high_info_counts_sorted, 
-                         alpha=0.8, color='lightcoral')
+                         alpha=0.8, color=colors['primary_purple'])
             ax.set_xticks(range(len(method_names_sorted)))
-            ax.set_xticklabels(method_names_sorted, rotation=45, ha='right')
+            self.set_colored_xticklabels(ax, method_names_sorted, rotation=45, ha='right')
             ax.set_ylabel('High Information Dimensions')
             ax.set_title('Count of Highly Informative Dimensions Across Methods')
             ax.grid(True, alpha=0.3, axis='y')
@@ -1273,7 +1350,7 @@ class MetricsComparison:
                 if not gender_data.empty:
                     scatter1 = ax1.scatter(gender_data['efficiency'], gender_data['mi_gender'],
                                          s=gender_data['active_units']*10, alpha=0.7,
-                                         c=range(len(gender_data)), cmap='viridis',
+                                         c='#5B9BD5',
                                          edgecolors='black')
                     
                     for i, (eff, mi, method) in enumerate(zip(gender_data['efficiency'], 
@@ -1293,7 +1370,7 @@ class MetricsComparison:
                 if not abnormal_data.empty:
                     scatter2 = ax2.scatter(abnormal_data['efficiency'], abnormal_data['mi_abnormal'],
                                          s=abnormal_data['active_units']*10, alpha=0.7,
-                                         c=range(len(abnormal_data)), cmap='plasma',
+                                         c='#5B9BD5',
                                          edgecolors='black')
                     
                     for i, (eff, mi, method) in enumerate(zip(abnormal_data['efficiency'], 
@@ -1309,8 +1386,8 @@ class MetricsComparison:
             
             # Plot 3: Active units vs Total dimensions
             scatter3 = ax3.scatter(eff_df['total_dims'], eff_df['active_units'],
-                                 s=150, alpha=0.7, c=eff_df['efficiency'],
-                                 cmap='RdYlGn', edgecolors='black')
+                                 s=150, alpha=0.7, c='#5B9BD5',
+                                 edgecolors='black')
             
             # Add diagonal line
             max_dim = max(eff_df['total_dims'].max(), eff_df['active_units'].max())
@@ -1334,9 +1411,9 @@ class MetricsComparison:
             
             # Plot 4: Efficiency distribution
             bars4 = ax4.bar(range(len(eff_df)), eff_df['efficiency'], 
-                          alpha=0.8, color='lightsteelblue')
+                          alpha=0.8, color='#5B9BD5')
             ax4.set_xticks(range(len(eff_df)))
-            ax4.set_xticklabels(eff_df['method'], rotation=45, ha='right')
+            self.set_colored_xticklabels(ax4, eff_df['method'], rotation=45, ha='right')
             ax4.set_ylabel('Dimensional Efficiency')
             ax4.set_title('Efficiency Comparison Across Methods')
             ax4.grid(True, alpha=0.3, axis='y')
@@ -1406,7 +1483,7 @@ class MetricsComparison:
                 best_data = corr_df.loc[best_corr_idx]
                 
                 ax2.scatter(best_data['variance_vec'], best_data['mi_vec'],
-                           alpha=0.7, s=100, color='darkblue')
+                           alpha=0.7, s=100, color='#5B9BD5')
                 
                 # Add trend line
                 z = np.polyfit(best_data['variance_vec'], best_data['mi_vec'], 1)
@@ -1478,15 +1555,15 @@ class MetricsComparison:
             
             # Color based on MI concentration if available
             if 'mi_concentration' in eff_df.columns:
-                colors = eff_df['mi_concentration']
-                colormap = 'viridis'
-                color_label = 'MI Concentration'
+                color_values = '#5B9BD5'
+                colormap = None
+                color_label = 'Methods'
             else:
-                colors = range(len(eff_df))
-                colormap = 'Set3'
-                color_label = 'Method Index'
+                color_values = '#5B9BD5'
+                colormap = None
+                color_label = 'Methods'
             
-            scatter = ax.scatter(x, y, s=sizes, c=colors, alpha=0.7, 
+            scatter = ax.scatter(x, y, s=sizes, c=color_values, alpha=0.7, 
                                cmap=colormap, edgecolors='black', linewidth=1)
             
             # Add method labels
@@ -1511,10 +1588,11 @@ class MetricsComparison:
             ax.axvline(x=np.median(x), color='red', linestyle='--', alpha=0.5)
             
             # Add quadrant annotations
+            colors = self.get_professional_colors()
             ax.text(0.95, 0.95, 'High Efficiency\nHigh Uniformity', transform=ax.transAxes,
-                   ha='right', va='top', bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.7))
+                   ha='right', va='top', bbox=dict(boxstyle='round', facecolor=colors['primary_blue'], alpha=0.7))
             ax.text(0.05, 0.05, 'Low Efficiency\nLow Uniformity', transform=ax.transAxes,
-                   ha='left', va='bottom', bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.7))
+                   ha='left', va='bottom', bbox=dict(boxstyle='round', facecolor=colors['primary_purple'], alpha=0.7))
             
             plt.tight_layout()
             plt.savefig(self.output_dir / 'multidimensional_efficiency_analysis.png', dpi=300, bbox_inches='tight')
@@ -1549,11 +1627,11 @@ class MetricsComparison:
             # Plot 1: Silhouette Score (Higher Better)
             ax1 = fig.add_subplot(gs[0, 0])
             sorted_silhouette = cluster_df.sort_values('silhouette', ascending=True)
-            colors1 = plt.cm.RdYlGn(sorted_silhouette['silhouette'] / sorted_silhouette['silhouette'].max())
+            colors1 = ['#5B9BD5'] * len(sorted_silhouette)
             bars1 = ax1.barh(range(len(sorted_silhouette)), sorted_silhouette['silhouette'], 
                            color=colors1, alpha=0.8)
             ax1.set_yticks(range(len(sorted_silhouette)))
-            ax1.set_yticklabels(sorted_silhouette['method'])
+            self.set_colored_yticklabels(ax1, sorted_silhouette['method'])
             ax1.set_xlabel('Silhouette Score')
             ax1.set_title('Clustering Quality: Silhouette Score\n(Higher = Better Separated Clusters)', 
                          fontweight='bold')
@@ -1568,11 +1646,11 @@ class MetricsComparison:
             # Plot 2: Davies-Bouldin Index (Lower Better)
             ax2 = fig.add_subplot(gs[0, 1])
             sorted_davies = cluster_df.sort_values('davies_bouldin', ascending=False)  # Sort desc for visual consistency
-            colors2 = plt.cm.RdYlGn_r(sorted_davies['davies_bouldin'] / sorted_davies['davies_bouldin'].max())
+            colors2 = ['#5B9BD5'] * len(sorted_davies)
             bars2 = ax2.barh(range(len(sorted_davies)), sorted_davies['davies_bouldin'], 
                            color=colors2, alpha=0.8)
             ax2.set_yticks(range(len(sorted_davies)))
-            ax2.set_yticklabels(sorted_davies['method'])
+            self.set_colored_yticklabels(ax2, sorted_davies['method'])
             ax2.set_xlabel('Davies-Bouldin Index')
             ax2.set_title('Clustering Quality: Davies-Bouldin Index\n(Lower = Better Separated Clusters)', 
                          fontweight='bold')
@@ -1587,11 +1665,11 @@ class MetricsComparison:
             # Plot 3: Calinski-Harabasz Index (Higher Better)
             ax3 = fig.add_subplot(gs[0, 2])
             sorted_calinski = cluster_df.sort_values('calinski_harabasz', ascending=True)
-            colors3 = plt.cm.RdYlGn(sorted_calinski['calinski_harabasz'] / sorted_calinski['calinski_harabasz'].max())
+            colors3 = ['#5B9BD5'] * len(sorted_calinski)
             bars3 = ax3.barh(range(len(sorted_calinski)), sorted_calinski['calinski_harabasz'], 
                            color=colors3, alpha=0.8)
             ax3.set_yticks(range(len(sorted_calinski)))
-            ax3.set_yticklabels(sorted_calinski['method'])
+            self.set_colored_yticklabels(ax3, sorted_calinski['method'])
             ax3.set_xlabel('Calinski-Harabasz Index')
             ax3.set_title('Clustering Quality: Calinski-Harabasz Index\n(Higher = Better Separated Clusters)', 
                          fontweight='bold')
@@ -1651,7 +1729,7 @@ class MetricsComparison:
             bars5 = ax5.barh(range(len(sorted_composite)), sorted_composite['composite_score'], 
                            color=colors5, alpha=0.8)
             ax5.set_yticks(range(len(sorted_composite)))
-            ax5.set_yticklabels(sorted_composite['method'])
+            self.set_colored_yticklabels(ax5, sorted_composite['method'])
             ax5.set_xlabel('Composite Clustering Score')
             ax5.set_title('Overall Clustering Quality\n(Average of Normalized Metrics)', 
                          fontweight='bold')
@@ -1810,7 +1888,7 @@ class MetricsComparison:
             bars1 = ax1.barh(range(len(sorted_trust)), sorted_trust['trustworthiness'], 
                            color=colors1, alpha=0.8)
             ax1.set_yticks(range(len(sorted_trust)))
-            ax1.set_yticklabels(sorted_trust['method'])
+            self.set_colored_yticklabels(ax1, sorted_trust['method'])
             ax1.set_xlabel('Trustworthiness Score')
             ax1.set_title('Geometric Quality: Trustworthiness\n(Higher = Better Neighborhood Preservation)', 
                          fontweight='bold')
@@ -1829,7 +1907,7 @@ class MetricsComparison:
             bars2 = ax2.barh(range(len(sorted_cont)), sorted_cont['continuity'], 
                            color=colors2, alpha=0.8)
             ax2.set_yticks(range(len(sorted_cont)))
-            ax2.set_yticklabels(sorted_cont['method'])
+            self.set_colored_yticklabels(ax2, sorted_cont['method'])
             ax2.set_xlabel('Continuity Score')
             ax2.set_title('Geometric Quality: Continuity\n(Higher = Better Smoothness)', 
                          fontweight='bold')
@@ -1848,7 +1926,7 @@ class MetricsComparison:
             bars3 = ax3.barh(range(len(sorted_dist)), sorted_dist['dist_corr'], 
                            color=colors3, alpha=0.8)
             ax3.set_yticks(range(len(sorted_dist)))
-            ax3.set_yticklabels(sorted_dist['method'])
+            self.set_colored_yticklabels(ax3, sorted_dist['method'])
             ax3.set_xlabel('Distance Correlation')
             ax3.set_title('Geometric Quality: Distance Correlation\n(Higher = Better Distance Preservation)', 
                          fontweight='bold')
@@ -1902,7 +1980,7 @@ class MetricsComparison:
             bars5 = ax5.barh(range(len(sorted_composite)), sorted_composite['composite_geometric_score'], 
                            color=colors5, alpha=0.8)
             ax5.set_yticks(range(len(sorted_composite)))
-            ax5.set_yticklabels(sorted_composite['method'])
+            self.set_colored_yticklabels(ax5, sorted_composite['method'])
             ax5.set_xlabel('Composite Geometric Score')
             ax5.set_title('Overall Geometric Quality\n(Average of All Metrics)', 
                          fontweight='bold')
@@ -2092,7 +2170,9 @@ class MetricsComparison:
             
         # Calculate efficiency metrics
         efficiency_data['dimensional_efficiency'] = efficiency_data['active_units'] / efficiency_data['dim']
-        efficiency_data = efficiency_data.sort_values('method_clean')
+        # Sort by canonical method order instead of alphabetical
+        ordered_methods = self.get_canonical_method_order(efficiency_data['method_clean'].tolist())
+        efficiency_data = efficiency_data.set_index('method_clean').reindex(ordered_methods).reset_index()
         
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
         fig.suptitle('Dimensionality & Efficiency: Method Comparison', fontsize=20, fontweight='bold', y=0.98)
@@ -2103,7 +2183,7 @@ class MetricsComparison:
         # Plot 1: Total Dimensions
         bars1 = ax1.bar(x_pos, efficiency_data['dim'], alpha=0.8, color='steelblue', edgecolor='black', linewidth=0.8)
         ax1.set_xticks(x_pos)
-        ax1.set_xticklabels(methods, rotation=45, ha='right', fontweight='bold')
+        self.set_colored_xticklabels(ax1, methods, rotation=45, ha='right', fontweight='bold')
         ax1.set_ylabel('Total Dimensions', fontweight='bold')
         ax1.set_title('A) Total Representational Capacity', fontweight='bold', pad=15)
         ax1.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5)
@@ -2114,7 +2194,7 @@ class MetricsComparison:
         # Plot 2: Active Units
         bars2 = ax2.bar(x_pos, efficiency_data['active_units'], alpha=0.8, color='forestgreen', edgecolor='black', linewidth=0.8)
         ax2.set_xticks(x_pos)
-        ax2.set_xticklabels(methods, rotation=45, ha='right', fontweight='bold')
+        self.set_colored_xticklabels(ax2, methods, rotation=45, ha='right', fontweight='bold')
         ax2.set_ylabel('Active Units', fontweight='bold')
         ax2.set_title('B) Utilized Dimensions', fontweight='bold', pad=15)
         ax2.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5)
@@ -2123,9 +2203,10 @@ class MetricsComparison:
                    f'{int(val)}', ha='center', va='bottom', fontweight='bold')
         
         # Plot 3: Dimensional Efficiency
-        bars3 = ax3.bar(x_pos, efficiency_data['dimensional_efficiency'], alpha=0.8, color='orange', edgecolor='black', linewidth=0.8)
+        colors = self.get_professional_colors()
+        bars3 = ax3.bar(x_pos, efficiency_data['dimensional_efficiency'], alpha=0.8, color=colors['primary_blue'], edgecolor='black', linewidth=0.8)
         ax3.set_xticks(x_pos)
-        ax3.set_xticklabels(methods, rotation=45, ha='right', fontweight='bold')
+        self.set_colored_xticklabels(ax3, methods, rotation=45, ha='right', fontweight='bold')
         ax3.set_ylabel('Efficiency Ratio', fontweight='bold')
         ax3.set_title('C) Dimensional Efficiency (Active/Total)', fontweight='bold', pad=15)
         ax3.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5)
@@ -2141,7 +2222,7 @@ class MetricsComparison:
                 bars4 = ax4.bar(range(len(entropy_data)), entropy_data['variance_entropy'], 
                               alpha=0.8, color='coral')
                 ax4.set_xticks(range(len(entropy_data)))
-                ax4.set_xticklabels(entropy_data['method_clean'], rotation=45, ha='right')
+                self.set_colored_xticklabels(ax4, entropy_data['method_clean'], rotation=45, ha='right')
                 ax4.set_ylabel('Variance Entropy')
                 ax4.set_title('D) Variance Distribution Uniformity', fontweight='bold', pad=15)
                 ax4.grid(True, alpha=0.3, axis='y', linestyle='-', linewidth=0.5)
@@ -2186,18 +2267,19 @@ class MetricsComparison:
 
         # Colorblind-friendly, scientific colormap
         cmap = plt.get_cmap('cividis')
-        # Normalize so lower (better) are darker
+        # Invert normalization so lower (better) values get brighter/greener colors
         if scores.max() - scores.min() < 1e-12:
             colors = [cmap(0.6)] * len(scores)
         else:
             norm = (scores - scores.min()) / (scores.max() - scores.min())
-            colors = [cmap(v) for v in norm]
+            # Invert: lower scores (better) get higher colormap values (brighter/greener)
+            colors = [cmap(1.0 - v) for v in norm]
 
         fig, ax = plt.subplots(figsize=(11, 7))
         x = np.arange(len(methods))
         bars = ax.bar(x, scores, color=colors, edgecolor='black', linewidth=0.6, alpha=0.95)
         ax.set_xticks(x)
-        ax.set_xticklabels(methods, rotation=45, ha='right', fontweight='bold')
+        self.set_colored_xticklabels(ax, methods, rotation=45, ha='right', fontweight='bold')
         # No y-axis label for a cleaner matrix-style presentation
         ax.set_title('Feature Dependence (Lower = Better)', fontweight='bold')
         ax.grid(True, axis='y', alpha=0.3, linestyle='-', linewidth=0.5)
@@ -2236,7 +2318,7 @@ class MetricsComparison:
         x = np.arange(len(methods))
         bars = ax.bar(x, vals, color=colors, edgecolor='black', linewidth=0.6, alpha=0.95)
         ax.set_xticks(x)
-        ax.set_xticklabels(methods, rotation=45, ha='right', fontweight='bold')
+        self.set_colored_xticklabels(ax, methods, rotation=45, ha='right', fontweight='bold')
         # No y-axis label for a cleaner matrix-style presentation
         ax.set_title('Feature Structure Quality (Higher = Better)', fontweight='bold')
         ax.grid(True, axis='y', alpha=0.3, linestyle='-', linewidth=0.5)
@@ -2282,10 +2364,11 @@ class MetricsComparison:
         if 'mi_gender' in info_df.columns:
             gender_data = info_df.dropna(subset=['mi_gender'])
             if not gender_data.empty:
+                colors = self.get_professional_colors()
                 bars1 = ax1.bar(range(len(gender_data)), gender_data['mi_gender'], 
-                              alpha=0.8, color='lightblue')
+                              alpha=0.8, color=colors['primary_blue'])
                 ax1.set_xticks(range(len(gender_data)))
-                ax1.set_xticklabels(gender_data['method'], rotation=45, ha='right')
+                self.set_colored_xticklabels(ax1, gender_data['method'], rotation=45, ha='right')
                 ax1.set_ylabel('Mutual Information')
                 ax1.set_title('Gender Task Informativeness')
                 ax1.grid(True, alpha=0.3, axis='y')
@@ -2297,10 +2380,11 @@ class MetricsComparison:
         if 'mi_abnormal' in info_df.columns:
             abnormal_data = info_df.dropna(subset=['mi_abnormal'])
             if not abnormal_data.empty:
+                colors = self.get_professional_colors()
                 bars2 = ax2.bar(range(len(abnormal_data)), abnormal_data['mi_abnormal'], 
-                              alpha=0.8, color='lightcoral')
+                              alpha=0.8, color=colors['primary_purple'])
                 ax2.set_xticks(range(len(abnormal_data)))
-                ax2.set_xticklabels(abnormal_data['method'], rotation=45, ha='right')
+                self.set_colored_xticklabels(ax2, abnormal_data['method'], rotation=45, ha='right')
                 ax2.set_ylabel('Mutual Information')
                 ax2.set_title('Abnormal Task Informativeness')
                 ax2.grid(True, alpha=0.3, axis='y')
@@ -2312,10 +2396,11 @@ class MetricsComparison:
         if 'mi_gender' in info_df.columns and 'mi_abnormal' in info_df.columns:
             both_tasks = info_df.dropna(subset=['mi_gender', 'mi_abnormal'])
             if not both_tasks.empty:
+                colors = self.get_professional_colors()
                 avg_mi = (both_tasks['mi_gender'] + both_tasks['mi_abnormal']) / 2
-                bars3 = ax3.bar(range(len(both_tasks)), avg_mi, alpha=0.8, color='gold')
+                bars3 = ax3.bar(range(len(both_tasks)), avg_mi, alpha=0.8, color=colors['primary_blue'])
                 ax3.set_xticks(range(len(both_tasks)))
-                ax3.set_xticklabels(both_tasks['method'], rotation=45, ha='right')
+                self.set_colored_xticklabels(ax3, both_tasks['method'], rotation=45, ha='right')
                 ax3.set_ylabel('Average Mutual Information')
                 ax3.set_title('Overall Task Informativeness')
                 ax3.grid(True, alpha=0.3, axis='y')
@@ -2327,16 +2412,17 @@ class MetricsComparison:
         if 'mi_gender' in info_df.columns and 'mi_abnormal' in info_df.columns:
             comparison_data = info_df.dropna(subset=['mi_gender', 'mi_abnormal'])
             if not comparison_data.empty:
+                colors = self.get_professional_colors()
                 x_pos = np.arange(len(comparison_data))
                 width = 0.35
                 
                 bars4a = ax4.bar(x_pos - width/2, comparison_data['mi_gender'], width,
-                               label='Gender Task', alpha=0.8, color='lightblue')
+                               label='Gender Task', alpha=0.8, color=colors['primary_blue'])
                 bars4b = ax4.bar(x_pos + width/2, comparison_data['mi_abnormal'], width,
-                               label='Abnormal Task', alpha=0.8, color='lightcoral')
+                               label='Abnormal Task', alpha=0.8, color=colors['primary_purple'])
                 
                 ax4.set_xticks(x_pos)
-                ax4.set_xticklabels(comparison_data['method'], rotation=45, ha='right')
+                self.set_colored_xticklabels(ax4, comparison_data['method'], rotation=45, ha='right')
                 ax4.set_ylabel('Mutual Information')
                 ax4.set_title('Task-Specific Information Content')
                 ax4.legend()
@@ -2354,7 +2440,9 @@ class MetricsComparison:
             
         # Convert HSIC to independence score (1 - HSIC, so higher = more independent)
         independence_data['independence_score'] = 1 - independence_data['hsic_global_score']
-        independence_data = independence_data.sort_values('method_clean')
+        # Sort by canonical method order instead of alphabetical
+        ordered_methods = self.get_canonical_method_order(independence_data['method_clean'].tolist())
+        independence_data = independence_data.set_index('method_clean').reindex(ordered_methods).reset_index()
         
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
         fig.suptitle('Feature Independence/Disentanglement: Method Comparison', fontsize=18, fontweight='bold')
@@ -2363,9 +2451,10 @@ class MetricsComparison:
         x_pos = range(len(methods))
         
         # Plot 1: HSIC Global Score (lower = more independent)
-        bars1 = ax1.bar(x_pos, independence_data['hsic_global_score'], alpha=0.8, color='lightcoral')
+        colors = self.get_professional_colors()
+        bars1 = ax1.bar(x_pos, independence_data['hsic_global_score'], alpha=0.8, color=colors['primary_purple'])
         ax1.set_xticks(x_pos)
-        ax1.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax1, methods, rotation=45, ha='right')
         ax1.set_ylabel('HSIC Global Score')
         ax1.set_title('Feature Dependence (Lower = Better)')
         ax1.grid(True, alpha=0.3, axis='y')
@@ -2374,9 +2463,9 @@ class MetricsComparison:
                    f'{val:.4f}', ha='center', va='bottom', fontweight='bold')
         
         # Plot 2: Independence Score (higher = more independent)
-        bars2 = ax2.bar(x_pos, independence_data['independence_score'], alpha=0.8, color='lightgreen')
+        bars2 = ax2.bar(x_pos, independence_data['independence_score'], alpha=0.8, color=colors['primary_blue'])
         ax2.set_xticks(x_pos)
-        ax2.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax2, methods, rotation=45, ha='right')
         ax2.set_ylabel('Independence Score (1 - HSIC)')
         ax2.set_title('Feature Independence (Higher = Better)')
         ax2.grid(True, alpha=0.3, axis='y')
@@ -2390,7 +2479,7 @@ class MetricsComparison:
         bars3 = ax3.barh(range(len(ranked_data)), ranked_data['independence_score'], 
                         alpha=0.8, color=colors3)
         ax3.set_yticks(range(len(ranked_data)))
-        ax3.set_yticklabels(ranked_data['method_clean'])
+        self.set_colored_yticklabels(ax3, ranked_data['method_clean'])
         ax3.set_xlabel('Independence Score')
         ax3.set_title('Independence Ranking (Worst to Best)')
         ax3.grid(True, alpha=0.3, axis='x')
@@ -2404,9 +2493,9 @@ class MetricsComparison:
             efficiency = independence_data['active_units'] / independence_data['dim']
             structure_quality = independence_data['independence_score'] * efficiency
             
-            bars4 = ax4.bar(x_pos, structure_quality, alpha=0.8, color='gold')
+            bars4 = ax4.bar(x_pos, structure_quality, alpha=0.8, color=colors['primary_purple'])
             ax4.set_xticks(x_pos)
-            ax4.set_xticklabels(methods, rotation=45, ha='right')
+            self.set_colored_xticklabels(ax4, methods, rotation=45, ha='right')
             ax4.set_ylabel('Structure Quality Score')
             ax4.set_title('Feature Structure Quality\n(Independence × Efficiency)')
             ax4.grid(True, alpha=0.3, axis='y')
@@ -2429,7 +2518,9 @@ class MetricsComparison:
         if geometric_data.empty:
             return
             
-        geometric_data = geometric_data.sort_values('method_clean')
+        # Sort by canonical method order instead of alphabetical
+        ordered_methods = self.get_canonical_method_order(geometric_data['method_clean'].tolist())
+        geometric_data = geometric_data.set_index('method_clean').reindex(ordered_methods).reset_index()
         
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
         # Removed overall header (suptitle) for cleaner layout
@@ -2438,9 +2529,10 @@ class MetricsComparison:
         x_pos = range(len(methods))
         
         # Plot 1: Trustworthiness
-        bars1 = ax1.bar(x_pos, geometric_data['trustworthiness'], alpha=0.8, color='lightblue')
+        colors = self.get_professional_colors()
+        bars1 = ax1.bar(x_pos, geometric_data['trustworthiness'], alpha=0.8, color=colors['primary_blue'])
         ax1.set_xticks(x_pos)
-        ax1.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax1, methods, rotation=45, ha='right')
         ax1.set_ylabel('Trustworthiness Score')
         ax1.set_title('Neighborhood Preservation', pad=35)
         ax1.grid(True, alpha=0.3, axis='y')
@@ -2450,9 +2542,9 @@ class MetricsComparison:
                    f'{val:.3f}', ha='center', va='bottom', fontweight='bold')
         
         # Plot 2: Continuity
-        bars2 = ax2.bar(x_pos, geometric_data['continuity'], alpha=0.8, color='lightgreen')
+        bars2 = ax2.bar(x_pos, geometric_data['continuity'], alpha=0.8, color=colors['primary_purple'])
         ax2.set_xticks(x_pos)
-        ax2.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax2, methods, rotation=45, ha='right')
         ax2.set_ylabel('Continuity Score')
         ax2.set_title('Embedding Smoothness', pad=35)
         ax2.grid(True, alpha=0.3, axis='y')
@@ -2464,7 +2556,7 @@ class MetricsComparison:
         # Plot 3: Distance Correlation
         bars3 = ax3.bar(x_pos, geometric_data['dist_corr'], alpha=0.8, color='coral')
         ax3.set_xticks(x_pos)
-        ax3.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax3, methods, rotation=45, ha='right')
         ax3.set_ylabel('Distance Correlation')
         ax3.set_title('Distance Preservation', pad=35)
         ax3.grid(True, alpha=0.3, axis='y')
@@ -2477,9 +2569,9 @@ class MetricsComparison:
                          geometric_data['continuity'] + 
                          geometric_data['dist_corr']) / 3
         
-        bars4 = ax4.bar(x_pos, composite_score, alpha=0.8, color='gold')
+        bars4 = ax4.bar(x_pos, composite_score, alpha=0.8, color=colors['primary_blue'])
         ax4.set_xticks(x_pos)
-        ax4.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax4, methods, rotation=45, ha='right')
         ax4.set_ylabel('Composite Geometric Score')
         ax4.set_title('Overall Geometric Quality', pad=35)
         ax4.grid(True, alpha=0.3, axis='y')
@@ -2499,7 +2591,9 @@ class MetricsComparison:
         if clustering_data.empty:
             return
             
-        clustering_data = clustering_data.sort_values('method_clean')
+        # Sort by canonical method order instead of alphabetical
+        ordered_methods = self.get_canonical_method_order(clustering_data['method_clean'].tolist())
+        clustering_data = clustering_data.set_index('method_clean').reindex(ordered_methods).reset_index()
         
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
 
@@ -2508,9 +2602,10 @@ class MetricsComparison:
         x_pos = range(len(methods))
         
         # Plot 1: Silhouette Score
-        bars1 = ax1.bar(x_pos, clustering_data['silhouette'], alpha=0.8, color='lightblue')
+        colors = self.get_professional_colors()
+        bars1 = ax1.bar(x_pos, clustering_data['silhouette'], alpha=0.8, color=colors['primary_blue'])
         ax1.set_xticks(x_pos)
-        ax1.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax1, methods, rotation=45, ha='right')
         ax1.set_ylabel('Silhouette Score')
         ax1.set_title('Cluster Separation (Higher = Better)', pad=35)
         ax1.grid(True, alpha=0.3, axis='y')
@@ -2519,9 +2614,9 @@ class MetricsComparison:
                    f'{val:.3f}', ha='center', va='bottom', fontweight='bold')
         
         # Plot 2: Davies-Bouldin Index (lower = better; plot raw values)
-        bars2 = ax2.bar(x_pos, clustering_data['davies_bouldin'], alpha=0.8, color='lightgreen')
+        bars2 = ax2.bar(x_pos, clustering_data['davies_bouldin'], alpha=0.8, color=colors['primary_purple'])
         ax2.set_xticks(x_pos)
-        ax2.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax2, methods, rotation=45, ha='right')
         ax2.set_ylabel('Davies-Bouldin Index')
         ax2.set_title('Cluster Compactness (Lower = Better)', pad=35)
         ax2.grid(True, alpha=0.3, axis='y')
@@ -2532,7 +2627,7 @@ class MetricsComparison:
         # Plot 3: Calinski-Harabasz Index
         bars3 = ax3.bar(x_pos, clustering_data['calinski_harabasz'], alpha=0.8, color='coral')
         ax3.set_xticks(x_pos)
-        ax3.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax3, methods, rotation=45, ha='right')
         ax3.set_ylabel('Calinski-Harabasz Index')
         ax3.set_title('Variance Ratio (Higher = Better)', pad=35)
         ax3.grid(True, alpha=0.3, axis='y')
@@ -2548,9 +2643,9 @@ class MetricsComparison:
         
         composite_score = (sil_norm + db_norm + ch_norm) / 3
         
-        bars4 = ax4.bar(x_pos, composite_score, alpha=0.8, color='gold')
+        bars4 = ax4.bar(x_pos, composite_score, alpha=0.8, color=colors['primary_blue'])
         ax4.set_xticks(x_pos)
-        ax4.set_xticklabels(methods, rotation=45, ha='right')
+        self.set_colored_xticklabels(ax4, methods, rotation=45, ha='right')
         ax4.set_ylabel('Composite Clustering Score')
         ax4.set_title('Overall Clustering Quality', pad=35)
         ax4.grid(True, alpha=0.3, axis='y')
@@ -2613,7 +2708,7 @@ class MetricsComparison:
                     bars1 = ax1.barh(range(len(sorted_indep)), sorted_indep['independence_score'], 
                                    color=colors1, alpha=0.8)
                     ax1.set_yticks(range(len(sorted_indep)))
-                    ax1.set_yticklabels(sorted_indep['method'])
+                    self.set_colored_yticklabels(ax1, sorted_indep['method'])
                     ax1.set_xlabel('Independence Score (1 - HSIC)')
                     ax1.set_title('Feature Independence\\n(Higher = More Independent)', fontweight='bold')
                     ax1.grid(True, alpha=0.3, axis='x')
@@ -2634,7 +2729,7 @@ class MetricsComparison:
                     bars2 = ax2.barh(range(len(sorted_mi)), sorted_mi['mi_average'], 
                                    color=colors2, alpha=0.8)
                     ax2.set_yticks(range(len(sorted_mi)))
-                    ax2.set_yticklabels(sorted_mi['method'])
+                    self.set_colored_yticklabels(ax2, sorted_mi['method'])
                     ax2.set_xlabel('Average MI Score')
                     ax2.set_title('Feature Informativeness\\n(Higher = More Informative)', fontweight='bold')
                     ax2.grid(True, alpha=0.3, axis='x')
@@ -2655,7 +2750,7 @@ class MetricsComparison:
                     bars3 = ax3.barh(range(len(sorted_eff)), sorted_eff['info_efficiency'], 
                                    color=colors3, alpha=0.8)
                     ax3.set_yticks(range(len(sorted_eff)))
-                    ax3.set_yticklabels(sorted_eff['method'])
+                    self.set_colored_yticklabels(ax3, sorted_eff['method'])
                     ax3.set_xlabel('Information Efficiency')
                     ax3.set_title('Information Efficiency\\n(Independence × Informativeness)', fontweight='bold')
                     ax3.grid(True, alpha=0.3, axis='x')
@@ -2698,13 +2793,14 @@ class MetricsComparison:
                     ax4.grid(True, alpha=0.3)
                     
                     # Add quadrant labels
+                    colors = self.get_professional_colors()
                     ax4.axhline(y=np.median(scatter_data['mi_average']), color='red', linestyle='--', alpha=0.5)
                     ax4.axvline(x=np.median(scatter_data['independence_score']), color='red', linestyle='--', alpha=0.5)
                     
                     ax4.text(0.95, 0.95, 'High Independence\\nHigh Informativeness', transform=ax4.transAxes,
-                           ha='right', va='top', bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.7))
+                           ha='right', va='top', bbox=dict(boxstyle='round', facecolor=colors['primary_blue'], alpha=0.7))
                     ax4.text(0.05, 0.05, 'Low Independence\\nLow Informativeness', transform=ax4.transAxes,
-                           ha='left', va='bottom', bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.7))
+                           ha='left', va='bottom', bbox=dict(boxstyle='round', facecolor=colors['primary_purple'], alpha=0.7))
                     
                     # Add colorbar
                     cbar = plt.colorbar(scatter, ax=ax4)
@@ -2731,7 +2827,7 @@ class MetricsComparison:
                                      label=f'{task.title()} Task', alpha=0.8, color=colors_tasks[i])
                     
                     ax5.set_xticks(x_pos + width * (len(tasks_with_data) - 1) / 2)
-                    ax5.set_xticklabels(task_data['method'], rotation=45, ha='right')
+                    self.set_colored_xticklabels(ax5, task_data['method'], rotation=45, ha='right')
                     ax5.set_ylabel('Mutual Information')
                     ax5.set_title('Task-Specific Informativeness', fontweight='bold')
                     ax5.legend()
@@ -2761,7 +2857,7 @@ class MetricsComparison:
                             bottom_values += task_values
                     
                     ax6.set_xticks(positions)
-                    ax6.set_xticklabels(total_data['method'], rotation=45, ha='right')
+                    self.set_colored_xticklabels(ax6, total_data['method'], rotation=45, ha='right')
                     ax6.set_ylabel('Total Mutual Information')
                     ax6.set_title('Total Information Content by Task Contribution', fontweight='bold')
                     ax6.legend()
@@ -2839,20 +2935,33 @@ class MetricsComparison:
             k = min(k, int(n_components))
         if k < 1:
             return 0.0
-        cca = CCA(n_components=k, max_iter=500)
-        Xc = self._center_rows(Z1)
-        Yc = self._center_rows(Z2)
         try:
-            Xc, Yc = cca.fit_transform(Xc, Yc)
+            cca = CCA(n_components=k, max_iter=500)
+            Xc = self._center_rows(Z1)
+            Yc = self._center_rows(Z2)
+            
+            # Fit CCA and get canonical correlations directly
+            cca.fit(Xc, Yc)
+            
+            # Transform to get canonical variables
+            X_c, Y_c = cca.transform(Xc, Yc)
+            
+            # Compute correlations between canonical variable pairs
+            # (this gives us the actual canonical correlations)
             corrs = []
-            for i in range(Xc.shape[1]):
-                x = Xc[:, i]
-                y = Yc[:, i]
+            for i in range(X_c.shape[1]):
+                x = X_c[:, i]
+                y = Y_c[:, i]
                 if np.std(x) < 1e-12 or np.std(y) < 1e-12:
                     corrs.append(0.0)
                 else:
-                    corrs.append(float(np.corrcoef(x, y)[0, 1]))
-            return float(np.max(np.abs(corrs))) if corrs else 0.0
+                    corr = np.corrcoef(x, y)[0, 1]
+                    if np.isfinite(corr):
+                        corrs.append(abs(float(corr)))
+                    else:
+                        corrs.append(0.0)
+            
+            return float(max(corrs)) if corrs else 0.0
         except:
             return 0.0
 
@@ -2892,13 +3001,12 @@ class MetricsComparison:
         try:
             A, B = Z1, Z2
             if A.shape[1] != B.shape[1]:
-                k = min(A.shape[1], B.shape[1])
-                if k < 1:
-                    return 0.0
-                p1 = PCA(n_components=k, random_state=42)
-                p2 = PCA(n_components=k, random_state=42)
-                A = p1.fit_transform(A)
-                B = p2.fit_transform(B)
+                # Handle dimension mismatch by padding smaller with zeros
+                max_dim = max(A.shape[1], B.shape[1])
+                if A.shape[1] < max_dim:
+                    A = np.pad(A, ((0, 0), (0, max_dim - A.shape[1])), mode='constant')
+                if B.shape[1] < max_dim:
+                    B = np.pad(B, ((0, 0), (0, max_dim - B.shape[1])), mode='constant')
             _, _, disparity = procrustes(A, B)
             return float(disparity)
         except Exception:
@@ -3172,7 +3280,7 @@ class MetricsComparison:
         else:
             print(f"  → Using sequential processing")
         
-        methods_list = sorted(list(method_data.keys()))  # Ensure consistent alphabetical order
+        methods_list = self.get_canonical_method_order(list(method_data.keys()))  # Use canonical order
         
         # Generate list of pairs to compute
         pairs_to_compute = []
@@ -3369,9 +3477,14 @@ class MetricsComparison:
             # Remove axis descriptors for cleaner look
             ax.set_xlabel('')
             ax.set_ylabel('')
-            # Rotate labels for better readability with scientific styling
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right', fontsize=9)
-            ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=9)
+            # Rotate labels for better readability with scientific styling and color coding
+            # Use the actual pivot_matrix order (after reindexing)
+            current_row_methods = pivot_matrix.index.tolist()
+            current_col_methods = pivot_matrix.columns.tolist()
+            
+            # Set colored tick labels using the current order
+            self.set_colored_xticklabels(ax, current_col_methods, rotation=45, ha='right', fontsize=9)
+            self.set_colored_yticklabels(ax, current_row_methods, rotation=0, fontsize=9)
             
             # Add subtle border
             for spine in ax.spines.values():
@@ -3438,7 +3551,7 @@ class MetricsComparison:
             
             # Calculate average similarity for each method (excluding self-comparison)
             avg_similarities = []
-            methods = sorted(metric_data['method1_clean'].unique())  # Ensure consistent alphabetical order
+            methods = self.get_canonical_method_order(metric_data['method1_clean'].unique())  # Use canonical order
             
             for method in methods:
                 # Get similarities where this method is involved (excluding self)
@@ -3463,7 +3576,7 @@ class MetricsComparison:
             bars = ax.barh(range(len(methods_sorted)), scores_sorted, color=colors, alpha=0.8)
             
             ax.set_yticks(range(len(methods_sorted)))
-            ax.set_yticklabels(methods_sorted)
+            self.set_colored_yticklabels(ax, methods_sorted)
             ax.set_xlabel(f'Average {metric.replace("_", " ").title()}')
             ax.set_title(f'Method Rankings by {metric.replace("_", " ").title()}', fontweight='bold')
             ax.grid(True, alpha=0.3, axis='x')
@@ -3560,13 +3673,14 @@ class MetricsComparison:
             ]
             
             if not metric_data.empty:
+                colors = self.get_professional_colors()
                 values = metric_data['value'].values
                 
                 # Create histogram
-                ax.hist(values, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
+                ax.hist(values, bins=20, alpha=0.7, color=colors['primary_blue'], edgecolor='black')
                 ax.axvline(np.mean(values), color='red', linestyle='--', linewidth=2, 
                           label=f'Mean: {np.mean(values):.3f}')
-                ax.axvline(np.median(values), color='orange', linestyle='--', linewidth=2,
+                ax.axvline(np.median(values), color=colors['primary_blue'], linestyle='--', linewidth=2,
                           label=f'Median: {np.median(values):.3f}')
                 
                 ax.set_xlabel(f'{metric.replace("_", " ").title()} Value')
@@ -3622,17 +3736,18 @@ class MetricsComparison:
         """Create stacked bar chart for total vs active dimensions."""
         fig, ax = plt.subplots(figsize=(12, 8))
         
+        colors = self.get_professional_colors()
         inactive_units = data['dim'] - data['active_units']
         
         # Create stacked bars
         p1 = ax.bar(range(len(data)), data['active_units'], 
-                   label='Active Units', alpha=0.8, color='lightgreen')
+                   label='Active Units', alpha=0.8, color=colors['primary_blue'])
         p2 = ax.bar(range(len(data)), inactive_units, 
                    bottom=data['active_units'], label='Inactive Units', 
-                   alpha=0.8, color='lightcoral')
+                   alpha=0.8, color=colors['primary_purple'])
         
         ax.set_xticks(range(len(data)))
-        ax.set_xticklabels(data['method_clean'], rotation=45, ha='right')
+        self.set_colored_xticklabels(ax, data['method_clean'], rotation=45, ha='right')
         ax.set_ylabel('Number of Dimensions')
         ax.set_title('Active vs Inactive Dimensions by Method', fontsize=16, fontweight='bold')
         ax.legend()
@@ -3673,8 +3788,9 @@ class MetricsComparison:
                     fontsize=16, fontweight='bold')
         
         # Add reference lines
+        colors = self.get_professional_colors()
         ax.axhline(y=100, color='red', linestyle='--', alpha=0.5, label='Perfect Efficiency')
-        ax.axhline(y=50, color='orange', linestyle='--', alpha=0.5, label='50% Efficiency')
+        ax.axhline(y=50, color=colors['primary_blue'], linestyle='--', alpha=0.5, label='50% Efficiency')
         ax.legend()
         ax.grid(True, alpha=0.3)
         
@@ -3698,7 +3814,7 @@ class MetricsComparison:
                           width, label='99% Variance', alpha=0.8, color='lightsteelblue')
             
             ax.set_xticks(x_pos)
-            ax.set_xticklabels(methods_with_pca['method_clean'], rotation=45, ha='right')
+            self.set_colored_xticklabels(ax, methods_with_pca['method_clean'], rotation=45, ha='right')
             ax.set_ylabel('Effective Dimensions')
             ax.set_title('PCA Effective Dimensionality Comparison', fontsize=16, fontweight='bold')
             ax.legend()
@@ -3749,7 +3865,7 @@ class MetricsComparison:
         ax.scatter(sorted_data[mi_col], y_pos, color=colors, s=120, alpha=0.9, zorder=5)
         
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(sorted_data['method_clean'])
+        self.set_colored_yticklabels(ax, sorted_data['method_clean'])
         ax.set_xlabel('Mean Mutual Information')
         ax.set_title(f'Feature Informativeness for {task.title()} Task', 
                     fontsize=16, fontweight='bold')
@@ -3780,16 +3896,17 @@ class MetricsComparison:
             
             fig, ax = plt.subplots(figsize=(12, 8))
             
+            colors = self.get_professional_colors()
             x_pos = np.arange(len(mi_df))
             width = 0.35
             
             bars1 = ax.bar(x_pos - width/2, mi_df['gender'], width, 
-                          label='Gender Task', alpha=0.8, color='lightblue')
+                          label='Gender Task', alpha=0.8, color=colors['primary_blue'])
             bars2 = ax.bar(x_pos + width/2, mi_df['abnormal'], width, 
-                          label='Abnormal Task', alpha=0.8, color='lightcoral')
+                          label='Abnormal Task', alpha=0.8, color=colors['primary_purple'])
             
             ax.set_xticks(x_pos)
-            ax.set_xticklabels(mi_df['method'], rotation=45, ha='right')
+            self.set_colored_xticklabels(ax, mi_df['method'], rotation=45, ha='right')
             ax.set_ylabel('Mean Mutual Information')
             ax.set_title('Feature Informativeness Comparison Across Tasks', 
                         fontsize=16, fontweight='bold')
@@ -4015,7 +4132,7 @@ def main():
     small_aggregated = ["tuh-ctm_cma_avg", "tuh-ctm_nn_avg", "tuh-hopf_avg", "tuh-jr_avg", "tuh-wong_wang_avg", "tuh-pca_avg", "tuh-psd_ae_avg"]
 
    
-    medium_unrestricted = ["tuh-ctm_nn_pc","tuh-hopf_pc", "tuh-jr_pc", "tuh-pca_pc", "tuh-c22", "tuh-psd_ae_pc",  "tuh-eegnet"]
+    medium_unrestricted = ["tuh-ctm_nn_pc","tuh-hopf_pc", "tuh-jr_pc", "tuh-c22", "tuh-pca_pc", "tuh-psd_ae_pc",  "tuh-eegnet"]
 
 
 

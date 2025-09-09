@@ -89,21 +89,35 @@ def cca_maxcorr(Z1: np.ndarray, Z2: np.ndarray, n_components: Optional[int] = No
         k = min(k, int(n_components))
     if k < 1:
         return 0.0
-    cca = CCA(n_components=k, max_iter=500)
-    Xc = _center_rows(Z1)
-    Yc = _center_rows(Z2)
-    Xc, Yc = cca.fit_transform(Xc, Yc)
-    # Each component pair is maximally correlated; take the largest
-    # Compute per-component Pearson corr
-    corrs = []
-    for i in range(Xc.shape[1]):
-        x = Xc[:, i]
-        y = Yc[:, i]
-        if np.std(x) < 1e-12 or np.std(y) < 1e-12:
-            corrs.append(0.0)
-        else:
-            corrs.append(float(np.corrcoef(x, y)[0, 1]))
-    return float(np.max(np.abs(corrs))) if corrs else 0.0
+    try:
+        cca = CCA(n_components=k, max_iter=500)
+        Xc = _center_rows(Z1)
+        Yc = _center_rows(Z2)
+        
+        # Fit CCA and get canonical correlations directly
+        cca.fit(Xc, Yc)
+        
+        # Transform to get canonical variables
+        X_c, Y_c = cca.transform(Xc, Yc)
+        
+        # Compute correlations between canonical variable pairs
+        # (this gives us the actual canonical correlations)
+        corrs = []
+        for i in range(X_c.shape[1]):
+            x = X_c[:, i]
+            y = Y_c[:, i]
+            if np.std(x) < 1e-12 or np.std(y) < 1e-12:
+                corrs.append(0.0)
+            else:
+                corr = np.corrcoef(x, y)[0, 1]
+                if np.isfinite(corr):
+                    corrs.append(abs(float(corr)))
+                else:
+                    corrs.append(0.0)
+        
+        return float(max(corrs)) if corrs else 0.0
+    except Exception:
+        return 0.0
 
 
 def distance_geometry_corr(Z1: np.ndarray, Z2: np.ndarray) -> float:
@@ -147,14 +161,12 @@ def procrustes_disparity(Z1: np.ndarray, Z2: np.ndarray) -> float:
     try:
         A, B = Z1, Z2
         if A.shape[1] != B.shape[1]:
-            k = min(A.shape[1], B.shape[1])
-            if k < 1:
-                return 0.0
-            # Project both to common dimension via PCA fitted independently
-            p1 = PCA(n_components=k, random_state=42)
-            p2 = PCA(n_components=k, random_state=42)
-            A = p1.fit_transform(A)
-            B = p2.fit_transform(B)
+            # Handle dimension mismatch by padding smaller with zeros
+            max_dim = max(A.shape[1], B.shape[1])
+            if A.shape[1] < max_dim:
+                A = np.pad(A, ((0, 0), (0, max_dim - A.shape[1])), mode='constant')
+            if B.shape[1] < max_dim:
+                B = np.pad(B, ((0, 0), (0, max_dim - B.shape[1])), mode='constant')
         _, _, disparity = procrustes(A, B)
         return float(disparity)
     except Exception:

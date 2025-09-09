@@ -1,0 +1,17 @@
+COMPLETE COMPUTATIONAL BRAIN MODELS COMPARISON RESULTS
+============================================================
+
+Number of samples tested: 5
+Models tested: ctm_cma_avg, ctm_nn_avg, hopf_avg, jr_avg, wong_wang_avg, ctm_nn_pc, hopf_pc, jr_pc
+Now includes PSD computations for ALL models!
+
+Model           Avg Time (s)    Avg R²     Avg MSE      Success Rate
+--------------------------------------------------------------------------------
+ctm_cma_avg     6.27            0.774      0.226        100.0%      
+ctm_nn_avg      0.00            0.806      0.194        100.0%      
+hopf_avg        0.28            0.575      0.425        100.0%      
+jr_avg          2.33            0.920      0.080        100.0%      
+wong_wang_avg   7.33            -0.946     1.946        100.0%      
+ctm_nn_pc       0.00            0.777      0.223        100.0%      
+hopf_pc         5.20            0.702      0.298        100.0%      
+jr_pc           47.17           0.910      0.090        100.0%      

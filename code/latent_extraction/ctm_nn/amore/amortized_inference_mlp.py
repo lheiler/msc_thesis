@@ -247,12 +247,12 @@ def train(
 
     print(f"[INFO] Generating {num_sims} simulations …")
     theta_np, x_np = generate_dataset(num_sims)
-    print(theta_np.shape)
-    print(x_np.shape)
+    # Validate input shapes
+    print(f"Loaded training data: theta {theta_np.shape}, psd {x_np.shape}")
     
-    # Debug: Check for NaN or inf values
-    print(f"[DEBUG] Input PSD stats - min: {np.min(x_np):.2e}, max: {np.max(x_np):.2e}, mean: {np.mean(x_np):.2e}")
-    print(f"[DEBUG] Input PSD has NaN: {np.any(np.isnan(x_np))}, has inf: {np.any(np.isinf(x_np))}")
+    # Input validation: Check for NaN or inf values
+    if np.any(np.isnan(x_np)) or np.any(np.isinf(x_np)):
+        raise ValueError("Input PSD contains NaN or infinite values")
 
     # Shuffle & split indices
     rng = np.random.default_rng(seed=42)
@@ -317,11 +317,9 @@ def train(
             # Use PSD reconstruction loss instead of parameter MSE
             loss = loss_fn(pred, xb)
             
-            # Check for NaN loss
+            # Check for NaN loss and skip problematic batches
             if torch.isnan(loss) or torch.isinf(loss):
-                print(f"[WARNING] NaN/Inf loss detected: {loss.item()}")
-                print(f"[DEBUG] pred range: [{pred.min().item():.2e}, {pred.max().item():.2e}]")
-                print(f"[DEBUG] xb range: [{xb.min().item():.2e}, {xb.max().item():.2e}]")
+                print(f"⚠️  Skipping batch with invalid loss: {loss.item()}")
                 continue
                 
             loss.backward()

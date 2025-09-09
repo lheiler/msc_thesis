@@ -4,9 +4,9 @@ Active Units (Higher Better),c22,394.0000,7
 Silhouette (Higher Better),c22,0.3158,7
 Davies Bouldin (Lower Better),ctm_nn_pc,1.1896,7
 Calinski Harabasz (Higher Better),ctm_nn_pc,2462.4688,7
-Trustworthiness (Higher Better),ctm_nn_pc,0.9122,7
-Continuity (Higher Better),ctm_nn_pc,0.9769,7
-Dist Corr (Higher Better),ctm_nn_pc,0.9396,7
+Trustworthiness (Higher Better),psd_ae_pc,0.9657,7
+Continuity (Higher Better),pca_pc,0.9870,7
+Dist Corr (Higher Better),pca_pc,0.9581,7
 Variance Entropy (Higher Better),psd_ae_pc,4.9512,7
 Effective Dim Variance (Higher Better),psd_ae_pc,141.3449,7
 Variance Concentration (Higher = More Concentrated),eegnet,0.9916,7

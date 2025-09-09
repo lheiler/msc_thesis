@@ -126,7 +126,7 @@ def main():
 
     
     # ------------------------------------------------------------------
-    # 6) Latent evaluation (disabled)
+    # 6) Latent evaluation
     # ------------------------------------------------------------------
     print("Evaluating latent features …")
     latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
