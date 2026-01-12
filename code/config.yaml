@@ -10,15 +10,15 @@
 #psd_ae_channel, psd_ae_ch
 #ctm_cma_pc, ctm_cma_avg
 
-method: wong_wang_avg
+method: eegnet
 
 
 # Dataset corpus to use: 'tuh' or 'harvard'
-data_corp: tuh
+data_corp: harvard
 
 paths:
   # Path to training data
-  data_path: "~/thesis/Datasets/tuh-eeg-ab-clean"
+  data_path: "/rds/general/user/lrh24/home/thesis/Datasets/harvard-eeg-clean"
   # Directory where all results will be written
   results_root: "Results"
 
