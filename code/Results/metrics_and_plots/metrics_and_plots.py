@@ -3426,8 +3426,8 @@ class MetricsComparison:
         """Create comprehensive similarity matrices visualization with hierarchical clustering."""
         # Determine grid size (3 rows x 2 cols instead of 2x3)
         n_metrics = len(metrics)
-        rows = 3
-        cols = 2
+        rows = 2
+        cols = 3
         
         fig = plt.figure(figsize=(6*cols, 5*rows))
         

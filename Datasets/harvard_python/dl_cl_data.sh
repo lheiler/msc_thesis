@@ -16,5 +16,4 @@ source ~/env_thesis/bin/activate
 cd /rds/general/user/lrh24/home/thesis/Datasets/harvard_python
 
 # ======= Launch your script =======
-#python download_script_2000_abnormal.py
-python clean_data.py
+python download_script_500_age.py

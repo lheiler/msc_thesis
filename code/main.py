@@ -20,6 +20,7 @@ from pathlib import Path
 import pickle
 
 
+#todo: add timer for how long feature extraction takes
 
 
 def main():
@@ -129,7 +130,7 @@ def main():
     # 6) Latent evaluation
     # ------------------------------------------------------------------
     print("Evaluating latent features …")
-    latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
+    #latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
     
     
     # ------------------------------------------------------------------
@@ -202,8 +203,6 @@ def main():
         return y_tensor
 
     for task_idx in range(num_tasks):
-        if task_idx == 1:
-            continue
         # Resolve task type/name and announce
         task_type, task_name = task_map.get(task_idx, ("classification", f"task_{task_idx+1}"))
         print(f"🔹 Task {task_idx+1}: hardcoded as {task_type} → '{task_name}'")
