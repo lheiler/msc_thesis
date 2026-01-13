@@ -1,5 +1,5 @@
 from data_preprocessing import data_loading as dl
-from model_training.optuna_search import tune_hyperparameters
+from evaluation.model_training.optuna_search import tune_hyperparameters
 import evaluation.evaluation as eval
 import latent_extraction.extractor as extractor
 import numpy as np
@@ -11,8 +11,8 @@ import json
 import torch
 import argparse
 import yaml
-from utils.latent_loading import load_latent_parameters_array
-from utils.data_metrics import compute_dataset_stats
+from data_preprocessing.cache_loading import load_latent_parameters_array
+from evaluation.data_metrics import compute_dataset_stats
 from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.decomposition import PCA
 import evaluation.metrix as metrics
@@ -32,7 +32,7 @@ def main():
     # 1) Parse CLI arguments and load configuration
     # ------------------------------------------------------------------
     parser = argparse.ArgumentParser(description="EEG classification pipeline")
-    parser.add_argument("--config", type=str, default="config.yaml", help="Path to YAML configuration file")
+    parser.add_argument("--config", type=str, default="configs/default.yaml", help="Path to YAML configuration file")
     parser.add_argument("--reset", action="store_true", help="Reset the pipeline")
     parser.add_argument("--method", type=str, help="Method to use for latent feature extraction")
     args = parser.parse_args()

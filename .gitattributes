@@ -14,3 +14,10 @@ code/utils/headers.txt filter=lfs diff=lfs merge=lfs -text
 /code/Results/tuh-pca_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
 /code/Results/tuh-psd_ae_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
 /code/Results/tuh-jr_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
+/code/Results/archive/final_result_thesis/tuh-c22/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
+/code/Results/archive/final_result_thesis/tuh-ctm_nn_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
+/code/Results/archive/final_result_thesis/tuh-eegnet/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
+/code/Results/archive/final_result_thesis/tuh-hopf_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
+/code/Results/archive/final_result_thesis/tuh-jr_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
+/code/Results/archive/final_result_thesis/tuh-pca_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
+/code/Results/archive/final_result_thesis/tuh-psd_ae_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text

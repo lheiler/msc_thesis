@@ -6,7 +6,7 @@ import copy
 import random
 import numpy as np
 
-from model_training.single_task_model import SingleTaskModel, train as train_single_task
+from evaluation.model_training.single_task_model import SingleTaskModel, train as train_single_task
 
 __all__ = ["tune_hyperparameters"]
 

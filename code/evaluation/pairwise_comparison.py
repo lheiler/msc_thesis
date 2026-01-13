@@ -8,7 +8,7 @@ from sklearn.cross_decomposition import CCA
 from sklearn.decomposition import PCA
 from scipy.spatial import procrustes
 
-from utils.latent_loading import load_latent_parameters_array
+from data_preprocessing.cache_loading import load_latent_parameters_array
 from typing import Tuple, List
 
 
