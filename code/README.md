@@ -36,8 +36,8 @@ Research-grade, end-to-end pipeline for EEG latent-feature extraction and downst
 code/
 ├── data_preprocessing/      # TUH .fif loader
 ├── latent_extraction/       # All extractors and models
-├── model_training/          # Optuna search + single-task head
-├── evaluation/              # Latent metrics, plots, reporting
+├── evaluation/              # Latent metrics, reporting, model training
+│   ├── model_training/      # Optuna search + single-task head
 ├── utils/                   # Cleaning, PSD, dataset utilities
 ├── Results/                 # Auto-generated per-run outputs
 ├── configs/                 # Example (legacy) configs

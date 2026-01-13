@@ -130,11 +130,39 @@ def trim_zero_edges(raw: mne.io.BaseRaw, eps: float = 0.0, min_keep_sec: float =
 
 
 def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str]) -> mne.io.BaseRaw:
-    """Pick and order channels to canonical set; raise if any are missing."""
-    missing = [ch for ch in canonical if ch not in raw.ch_names]
-    if missing:
-        raise ValueError(f"🛑 [canonical] missing canonical channels: {missing}")
+    """Pick and order channels to canonical set; interpolate if any are missing."""
+    # Ensure current channels have locations
+    _safe_set_montage(raw, 'standard_1020')
     
+    missing = [ch for ch in canonical if ch not in raw.ch_names]
+    
+    if missing:
+        # Interpolation safety check: Ensure we have enough data to interpolate from
+        # TUH/LEMON should have >10 channels usually.
+        eeg_picks = mne.pick_types(raw.info, eeg=True)
+        if len(eeg_picks) < 10:
+             raise ValueError(f"🛑 [canonical] too few EEG channels ({len(eeg_picks)}) to interpolate missing {missing}")
+             
+        print(f"🟠 [canonical] missing {missing}; attempting interpolation from {len(eeg_picks)} channels")
+        
+        # Add missing channels as zeroed data
+        for ch in missing:
+            dummy_info = mne.create_info([ch], raw.info['sfreq'], 'eeg')
+            dummy_data = np.zeros((1, len(raw)))
+            dummy_raw = mne.io.RawArray(dummy_data, dummy_info, verbose=False)
+            raw.add_channels([dummy_raw])
+            raw.info['bads'].append(ch)
+            
+        # Refresh montage for new channels
+        _safe_set_montage(raw, 'standard_1020')
+        
+        # Interpolate
+        try:
+            raw.interpolate_bads(reset_bads=True, verbose=False)
+        except Exception as e:
+            raise ValueError(f"🛑 [canonical] interpolation failed for {missing}: {e}")
+    
+    # Final pick to order correctly
     raw.pick(canonical, verbose=False)
     _safe_set_montage(raw, 'standard_1020')
     return raw
