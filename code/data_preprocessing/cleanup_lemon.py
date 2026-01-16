@@ -275,10 +275,10 @@ def load_data_lemon(data_path, save_path, metadata_path, id_map_path, sfreq=128,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", default="/rds/general/user/lrh24/ephemeral/LEMON/EEG_Preprocessed")
-    parser.add_argument("--metadata_path", default="/rds/general/user/lrh24/ephemeral/LEMON/Participants_MPILMBB_LEMON.csv")
-    parser.add_argument("--id_map_path", default="/rds/general/user/lrh24/ephemeral/LEMON/name_match.csv")
-    parser.add_argument("--save_path", default="/rds/general/user/lrh24/home/thesis/Datasets/lemon")
+    parser.add_argument("--data_path", default="/home/lheiler/data/LEMON/EEG_Preprocessed")
+    parser.add_argument("--metadata_path", default="/home/lheiler/data/LEMON/Participants_MPILMBB_LEMON.csv")
+    parser.add_argument("--id_map_path", default="/home/lheiler/data/LEMON/name_match.csv")
+    parser.add_argument("--save_path", default="/home/lheiler/thesis/Datasets/lemo")
     parser.add_argument("--n_jobs", type=int, default=16)
     args = parser.parse_args()
     
