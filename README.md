@@ -1,5 +1,6 @@
-# MSc Thesis: [Your Thesis Title]
-**Author:** [Your Name]  
+# MSc Thesis: Evaluating Computational Brain Models as Dimensionality Reduction Methods for EEG
+**Author:** Lorenz Heiler
+
 **Institution:** Imperial College London
 
 ## Project Overview
