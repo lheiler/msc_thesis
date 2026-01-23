@@ -30,11 +30,14 @@ class SingleTaskModel(nn.Module):
     input_dim : int
         Dimensionality of the latent feature vector.
     output_type : {"classification", "regression"}
-        Decides final activation as well as default loss (BCE vs. MSE).
+        Decides final activation as well as default loss (BCE/CE vs. MSE).
     hidden_dims : tuple[int, ...]
         Sizes of hidden layers for the MLP trunk.
     dropout : float
         Dropout probability applied after every hidden layer.
+    num_classes : int, optional
+        Number of output units. Default is 1 (binary classification or regression).
+        If > 1, treating as multi-class classification.
     """
 
     def __init__(
@@ -43,6 +46,7 @@ class SingleTaskModel(nn.Module):
         output_type: str = "classification",
         hidden_dims: Tuple[int, ...] = (512, 256, 128, 64),
         dropout: float = 0.2,
+        num_classes: int = 1,
     ) -> None:
         super().__init__()
         if output_type not in {"classification", "regression"}:
@@ -83,7 +87,9 @@ class SingleTaskModel(nn.Module):
     # -----------------------------------------------------------------
     def get_criterion(self, pos_weight: torch.Tensor = None):
         if self.output_type == "classification":
-            return nn.BCEWithLogitsLoss()
+            if self.num_classes > 1:
+                return nn.CrossEntropyLoss()
+            return nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         else:
             return nn.MSELoss()
 
@@ -96,6 +102,7 @@ class SingleTaskModel(nn.Module):
         output_type: Literal["classification", "regression"] | None = None,
         device: Union[str, torch.device] = "cpu",
         plot_dir: str | None = None,
+        ordinal_sigma: float | None = None,
     ) -> Dict[str, Any]:
         """Compute metrics on *dataloader* using *this* model.
 
@@ -114,7 +121,8 @@ class SingleTaskModel(nn.Module):
         self.eval()
 
         criterion = (
-            nn.BCEWithLogitsLoss() if output_type == "classification" else nn.MSELoss()
+            nn.CrossEntropyLoss() if (output_type == "classification" and self.num_classes > 1) 
+            else (nn.BCEWithLogitsLoss() if output_type == "classification" else nn.MSELoss())
         )
 
         total_loss = 0.0
@@ -122,6 +130,7 @@ class SingleTaskModel(nn.Module):
 
         # Accumulators -------------------------------------------------
         correct_cls = 0
+        correct_adj = 0 # Off-by-one accuracy for ordinal tasks
         mae_sum = 0.0
         sqe_sum = 0.0
         pred_positive = 0  # Number of times model predicts label 1 / "positive"
@@ -136,19 +145,30 @@ class SingleTaskModel(nn.Module):
                 x, y = x.to(device).float(), y.to(device).float()
                 y_pred = self(x).squeeze(-1)
 
-                loss = criterion(y_pred, y)
+                target = y.long() if (output_type == "classification" and self.num_classes > 1) else y
+                loss = criterion(y_pred, target)
                 total_loss += loss.item() * x.size(0)
                 total += x.size(0)
 
                 if output_type == "classification":
-                    probs = torch.sigmoid(y_pred)
-                    preds = (probs >= 0.5).float()
+                    if self.num_classes > 1:
+                        probs = torch.softmax(y_pred, dim=-1)
+                        preds = torch.argmax(probs, dim=-1).float()
+                        
+                        # Adjacent accuracy (Top-2 adjacent)
+                        if self.num_classes > 1:
+                            correct_adj += (torch.abs(preds - y) <= 1).sum().item()
+                    else:
+                        probs = torch.sigmoid(y_pred)
+                        preds = (probs >= 0.5).float()
+                    
                     correct_cls += (preds == y).sum().item()
                     pred_positive += preds.sum().item()
 
                     # collect for plots/metrics
                     y_true_all.extend(y.detach().cpu().numpy().astype(float).tolist())
-                    y_prob_all.extend(probs.detach().cpu().numpy().astype(float).tolist())
+                    if self.num_classes == 1:
+                        y_prob_all.extend(probs.detach().cpu().numpy().astype(float).tolist())
                     y_pred_all.extend(preds.detach().cpu().numpy().astype(float).tolist())
                 else:
                     mae_sum += torch.abs(y_pred - y).sum().item()
@@ -157,6 +177,9 @@ class SingleTaskModel(nn.Module):
         metrics: Dict[str, Any] = {"loss": total_loss / max(total, 1)}
         if output_type == "classification":
             metrics["accuracy"] = correct_cls / max(total, 1)
+            if self.num_classes > 1:
+                metrics["accuracy_adj"] = correct_adj / max(total, 1)
+            
             pred_negative = max(total, 0) - pred_positive
             metrics["pred_counts"] = {
                 "label_0": int(pred_negative),
@@ -167,33 +190,26 @@ class SingleTaskModel(nn.Module):
             try:
                 y_true = np.asarray(y_true_all, dtype=float)
                 y_pred = np.asarray(y_pred_all, dtype=float)
-                y_prob = np.asarray(y_prob_all, dtype=float)
 
-                # precision/recall/f1 (binary)
+                # precision/recall/f1
+                avg_method = "macro" if self.num_classes > 1 else "binary"
                 prec, rec, f1, _ = precision_recall_fscore_support(
-                    y_true, y_pred, average="binary", zero_division=0
+                    y_true, y_pred, average=avg_method, zero_division=0
                 )
                 metrics["precision"] = float(prec)
                 metrics["recall"] = float(rec)
                 metrics["f1"] = float(f1)
 
-                # macro-F1 (if both classes present)
-                if len(np.unique(y_true)) == 2:
-                    _, _, f1_macro, _ = precision_recall_fscore_support(
-                        y_true, y_pred, average="macro", zero_division=0
-                    )
-                    metrics["f1_macro"] = float(f1_macro)
-
-                # ROC-AUC and PR-AUC when feasible
-                if len(np.unique(y_true)) == 2 and np.any(y_prob != y_prob[0]):
-                    try:
-                        metrics["roc_auc"] = float(roc_auc_score(y_true, y_prob))
-                    except Exception:
-                        pass
-                    try:
-                        metrics["pr_auc"] = float(average_precision_score(y_true, y_prob))
-                    except Exception:
-                        pass
+                # ROC-AUC and PR-AUC when feasible (binary or explicitly handled multiclass)
+                if self.num_classes == 1:
+                    if len(np.unique(y_true)) == 2 and np.any(y_prob_all != y_prob_all[0]):
+                        y_prob = np.asarray(y_prob_all, dtype=float)
+                        try:
+                            metrics["roc_auc"] = float(roc_auc_score(y_true, y_prob))
+                        except Exception: pass
+                        try:
+                            metrics["pr_auc"] = float(average_precision_score(y_true, y_prob))
+                        except Exception: pass
 
                 # Confusion matrix
                 try:
@@ -212,9 +228,10 @@ class SingleTaskModel(nn.Module):
                         plt.imshow(cm, interpolation="nearest", cmap="Blues")
                         plt.title("Confusion matrix")
                         plt.colorbar()
-                        tick_marks = np.arange(2)
-                        plt.xticks(tick_marks, [0, 1])
-                        plt.yticks(tick_marks, [0, 1])
+                        tick_marks = np.arange(self.num_classes)
+                        if self.num_classes <= 15: # Only label if readable
+                             plt.xticks(tick_marks, tick_marks)
+                             plt.yticks(tick_marks, tick_marks)
                         thresh = cm.max() / 2.0 if cm.size else 0.5
                         for i in range(cm.shape[0]):
                             for j in range(cm.shape[1]):
@@ -307,6 +324,7 @@ def train(
     min_delta: float = 0.0,
     checkpoint_path: str | None = None,
     plot_dir: str | None = None,
+    ordinal_sigma: float | None = None,
 ):
     """Simple training loop for a single-task model.
 
@@ -402,7 +420,25 @@ def train(
             x, y = x.to(device).float(), y.to(device).float()
             optimiser.zero_grad()
             y_pred = model(x)
-            loss = criterion(y_pred, y)
+            
+            # ---------------------------------------------------------
+            # Ordinal Label Smoothing (Gaussian)
+            # ---------------------------------------------------------
+            if ordinal_sigma is not None and model.num_classes > 1:
+                # Create a target distribution instead of a single index
+                # y is the "true" index [0, num_classes-1]
+                classes = torch.arange(model.num_classes).to(device).float()
+                # Gaussian kernel: exp(-0.5 * ((x-mu)/sigma)^2)
+                # target dist: (N, C)
+                target = torch.exp(-0.5 * ((classes.view(1, -1) - y.view(-1, 1)) / ordinal_sigma)**2)
+                target = target / target.sum(dim=-1, keepdim=True)
+                loss = criterion(y_pred, target)
+            else:
+                # CrossEntropy expects long labels (N) if not soft, MSE/BCE expect floats (N)
+                # CE can handle (N, C) targets for soft labels in recent PyTorch
+                target = y.long() if (model.output_type == "classification" and model.num_classes > 1) else y
+                loss = criterion(y_pred, target)
+            
             loss.backward()
             optimiser.step()
             #print(torch.sigmoid(y_pred).detach().cpu().numpy())
@@ -413,9 +449,10 @@ def train(
             # Track accuracy for *classification* tasks only
             # ---------------------------------------------------------
             if model.output_type == "classification":
-                probs = torch.sigmoid(y_pred)
-                preds = (probs >= 0.5).float()
-                #print(preds)
+                if model.num_classes > 1:
+                    preds = torch.argmax(y_pred, dim=-1)
+                else:
+                    preds = (torch.sigmoid(y_pred) >= 0.5).float()
                 correct_cls += (preds == y).sum().item()
 
         epoch_loss = running / max(total, 1)
@@ -438,12 +475,18 @@ def train(
                 for xb, yb in val_loader:
                     xb, yb = xb.to(device).float(), yb.to(device).float()
                     y_pred = model(xb)
-                    v_loss = criterion(y_pred, yb)
+                    
+                    target = yb.long() if (model.output_type == "classification" and model.num_classes > 1) else yb
+                    v_loss = criterion(y_pred, target)
+                    
                     val_running += v_loss.item() * xb.size(0)
                     val_total += xb.size(0)
 
                     if model.output_type == "classification":
-                        preds = (torch.sigmoid(y_pred) >= 0.5).float()
+                        if model.num_classes > 1:
+                            preds = torch.argmax(y_pred, dim=-1)
+                        else:
+                            preds = (torch.sigmoid(y_pred) >= 0.5).float()
                         val_correct_cls += (preds == yb).sum().item()
 
             val_loss = val_running / max(val_total, 1)

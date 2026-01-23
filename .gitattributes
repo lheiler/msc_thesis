@@ -21,3 +21,5 @@ code/utils/headers.txt filter=lfs diff=lfs merge=lfs -text
 /code/Results/archive/final_result_thesis/tuh-jr_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
 /code/Results/archive/final_result_thesis/tuh-pca_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
 /code/Results/archive/final_result_thesis/tuh-psd_ae_pc/temp_latent_features_train.json filter=lfs diff=lfs merge=lfs -text
+Datasets/lemo/*.pkl filter=lfs diff=lfs merge=lfs -text
+Datasets/lemo/*.bak filter=lfs diff=lfs merge=lfs -text

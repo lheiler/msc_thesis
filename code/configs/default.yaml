@@ -14,11 +14,11 @@ method: eegnet
 
 
 # Dataset corpus to use: 'tuh' or 'harvard'
-data_corp: harvard
+data_corp: lemon
 
 paths:
   # Path to training data
-  data_path: "/rds/general/user/lrh24/home/thesis/Datasets/harvard-eeg-clean"
+  data_path: "~/msc_thesis/Datasets/lemo"
   # Directory where all results will be written
   results_root: "Results"
 

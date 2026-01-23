@@ -13,11 +13,15 @@ from typing import Union
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-# Add the utils directory to the Python path
-utils_path = Path(__file__).resolve().parent.parent.parent / "utils"
-sys.path.insert(0, str(utils_path))
+# Add the root and utils directory to the Python path
+root_path = Path(__file__).resolve().parent.parent.parent
+if str(root_path) not in sys.path:
+    sys.path.insert(0, str(root_path))
+utils_path = root_path / "utils"
+if str(utils_path) not in sys.path:
+    sys.path.insert(0, str(utils_path))
 
-from gen_dataset import TUHFIF60sDataset
+from data_preprocessing.gen_dataset import TUHFIF60sDataset
 from util import compute_psd_from_raw, PSD_CALCULATION_PARAMS, compute_psd_from_array, normalize_psd
 
 SEED = 42

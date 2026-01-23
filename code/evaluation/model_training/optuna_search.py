@@ -35,11 +35,13 @@ def tune_hyperparameters(
     *,
     input_dim: int,
     output_type: Literal["classification", "regression"],
+    num_classes: int = 1,
     n_trials: int = 50,
     device: str = "cpu",
     val_split: float = 0.2,
     early_stopping_patience: int = 10,
-    results_dir: str | None = None,  # kept for API compatibility; unused
+    results_dir: str | None = None,
+    ordinal_sigma: float | None = None,
 ) -> Dict[str, Any]:
     """Run Optuna Bayesian optimisation for a *single* task.
 
@@ -83,6 +85,7 @@ def tune_hyperparameters(
             output_type=output_type,
             hidden_dims=hidden_dims,
             dropout=dropout,
+            num_classes=num_classes,
         )
 
         info = train_single_task(
@@ -98,6 +101,7 @@ def tune_hyperparameters(
             early_stopping_patience=early_stopping_patience,
             checkpoint_path=None,   # no checkpoint files
             plot_dir=None,          # no plot files
+            ordinal_sigma=ordinal_sigma,
         )
 
         print(f"[Trial {trial.number}] Params: lr={lr:.5f}, dropout={dropout:.2f}, weight_decay={weight_decay:.6f}, scheduler={scheduler}, hidden_dims={hidden_dims}")
@@ -115,6 +119,7 @@ def tune_hyperparameters(
                 "output_type": output_type,
                 "hidden_dims": hidden_dims,
                 "dropout": dropout,
+                "num_classes": num_classes,
             }
             print(f"🏅 New global best found (val_loss={val_loss:.4f}) – tracked in memory (no files written)")
 
@@ -131,6 +136,7 @@ def tune_hyperparameters(
         output_type=best_arch_spec["output_type"],
         hidden_dims=tuple(best_arch_spec["hidden_dims"]),
         dropout=best_arch_spec["dropout"],
+        num_classes=best_arch_spec.get("num_classes", 1),
     )
     model_best.load_state_dict(copy.deepcopy(best_state_dict))
 

@@ -17,6 +17,7 @@ import gc
 from joblib import Parallel, delayed
 from tqdm import tqdm
 import argparse
+import warnings
 from autoreject import AutoReject
 from mne.time_frequency import psd_array_welch
 
@@ -155,21 +156,23 @@ def split_lemon_data(data_path, id_map, train_split=0.8, seed=42):
     """
     Filter for EC.set files and split by subject.
     """
-    print(f"Searching for *EC.set files in {data_path}...")
+    print(f"Searching for **/*.vhdr files in {data_path}...")
     all_files = []
     for root, _, files in os.walk(data_path):
-        for f in files:
-            if f.endswith("EC.set"):
-                 all_files.append(os.path.join(root, f))
+        # We look for RSEEG folder specifically for resting state as per path structure
+        if "RSEEG" in root:
+            for f in files:
+                if f.endswith(".vhdr"):
+                     all_files.append(os.path.join(root, f))
     
     if not all_files:
-        raise ValueError(f"No *EC.set files found in {data_path}")
+        raise ValueError(f"No .vhdr files found in RSEEG folders within {data_path}")
 
     # Group by Normalized Subject ID (INDI ID)
     sub_map = {}
     for f in all_files:
         fname = os.path.basename(f)
-        raw_sub = fname.split('_')[0]
+        raw_sub = os.path.splitext(fname)[0].split('_')[0]
         indi_id = id_map.get(raw_sub, raw_sub) # fallback to raw if not in map
         
         if indi_id not in sub_map:
@@ -195,9 +198,15 @@ def _process_one_file(set_fp, sfreq, epoch_len_s, id_map, metadata):
     """
     Load, clean, and epoch a single LEMON .set file.
     """
+    import warnings
+    # Suppress specific MNE warnings that spam during parallel processing
+    warnings.filterwarnings("ignore", message=".*boundary.*", category=RuntimeWarning)
+    warnings.filterwarnings("ignore", message=".*expanding outside the data range.*", category=RuntimeWarning)
+    warnings.filterwarnings("ignore", message=".*Data file name in EEG.data.*", category=RuntimeWarning)
+
     mne.set_log_level('ERROR')
     fname = os.path.basename(set_fp)
-    raw_sub = fname.split('_')[0]
+    raw_sub = os.path.splitext(fname)[0].split('_')[0]
     indi_id = id_map.get(raw_sub, raw_sub)
     
     # Metadata lookup (INDI ID based)
@@ -205,8 +214,46 @@ def _process_one_file(set_fp, sfreq, epoch_len_s, id_map, metadata):
     age, sex = meta['age'], meta['sex']
     
     try:
-        raw = mne.io.read_raw_eeglab(set_fp, preload=True, verbose=False)
-        raw_clean = cleanup_real_eeg_tuh(raw, sfreq=sfreq)
+        # Robust Load for BrainVision files (Handles LEMON's frequent internal filename mismatches)
+        vhdr_dir = os.path.dirname(set_fp)
+        vhdr_base = os.path.splitext(fname)[0]
+        
+        with open(set_fp, 'r', encoding='utf-8', errors='ignore') as f:
+            vhdr_content = f.read()
+            
+        # Check if internal pointers match actual files
+        found_mismatch = False
+        new_content = vhdr_content
+        for key in ['DataFile', 'MarkerFile']:
+            import re
+            match = re.search(f'^{key}=(.*)$', vhdr_content, re.MULTILINE)
+            if match:
+                ptr_file = match.group(1).strip()
+                actual_ext = '.eeg' if key == 'DataFile' else '.vmrk'
+                actual_file = vhdr_base + actual_ext
+                
+                if ptr_file != actual_file and not os.path.exists(os.path.join(vhdr_dir, ptr_file)):
+                    new_content = re.sub(f'^{key}=.*$', f'{key}={actual_file}', new_content, flags=re.MULTILINE)
+                    found_mismatch = True
+        
+        if found_mismatch:
+            # Create a temporary fixed vhdr
+            tmp_vhdr = os.path.join(vhdr_dir, f"tmp_{fname}")
+            with open(tmp_vhdr, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            load_path = tmp_vhdr
+        else:
+            load_path = set_fp
+            
+        try:
+            raw = mne.io.read_raw_brainvision(load_path, preload=True, verbose=False)
+        finally:
+            if found_mismatch and os.path.exists(tmp_vhdr):
+                os.remove(tmp_vhdr)
+        
+        # Use standard_1005 to cover 10-10 system used in LEMON. Interpolation up to 20% allowed.
+        # This will also handle channel renaming and reduction to Canonical 19
+        raw_clean = cleanup_real_eeg_tuh(raw, sfreq=sfreq, montage='standard_1005', max_missing_pct=0.2)
         epochs = mne.make_fixed_length_epochs(raw_clean, duration=epoch_len_s, overlap=0.0, preload=True, verbose=False)
         
         epochs = _apply_autoreject(epochs, ar_n_jobs=1) 
@@ -239,7 +286,8 @@ def _process_one_file(set_fp, sfreq, epoch_len_s, id_map, metadata):
         return {"file": fname, "reason": "success", "epochs": all_epoch_tuples}
 
     except Exception as e:
-        return {"file": fname, "reason": f"error: {str(e)[:50]}", "epochs": []}
+        print(f"🟥 [fail] {fname}: {e}")
+        return {"file": fname, "reason": f"error: {str(e)}", "epochs": []}
 
 def load_data_lemon(data_path, save_path, metadata_path, id_map_path, sfreq=128, epoch_len_s=10.0, n_jobs=4):
     """Main entry point."""
@@ -275,10 +323,10 @@ def load_data_lemon(data_path, save_path, metadata_path, id_map_path, sfreq=128,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", default="/home/lheiler/data/LEMON/EEG_Preprocessed")
+    parser.add_argument("--data_path", default="/home/lheiler/data/LEMON/EEG_Raw_BIDS_ID")
     parser.add_argument("--metadata_path", default="/home/lheiler/data/LEMON/Participants_MPILMBB_LEMON.csv")
     parser.add_argument("--id_map_path", default="/home/lheiler/data/LEMON/name_match.csv")
-    parser.add_argument("--save_path", default="/home/lheiler/thesis/Datasets/lemo")
+    parser.add_argument("--save_path", default="/home/lheiler/msc_thesis/Datasets/lemo")
     parser.add_argument("--n_jobs", type=int, default=16)
     args = parser.parse_args()
     

@@ -130,7 +130,11 @@ def main():
     # 6) Latent evaluation
     # ------------------------------------------------------------------
     print("Evaluating latent features …")
-    #latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
+    try:
+        latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
+    except Exception as e:
+        print(f"⚠️ Latent evaluation failed: {e}")
+        latent_metrics = None
     
     
     # ------------------------------------------------------------------
@@ -202,15 +206,40 @@ def main():
             return y_tensor.float()
         return y_tensor
 
+    def discretize_age(y_tensor):
+        """
+        Map continuous age to 5-year bins for LEMON:
+        20-25 -> 0, 25-30 -> 1, ..., 75-80 -> 11
+        """
+        # Bins: [20, 25, 30, ..., 75, 80]
+        bins = torch.arange(20, 81, 5).float()
+        # Find index. Clamp to min/max bin index.
+        # torch.bucketize finds boundaries; subtract 1 for 0-indexing
+        indices = torch.bucketize(y_tensor, bins) - 1
+        return torch.clamp(indices, 0, len(bins) - 2).float()
+
     for task_idx in range(num_tasks):
         # Resolve task type/name and announce
         task_type, task_name = task_map.get(task_idx, ("classification", f"task_{task_idx+1}"))
-        print(f"🔹 Task {task_idx+1}: hardcoded as {task_type} → '{task_name}'")
+        
+        # --- Task overrides for specific datasets ---
+        num_classes = 1
+        ordinal_sigma = None
+        if data_corp == "lemon" and task_name == "age":
+            task_type = "classification"
+            num_classes = 12 # 5-year bins from 20 to 80
+            ordinal_sigma = 1.0 # Standard smoothing for ordinal bins
+            print(f"🔹 Task {task_idx+1}: [LEMON] Adjusting '{task_name}' to {task_type} with {num_classes} bins (ordinal_sigma={ordinal_sigma})")
+        else:
+            print(f"🔹 Task {task_idx+1}: hardcoded as {task_type} → '{task_name}'")
 
         # Build train tensors
         X_train, y_train_tensor = build_xy(t_latent_features.dataset, task_idx)
         if task_type == "classification":
-            y_train_tensor = map_class_labels(y_train_tensor)
+            if data_corp == "lemon" and task_name == "age":
+                 y_train_tensor = discretize_age(y_train_tensor)
+            else:
+                 y_train_tensor = map_class_labels(y_train_tensor)
         assert X_train.shape[0] == y_train_tensor.shape[0], "Mismatch: features and labels have different lengths (train)."
         
         # Normalize features using only the training split (avoid leakage)
@@ -227,7 +256,10 @@ def main():
         # Build eval tensors
         X_eval, y_eval_tensor = build_xy(e_latent_features.dataset, task_idx)
         if task_type == "classification":
-            y_eval_tensor = map_class_labels(y_eval_tensor)
+            if data_corp == "lemon" and task_name == "age":
+                 y_eval_tensor = discretize_age(y_eval_tensor)
+            else:
+                 y_eval_tensor = map_class_labels(y_eval_tensor)
         assert X_eval.shape[0] == y_eval_tensor.shape[0], "Mismatch: features and labels have different lengths (eval)."
         
         # Apply same normalization as training data
@@ -240,11 +272,13 @@ def main():
             val_loader,
             input_dim=input_dim,
             output_type=task_type,
+            num_classes=num_classes,
             n_trials=n_trials_opt,
             device=device,
             val_split=val_split_opt,
             early_stopping_patience=patience_opt,
             results_dir=results_path,
+            ordinal_sigma=ordinal_sigma,
         )
         
         model = search_out["best_model"]
@@ -257,6 +291,7 @@ def main():
             output_type=task_type,
             device=device,
             plot_dir=task_plot_dir,
+            ordinal_sigma=ordinal_sigma,
         )
 
         metrics_all[task_name] = task_metrics

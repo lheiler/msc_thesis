@@ -54,7 +54,7 @@ def _safe_set_montage(inst, montage='standard_1020'):
     try:
         inst.set_montage(montage, verbose=False)
     except Exception:
-        print("🛑[canonical] standard_1020 montage not found")
+        print(f"🛑[canonical] {montage} montage not found")
 
 
 def _fmt_dur(sec: float) -> str:
@@ -99,8 +99,10 @@ def rename_channel(name: str) -> str:
     # Normalize case
     if name.startswith("FP"):
         name = name.replace("FP", "Fp")
-    if name in ("FZ", "CZ", "PZ"):
-        name = name.replace("Z", "z")
+    
+    # Handle midline electrodes (e.g., Fz, Cz, Pz, AFz, CPz, POz)
+    if name.endswith("Z") and len(name) > 1:
+        name = name[:-1] + "z"
     
     # Legacy mapping
     legacy_map = {'T3': 'T7', 'T4': 'T8', 'T5': 'P7', 'T6': 'P8'}
@@ -129,32 +131,39 @@ def trim_zero_edges(raw: mne.io.BaseRaw, eps: float = 0.0, min_keep_sec: float =
         verbose(f"[trim] zero edges to [{_fmt_dur(tmin)}, {_fmt_dur(tmax)}]")
 
 
-def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str]) -> mne.io.BaseRaw:
+def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str], max_missing_pct: float = 0.2, montage: str = 'standard_1020') -> mne.io.BaseRaw:
     """Pick and order channels to canonical set; interpolate if any are missing."""
     # Ensure current channels have locations
-    _safe_set_montage(raw, 'standard_1020')
+    _safe_set_montage(raw, montage)
     
     missing = [ch for ch in canonical if ch not in raw.ch_names]
     
     if missing:
+        # Check if too many channels are missing
+        missing_pct = len(missing) / len(canonical)
+        if missing_pct > max_missing_pct:
+            raise ValueError(f"🛑 [canonical] too many missing channels ({len(missing)}: {missing}). Threshold is {max_missing_pct*100}%")
+
         # Interpolation safety check: Ensure we have enough data to interpolate from
-        # TUH/LEMON should have >10 channels usually.
         eeg_picks = mne.pick_types(raw.info, eeg=True)
         if len(eeg_picks) < 10:
              raise ValueError(f"🛑 [canonical] too few EEG channels ({len(eeg_picks)}) to interpolate missing {missing}")
              
-        print(f"🟠 [canonical] missing {missing}; attempting interpolation from {len(eeg_picks)} channels")
+        print(f"🟠 [canonical] interpolating missing channels: {missing}")
         
         # Add missing channels as zeroed data
         for ch in missing:
-            dummy_info = mne.create_info([ch], raw.info['sfreq'], 'eeg')
-            dummy_data = np.zeros((1, len(raw)))
-            dummy_raw = mne.io.RawArray(dummy_data, dummy_info, verbose=False)
+            # Create a dummy raw with identical metadata by cloning an existing channel
+            # and zeroing its data. This avoids all Info merge errors.
+            dummy_raw = raw.copy().pick([raw.ch_names[0]], verbose=False)
+            dummy_raw._data.fill(0)
+            dummy_raw.rename_channels({dummy_raw.ch_names[0]: ch}, verbose=False)
+            
             raw.add_channels([dummy_raw])
             raw.info['bads'].append(ch)
             
         # Refresh montage for new channels
-        _safe_set_montage(raw, 'standard_1020')
+        _safe_set_montage(raw, montage)
         
         # Interpolate
         try:
@@ -164,7 +173,7 @@ def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str]) -> mne.io.Ba
     
     # Final pick to order correctly
     raw.pick(canonical, verbose=False)
-    _safe_set_montage(raw, 'standard_1020')
+    _safe_set_montage(raw, montage)
     return raw
 
 
@@ -240,7 +249,7 @@ def annotate_artifacts(raw: mne.io.BaseRaw, verbose=print) -> None:
 
 
 # === Main Cleaning Function ===
-def cleanup_real_eeg_tuh(raw: mne.io.BaseRaw, sfreq: float, montage: str = 'standard_1020', verbose: bool = False) -> mne.io.BaseRaw:
+def cleanup_real_eeg_tuh(raw: mne.io.BaseRaw, sfreq: float, montage: str = 'standard_1020', verbose: bool = False, max_missing_pct: float = 0.0) -> mne.io.BaseRaw:
     """End-to-end cleaning for a TUH EEG recording."""
     log = print if verbose else (lambda *a, **k: None)
     
@@ -349,13 +358,7 @@ def cleanup_real_eeg_tuh(raw: mne.io.BaseRaw, sfreq: float, montage: str = 'stan
     
     raw_clean.set_meas_date(None)
     
-    # Ensure canonical channels
-    missing = [ch for ch in CANONICAL_19 if ch not in raw_clean.ch_names]
-    if missing:
-        print(f"🟥 [fail] missing canonical channels before pick: {missing}")
-        raise ValueError("missing canonical channels before pick")
-    
-    conform_to_canonical(raw_clean, CANONICAL_19)
+    conform_to_canonical(raw_clean, CANONICAL_19, max_missing_pct=max_missing_pct, montage=montage)
     
     return raw_clean
 
