@@ -130,11 +130,11 @@ def main():
     # 6) Latent evaluation
     # ------------------------------------------------------------------
     print("Evaluating latent features …")
-    try:
-        latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
-    except Exception as e:
-        print(f"⚠️ Latent evaluation failed: {e}")
-        latent_metrics = None
+#    try:
+#        latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
+#    except Exception as e:
+#        print(f"⚠️ Latent evaluation failed: {e}")
+#        latent_metrics = None
     
     
     # ------------------------------------------------------------------

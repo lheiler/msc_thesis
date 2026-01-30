@@ -54,6 +54,7 @@ class SingleTaskModel(nn.Module):
                 f"output_type must be 'classification' or 'regression', got {output_type!r}"
             )
         self.output_type = output_type
+        self.num_classes = num_classes
 
         # ---------------------------- trunk ----------------------------
         layers = []
@@ -69,7 +70,7 @@ class SingleTaskModel(nn.Module):
         self.dropout = dropout
 
         last_dim = hidden_dims[-1] if hidden_dims else input_dim
-        self.head = nn.Linear(last_dim, 1)
+        self.head = nn.Linear(last_dim, num_classes)
 
     # -----------------------------------------------------------------
     # forward
@@ -143,7 +144,7 @@ class SingleTaskModel(nn.Module):
         with torch.no_grad():
             for x, y in dataloader:
                 x, y = x.to(device).float(), y.to(device).float()
-                y_pred = self(x).squeeze(-1)
+                y_pred = self(x)
 
                 target = y.long() if (output_type == "classification" and self.num_classes > 1) else y
                 loss = criterion(y_pred, target)
@@ -293,7 +294,7 @@ class SingleTaskModel(nn.Module):
                     for xb, yb in dataloader:
                         xb = xb.to(device).float()
                         yb = yb.to(device).float()
-                        yhat = self(xb).squeeze(-1)
+                        yhat = self(xb)
                         y_true_all_reg.extend(yb.detach().cpu().numpy().astype(float).tolist())
                         y_pred_all_reg.extend(yhat.detach().cpu().numpy().astype(float).tolist())
                 if len(y_true_all_reg) >= 2:
@@ -379,7 +380,7 @@ def train(
         raise ValueError(f"weight_decay must be numeric, got {weight_decay!r}")
 
     pos_weight = None
-    if model.output_type == "classification":
+    if model.output_type == "classification" and model.num_classes == 1:
         all_labels = torch.cat([y for _, y in train_loader])
         num_pos = (all_labels == 1).sum().float()
         num_neg = (all_labels == 0).sum().float()
