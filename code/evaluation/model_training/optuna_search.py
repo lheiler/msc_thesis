@@ -92,7 +92,7 @@ def tune_hyperparameters(
             model,
             train_loader,
             val_loader=val_loader,
-            n_epochs=100,
+            n_epochs=300,
             lr=lr,
             weight_decay=weight_decay,
             device=device,

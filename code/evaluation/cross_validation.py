@@ -99,8 +99,7 @@ class LogisticProbe:
             if self.num_classes > 2:
                 self.model = LogisticRegression(
                     max_iter=2000, class_weight="balanced",
-                    multi_class="multinomial", solver="lbfgs",
-                    random_state=_SEED,
+                    solver="lbfgs", random_state=_SEED,
                 )
             else:
                 self.model = LogisticRegression(
@@ -110,20 +109,30 @@ class LogisticProbe:
         else:
             self.model = Ridge(alpha=1.0)
 
-        self.model.fit(X, y)
+        if self.task_type == "classification" and len(np.unique(y)) < 2:
+            self._single_class = float(y[0]) if len(y) > 0 else 0.0
+        else:
+            self._single_class = None
+            self.model.fit(X, y)
         return self
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        if getattr(self, "_single_class", None) is not None:
+            return np.full(len(X), self._single_class)
+        return self.model.predict(X)
 
     def evaluate(self, X: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
         """Evaluate and return metrics in the same format as SingleTaskModel.evaluate()."""
         metrics: Dict[str, Any] = {}
 
         if self.task_type == "classification":
-            y_pred = self.model.predict(X)
+            y_pred = self.predict(X)
             y_prob = None
-            try:
-                y_prob = self.model.predict_proba(X)
-            except AttributeError:
-                pass
+            if getattr(self, "_single_class", None) is None:
+                try:
+                    y_prob = self.model.predict_proba(X)
+                except AttributeError:
+                    pass
 
             metrics["accuracy"] = float(accuracy_score(y, y_pred))
 
@@ -148,7 +157,7 @@ class LogisticProbe:
                 except Exception:
                     pass
         else:
-            y_pred = self.model.predict(X)
+            y_pred = self.predict(X)
             metrics["mae"] = float(mean_absolute_error(y, y_pred))
             metrics["rmse"] = float(mean_squared_error(y, y_pred) ** 0.5)
             try:
@@ -234,6 +243,7 @@ class CrossValidator:
         probe_fold_preds: List[np.ndarray] = []
 
         best_arch_spec: Optional[Dict] = None  # discovered on fold 0
+        best_optuna_params: Optional[Dict] = None
 
         X_tensor = torch.tensor(X, dtype=torch.float32)
         y_tensor = torch.tensor(y, dtype=torch.float32)
@@ -295,9 +305,10 @@ class CrossValidator:
                     early_stopping_patience=self.patience,
                     ordinal_sigma=ordinal_sigma,
                 )
-                best_arch_spec = search_out["best_params"]["architecture"]
+                best_optuna_params = search_out["best_params"]
+                best_arch_spec = best_optuna_params["architecture"]
                 print(f"  ✓ Best architecture: {best_arch_spec['hidden_dims']}, "
-                      f"dropout={best_arch_spec['dropout']:.2f}")
+                      f"dropout={best_arch_spec['dropout']:.2f}, lr={best_optuna_params.get('lr', 1e-3):.5f}")
 
             # Re-train the best architecture on full fold-train
             _set_seed(_SEED + fold_idx)
@@ -313,11 +324,11 @@ class CrossValidator:
                 model,
                 inner_train_loader,
                 val_loader=inner_val_loader,
-                n_epochs=100,
-                lr=1e-3,
-                weight_decay=1e-4,
+                n_epochs=300,
+                lr=best_optuna_params.get("lr", 1e-3),
+                weight_decay=best_optuna_params.get("weight_decay", 1e-4),
                 device=self.device,
-                scheduler="plateau",
+                scheduler=best_optuna_params.get("scheduler", "plateau"),
                 early_stopping_patience=self.patience,
                 ordinal_sigma=ordinal_sigma,
             )
@@ -363,7 +374,7 @@ class CrossValidator:
             probe.fit(X_train_np, y_train_np)
             probe_metrics = probe.evaluate(X_test_np, y_test_np)
             probe_fold_metrics.append(probe_metrics)
-            probe_fold_preds.append(probe.model.predict(X_test_np))
+            probe_fold_preds.append(probe.predict(X_test_np))
 
             print(f"  Probe fold {fold_idx+1}: "
                   + ", ".join(f"{k}={v:.4f}" for k, v in probe_metrics.items()

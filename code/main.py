@@ -132,21 +132,26 @@ def main():
     # 6) Latent evaluation
     # ------------------------------------------------------------------
     print("Evaluating latent features …")
-#    try:
-#        latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
-#    except Exception as e:
-#        print(f"⚠️ Latent evaluation failed: {e}")
-#        latent_metrics = None
-    
-    
+    latent_metrics_file = os.path.join(results_path, "latent_metrics.json")
+    if not reset and os.path.exists(latent_metrics_file):
+        print("  → Loading cached latent metrics …")
+        with open(latent_metrics_file, "r") as f:
+            latent_metrics = json.load(f)
+    else:
+        try:
+            latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
+            with open(latent_metrics_file, "w") as f:
+                json.dump(latent_metrics, f, indent=4)
+            print("  → Latent metrics computed and cached.")
+        except Exception as e:
+            print(f"⚠️ Latent evaluation failed: {e}")
+            latent_metrics = None
     # ------------------------------------------------------------------
     # 7) Training – separate models per task
     # ------------------------------------------------------------------
     print("Training models for each task")
     input_dim = t_latent_features.dataset[0][0].numel()
-    # We now have 2 tasks (age, abnormal) instead of 3.
-    # dataset[0] is (latent_vec, gender, age, abnormal), so length is 4.
-    num_tasks = 2
+    # dataset[0] is (latent_vec, gender, age, abnormal)
     metrics_all = {}
     hyperparams_all = {}
     cv_results_all = {}  # populated only when --cv is active
@@ -186,14 +191,22 @@ def main():
         )
         print("WARNING: sample_ids missing; falling back to per-epoch random split.")
 
-    # Hard-coded tasks: (Index 0 is gender in dataset tuple, but we skip it)
+    # Define tasks dynamically based on dataset corpus
     # The dataset tuples are: (latent, gender_val, age_val, abnorm_val)
-    # We map loop index 0 -> age (dataset index 1 + 1 = 2)
-    # We map loop index 1 -> abnormal (dataset index 2 + 1 = 3)
-    task_map = {
-        0: ("regression", "age", 2),
-        1: ("classification", "abnormal", 3),
-    }
+    # index 2 = age, index 3 = abnormal
+    task_map = {}
+    if data_corp == "lemon":
+        # LEMON represents healthy participants; we only predict age
+        task_map[0] = ("regression", "age", 2)
+    elif data_corp in ("tuh", "harvard"):
+        # TUH/Harvard are clinical; we predict abnormality
+        task_map[0] = ("classification", "abnormal", 3)
+    else:
+        # Fallback: run both
+        task_map[0] = ("regression", "age", 2)
+        task_map[1] = ("classification", "abnormal", 3)
+        
+    num_tasks = len(task_map)
 
     def build_xy(dataset, target_tuple_idx):
         X = torch.stack([s[0].detach().clone().float() for s in dataset])

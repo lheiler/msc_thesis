@@ -80,11 +80,5 @@ def save_results(metrics, file_path: str):
             else:
                 f.write(f"{key}: {val_repr}\n")
 
-    # Also generate Markdown & JSON via utils.reporting
-    try:
-        from utils.reporting import write_markdown_report
-        write_markdown_report(metrics, file_path)
-    except Exception as e:
-        print(f"⚠️ Could not write Markdown report: {e}")
 
 

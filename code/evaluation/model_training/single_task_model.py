@@ -164,7 +164,6 @@ class SingleTaskModel(nn.Module):
                         preds = (probs >= 0.5).float()
                     
                     correct_cls += (preds == y).sum().item()
-                    pred_positive += preds.sum().item()
 
                     # collect for plots/metrics
                     y_true_all.extend(y.detach().cpu().numpy().astype(float).tolist())
@@ -181,11 +180,11 @@ class SingleTaskModel(nn.Module):
             if self.num_classes > 1:
                 metrics["accuracy_adj"] = correct_adj / max(total, 1)
             
-            pred_negative = max(total, 0) - pred_positive
-            metrics["pred_counts"] = {
-                "label_0": int(pred_negative),
-                "label_1": int(pred_positive),
-            }
+            unique, counts = np.unique(y_pred_all, return_counts=True)
+            metrics["pred_counts"] = {f"label_{int(k)}": int(v) for k, v in zip(unique, counts)}
+            if self.num_classes == 1:
+                metrics["pred_counts"].setdefault("label_0", 0)
+                metrics["pred_counts"].setdefault("label_1", 0)
 
             # Additional classification metrics
             try:

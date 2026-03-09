@@ -53,7 +53,7 @@ def _run_single_parallel(method: str, x):
         return extract_c22(x)
     raise ValueError(f"Method not supported for parallel execution: {method}")
 
-def extract_latent_features(data: DataLoader, batch_size, method, save_path="", n_workers: int = 64):
+def extract_latent_features(data: DataLoader, batch_size, method, save_path="", n_workers: int = 32):
     """
     Extract latent features from the EEG data and optionally save them.
     """
