@@ -1,0 +1,13 @@
+# Ignore heavy data and results
+Results/
+Datasets/
+*.pkl
+*.npz
+*.jsonl
+*.edf
+*.fif
+
+# Ignore environment and legacy
+venv/
+env_thesis/
+configs/legacy/

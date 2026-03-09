@@ -16,6 +16,7 @@ from evaluation.data_metrics import compute_dataset_stats
 from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.decomposition import PCA
 import evaluation.metrix as metrics
+from evaluation.cross_validation import CrossValidator, cv_results_to_dict
 from pathlib import Path
 import pickle
 
@@ -35,6 +36,7 @@ def main():
     parser.add_argument("--config", type=str, default="configs/default.yaml", help="Path to YAML configuration file")
     parser.add_argument("--reset", action="store_true", help="Reset the pipeline")
     parser.add_argument("--method", type=str, help="Method to use for latent feature extraction")
+    parser.add_argument("--cv", action="store_false", default=True, help="Enable 5-fold cross-validation with linear probe")
     args = parser.parse_args()
     reset = args.reset 
 
@@ -142,9 +144,12 @@ def main():
     # ------------------------------------------------------------------
     print("Training models for each task")
     input_dim = t_latent_features.dataset[0][0].numel()
-    num_tasks = len(t_latent_features.dataset[0]) - 1
+    # We now have 2 tasks (age, abnormal) instead of 3.
+    # dataset[0] is (latent_vec, gender, age, abnormal), so length is 4.
+    num_tasks = 2
     metrics_all = {}
     hyperparams_all = {}
+    cv_results_all = {}  # populated only when --cv is active
     device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 
     # Fixed global train/val index split – SUBJECT-WISE to avoid leakage
@@ -181,16 +186,18 @@ def main():
         )
         print("WARNING: sample_ids missing; falling back to per-epoch random split.")
 
-    # Hard-coded tasks: 0) gender (clf), 1) age (regr), 2) abnormal (clf)
+    # Hard-coded tasks: (Index 0 is gender in dataset tuple, but we skip it)
+    # The dataset tuples are: (latent, gender_val, age_val, abnorm_val)
+    # We map loop index 0 -> age (dataset index 1 + 1 = 2)
+    # We map loop index 1 -> abnormal (dataset index 2 + 1 = 3)
     task_map = {
-        0: ("classification", "gender"),
-        1: ("regression", "age"),
-        2: ("classification", "abnormal"),
+        0: ("regression", "age", 2),
+        1: ("classification", "abnormal", 3),
     }
 
-    def build_xy(dataset, task_index):
+    def build_xy(dataset, target_tuple_idx):
         X = torch.stack([s[0].detach().clone().float() for s in dataset])
-        y = torch.tensor([float(s[task_index + 1]) for s in dataset], dtype=torch.float32)
+        y = torch.tensor([float(s[target_tuple_idx]) for s in dataset], dtype=torch.float32)
         return X, y
 
     def map_class_labels(y_tensor):
@@ -220,7 +227,7 @@ def main():
 
     for task_idx in range(num_tasks):
         # Resolve task type/name and announce
-        task_type, task_name = task_map.get(task_idx, ("classification", f"task_{task_idx+1}"))
+        task_type, task_name, tuple_idx = task_map[task_idx]
         
         # --- Task overrides for specific datasets ---
         num_classes = 1
@@ -234,14 +241,43 @@ def main():
             print(f"🔹 Task {task_idx+1}: hardcoded as {task_type} → '{task_name}'")
 
         # Build train tensors
-        X_train, y_train_tensor = build_xy(t_latent_features.dataset, task_idx)
+        X_train, y_train_tensor = build_xy(t_latent_features.dataset, tuple_idx)
         if task_type == "classification":
             if data_corp == "lemon" and task_name == "age":
                  y_train_tensor = discretize_age(y_train_tensor)
             else:
                  y_train_tensor = map_class_labels(y_train_tensor)
         assert X_train.shape[0] == y_train_tensor.shape[0], "Mismatch: features and labels have different lengths (train)."
-        
+
+        # ---- Cross-Validation path ----
+        if args.cv:
+            print(f"\n🔄 Running 5-fold CV for task '{task_name}' ...")
+            cv = CrossValidator(
+                n_splits=5,
+                n_trials=n_trials_opt,
+                batch_size=batch_size,
+                early_stopping_patience=patience_opt,
+                device=device,
+            )
+            cv_result = cv.run(
+                X=X_train.numpy(),
+                y=y_train_tensor.numpy(),
+                sample_ids=sample_ids_train or [str(i) for i in range(len(X_train))],
+                task_type=task_type,
+                num_classes=num_classes,
+                task_name=task_name,
+                ordinal_sigma=ordinal_sigma,
+                results_dir=results_path,
+            )
+            cv_results_all[task_name] = cv_result
+
+            # Print summary
+            for k in ['mlp.accuracy_mean', 'mlp.accuracy_std',
+                       'linear_probe.accuracy_mean', 'linear_probe.accuracy_std']:
+                if k in cv_result:
+                    print(f"  CV {task_name} {k}: {cv_result[k]:.4f}")
+
+        # ---- Standard single-split path (always runs for eval-set metrics) ----
         # Normalize features using only the training split (avoid leakage)
         train_idx_tensor = torch.as_tensor(train_indices_global, dtype=torch.long)
         X_mean = X_train.index_select(0, train_idx_tensor).mean(dim=0, keepdim=True)
@@ -254,7 +290,7 @@ def main():
         val_loader   = DataLoader(Subset(train_dataset_full, val_indices_global),   batch_size=batch_size, shuffle=True)
 
         # Build eval tensors
-        X_eval, y_eval_tensor = build_xy(e_latent_features.dataset, task_idx)
+        X_eval, y_eval_tensor = build_xy(e_latent_features.dataset, tuple_idx)
         if task_type == "classification":
             if data_corp == "lemon" and task_name == "age":
                  y_eval_tensor = discretize_age(y_eval_tensor)
@@ -314,6 +350,14 @@ def main():
         "eval_dataset_stats": eval_stats,
         "latent":   latent_metrics if latent_metrics is not None else None,
     }
+
+    # Merge CV results if --cv was used
+    if args.cv and cv_results_all:
+        cv_formatted = {}
+        for task_name, cv_res in cv_results_all.items():
+            cv_formatted.update(cv_results_to_dict(cv_res, task_name))
+        final_results["cross_validation"] = cv_formatted
+        print(f"\n📊 Cross-validation results included for tasks: {list(cv_results_all.keys())}")
 
     print("Saving results …")
     eval.save_results(final_results, results_path)

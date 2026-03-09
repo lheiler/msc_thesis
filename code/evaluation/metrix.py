@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 from typing import Any, Dict, Tuple
-
 import numpy as np
 import torch
 from sklearn.cluster import KMeans

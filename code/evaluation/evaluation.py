@@ -61,6 +61,9 @@ def save_results(metrics, file_path: str):
         # Dataset
         "train_dataset_stats.n_samples": "Number of training samples",
         "eval_dataset_stats.n_samples": "Number of evaluation samples",
+
+        # Cross-validation (populated when --cv flag is used)
+        "cross_validation": "5-fold subject-wise cross-validation results (MLP + linear probe)",
     }
 
     flat = _flatten_dict(metrics)

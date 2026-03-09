@@ -1,11 +1,7 @@
-import os
-import json
 import numpy as np
 from typing import Dict, Optional
-
 from sklearn.metrics import pairwise_distances
 from sklearn.cross_decomposition import CCA
-from sklearn.decomposition import PCA
 from scipy.spatial import procrustes
 
 from data_preprocessing.cache_loading import load_latent_parameters_array
