@@ -14,11 +14,10 @@ method: c22
 
 # Ensure datasets are specified correctly for evaluation
 datasets:
-  lemo: "/Users/lorenzheiler/msc_thesis/Datasets/lemo"
-  tuh: "/Users/lorenzheiler/msc_thesis/Datasets/tuh-eeg-clean"
+  lemon: "/Users/lorenzheiler/msc_thesis/Datasets/lemon"
+  tuh: "/Users/lorenzheiler/msc_thesis/Datasets/tuh-eeg-ab-clean"
 
 paths:
-  # Directory where all results will be written
   results_root: "Results"
 
 # ----------------------------------------------------------------------------

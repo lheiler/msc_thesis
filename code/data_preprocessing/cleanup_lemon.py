@@ -326,7 +326,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_path", default="/home/lheiler/data/LEMON/EEG_Raw_BIDS_ID")
     parser.add_argument("--metadata_path", default="/home/lheiler/data/LEMON/Participants_MPILMBB_LEMON.csv")
     parser.add_argument("--id_map_path", default="/home/lheiler/data/LEMON/name_match.csv")
-    parser.add_argument("--save_path", default="/home/lheiler/msc_thesis/Datasets/lemo")
+    parser.add_argument("--save_path", default="/Users/lorenzheiler/msc_thesis/Datasets/lemon")
     parser.add_argument("--n_jobs", type=int, default=16)
     args = parser.parse_args()
     

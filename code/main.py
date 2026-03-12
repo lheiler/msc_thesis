@@ -217,7 +217,7 @@ def main():
 
         # Define tasks dynamically based on dataset corpus
         task_map = {}
-        if data_corp in ("lemon", "lemo"):
+        if data_corp == "lemon":
             # LEMON represents healthy participants; we only predict age
             task_map[0] = ("regression", "age", 2)
         elif data_corp in ("tuh", "harvard"):
@@ -254,7 +254,7 @@ def main():
             # --- Task overrides for specific datasets ---
             num_classes = 1
             ordinal_sigma = None
-            if data_corp in ("lemon", "lemo") and task_name == "age":
+            if data_corp == "lemon" and task_name == "age":
                 task_type = "classification"
                 num_classes = 12 # 5-year bins from 20 to 80
                 ordinal_sigma = 1.0 # Standard smoothing for ordinal bins
@@ -265,7 +265,7 @@ def main():
             # Build train tensors
             X_train, y_train_tensor = build_xy(t_latent_features.dataset, tuple_idx)
             if task_type == "classification":
-                if data_corp in ("lemon", "lemo") and task_name == "age":
+                if data_corp == "lemon" and task_name == "age":
                      y_train_tensor = discretize_age(y_train_tensor)
                 else:
                      y_train_tensor = map_class_labels(y_train_tensor)
@@ -314,7 +314,7 @@ def main():
             # Build eval tensors
             X_eval, y_eval_tensor = build_xy(e_latent_features.dataset, tuple_idx)
             if task_type == "classification":
-                if data_corp in ("lemon", "lemo") and task_name == "age":
+                if data_corp == "lemon" and task_name == "age":
                      y_eval_tensor = discretize_age(y_eval_tensor)
                 else:
                      y_eval_tensor = map_class_labels(y_eval_tensor)
