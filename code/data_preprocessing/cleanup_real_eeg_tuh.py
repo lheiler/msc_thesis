@@ -665,12 +665,12 @@ def load_data(data_path_train, data_path_eval, save_path, sfreq=128, epoch_len_s
 
 if __name__ == "__main__":
     # Example usage
-    data_path_train = "/rds/general/user/lrh24/ephemeral/edf/train"
-    data_path_eval = "/rds/general/user/lrh24/ephemeral/edf/eval"
-    save_path = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean"
+    data_path_train = "/Users/lorenzheiler/msc_thesis/Datasets/tuh-eeg-ab/v3.0.1/edf/train"
+    data_path_eval = "/Users/lorenzheiler/msc_thesis/Datasets/tuh-eeg-ab/v3.0.1/edf/eval"
+    save_path = "/Users/lorenzheiler/msc_thesis/Datasets/tuh-eeg-ab-clean"
     epoch_len_s = 10.0
     sfreq = 128
-    n_jobs = 64
+    n_jobs = 10
 
     load_data(data_path_train, data_path_eval, save_path, sfreq, epoch_len_s, n_jobs=n_jobs)
     print("[done] Data cleaning pipeline finished.")

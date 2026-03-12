@@ -10,6 +10,7 @@ braindecode
 # EEG processing
 mne
 mne-bids
+autoreject
 
 # Optimisation & feature extraction
 cma

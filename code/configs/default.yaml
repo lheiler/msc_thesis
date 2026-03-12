@@ -12,22 +12,19 @@
 
 method: c22
 
-
-# Dataset corpus to use: 'tuh' or 'harvard'
-data_corp: lemon
+# Ensure datasets are specified correctly for evaluation
+datasets:
+  lemo: "/Users/lorenzheiler/msc_thesis/Datasets/lemo"
+  tuh: "/Users/lorenzheiler/msc_thesis/Datasets/tuh-eeg-clean"
 
 paths:
-  # Path to training data
-  data_path: "~/msc_thesis/Datasets/lemo"
   # Directory where all results will be written
   results_root: "Results"
 
 # ----------------------------------------------------------------------------
 # Hyper-parameter optimisation via Optuna (overrides manual settings)
 optuna:
-  n_trials: 1  # Number of optimisation trials per task
+  n_trials: 50  # Number of optimisation trials per task
   val_split: 0.15   # Fraction of training data reserved for validation
-  patience: 12   # Early-stopping patience within each trial
-  batch_size: 128
-
- 
+  patience: 10   # Early-stopping patience within each trial
+  batch_size: 256
