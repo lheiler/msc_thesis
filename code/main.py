@@ -48,7 +48,7 @@ def main():
     # ------------------------------------------------------------------
     method = cfg.get("method")
     
-    # If --method is supplied, it overrides config; otherwise keep config value
+    # If --method is supplied, it overrides config
     method = args.method if args.method is not None else method
 
     paths_cfg = cfg.get("paths", {})
@@ -56,14 +56,8 @@ def main():
     
     datasets = cfg.get("datasets", {})
     if not datasets:
-        # Fallback to older config format if datasets is not defined
-        data_corp = cfg.get("data_corp", "unknown")
-        data_path = paths_cfg.get("data_path", "")
-        if data_corp and data_path:
-            datasets = {data_corp: data_path}
-        else:
-            print("❌ No datasets configured in YAML.")
-            return
+        print("❌ No datasets configured in YAML. Expecting 'datasets' dictionary.")
+        return
 
     for data_corp, dataset_path in datasets.items():
         data_path = os.path.expanduser(dataset_path)
@@ -77,10 +71,8 @@ def main():
         
         print(f"Results will be saved to: {results_path}")
 
-        model_cfg   = cfg.get("model", {})
-
         # ------------------------------------------------------------------
-        # 3) Optuna and training hyperparameters
+        # 3) Hyperparameters
         # ------------------------------------------------------------------
         optuna_cfg  = cfg.get("optuna", {})
         n_trials_opt   = optuna_cfg.get("n_trials", 30)
@@ -88,7 +80,7 @@ def main():
         patience_opt   = optuna_cfg.get("patience", 10)
         batch_size   = optuna_cfg.get("batch_size", 64)
         
-        # Count epochs from pickle files instead of individual .fif files
+        # Load counts from pickle files
         train_pickle = os.path.join(data_path, "train_epochs.pkl")
         eval_pickle = os.path.join(data_path, "eval_epochs.pkl")
         
@@ -98,8 +90,8 @@ def main():
             with open(eval_pickle, 'rb') as f:
                 n_eval = len(pickle.load(f))
         else:
-            print(f"⚠️  Pickle files not found for {data_corp}. Run preprocessing first if necessary.")
-            n_train, n_eval = 0, 0
+            print(f"⚠️  Pickle files not found for {data_corp}. Skipping.")
+            continue
         
         # ------------------------------------------------------------------
         # 4) Latent feature loading: cache or compute
@@ -110,54 +102,43 @@ def main():
                 batch_size=batch_size,
             )
 
-
         train_cache = os.path.join(results_path, "temp_latent_features_train.json")
         eval_cache  = os.path.join(results_path, "temp_latent_features_eval.json")
         use_cache = (not reset and os.path.exists(train_cache) and os.path.exists(eval_cache))
+        
         if use_cache:
             t_latent_features = _latent_loader("train")
             e_latent_features = _latent_loader("eval")
             if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval:
-                print("⚠️  Cached latent features do not match dataset size – regenerating …")
+                print("⚠️  Cache size mismatch – regenerating …")
                 use_cache = False
             else: 
                 print("Cached latent features loaded successfully.")
 
         if not use_cache:
-            print("Loading raw EEG data …")
+            print("Loading and extracting latent features …")
             try:
-                t_data, e_data = dl.load_data(data_path, "train"), dl.load_data(data_path, "eval")
+                t_data = dl.load_data(data_path, "train")
+                e_data = dl.load_data(data_path, "eval")
             except Exception as e:
-                print(f"❌ Failed to load raw data for {data_corp}: {e}")
-                print(f"Skipping dataset {data_corp} and moving on...")
+                print(f"❌ Failed to load data: {e}")
                 continue
                 
-            print(f"Loaded {len(t_data)} training samples and {len(e_data)} evaluation samples from {data_corp} dataset")
-
-            print("Extracting latent features …")
-            t_latent_features = extractor.extract_latent_features(t_data, batch_size=batch_size, save_path=os.path.join(results_path, "temp_latent_features_train.json"), method=method)
-            e_latent_features = extractor.extract_latent_features(e_data, batch_size=batch_size, save_path=os.path.join(results_path, "temp_latent_features_eval.json"), method=method)
-
-        features_train = torch.stack([sample[0] for sample in t_latent_features.dataset])
-        features_eval  = torch.stack([sample[0] for sample in e_latent_features.dataset])
+            t_latent_features = extractor.extract_latent_features(
+                t_data, batch_size=batch_size, method=method,
+                save_path=os.path.join(results_path, "temp_latent_features_train.json")
+            )
+            e_latent_features = extractor.extract_latent_features(
+                e_data, batch_size=batch_size, method=method,
+                save_path=os.path.join(results_path, "temp_latent_features_eval.json")
+            )
 
         # ------------------------------------------------------------------
-        # 5) Safety check: ensure expected sample counts
-        # ------------------------------------------------------------------
-        if n_train > 0 and len(t_latent_features.dataset) != n_train:
-            print(f"❌ Not enough training samples for {data_corp} were loaded. Skipping.")
-            continue
-        if n_eval > 0 and len(e_latent_features.dataset) != n_eval:
-            print(f"❌ Not enough eval samples for {data_corp} were loaded. Skipping.")
-            continue
-        
-        # ------------------------------------------------------------------
-        # 6) Latent evaluation
+        # 5) Latent evaluation
         # ------------------------------------------------------------------
         print("Evaluating latent features …")
         latent_metrics_file = os.path.join(results_path, "latent_metrics.json")
         if not reset and os.path.exists(latent_metrics_file):
-            print("  → Loading cached latent metrics …")
             with open(latent_metrics_file, "r") as f:
                 latent_metrics = json.load(f)
         else:
@@ -165,226 +146,139 @@ def main():
                 latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
                 with open(latent_metrics_file, "w") as f:
                     json.dump(latent_metrics, f, indent=4)
-                print("  → Latent metrics computed and cached.")
             except Exception as e:
                 print(f"⚠️ Latent evaluation failed: {e}")
                 latent_metrics = None
 
         # ------------------------------------------------------------------
-        # 7) Training – separate models per task
+        # 6) Training setup
         # ------------------------------------------------------------------
         print("Training models for each task")
         input_dim = t_latent_features.dataset[0][0].numel()
-        # dataset[0] is (latent_vec, gender, age, abnormal)
         metrics_all = {}
         hyperparams_all = {}
-        cv_results_all = {}  # populated only when --cv is active
+        cv_results_all = {}
         device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
 
-        # Fixed global train/val index split – SUBJECT-WISE to avoid leakage
+        # Subject-wise split helper
         def _extract_subject_id(sample_id: str) -> str:
-            # Try to extract base subject before session/trial markers
-            # e.g., "aaaaapjb_s001_t001_epoch0000" → "aaaaapjb"
-            m = re.match(r"^([A-Za-z0-9]+)_s\d+", sample_id)
-            if m:
-                return m.group(1)
-            # Fallback: split at "_t" (trial) if present
-            if "_t" in sample_id:
-                return sample_id.split("_t", 1)[0].split("_s", 1)[0]
-            # Fallback: split at first underscore
-            if "_" in sample_id:
-                return sample_id.split("_", 1)[0]
+            m_tuh = re.match(r"^([A-Za-z0-9]+)_s\d+", sample_id)
+            if m_tuh: return m_tuh.group(1)
+            m_bids = re.match(r"^(sub-[A-Za-z0-9]+)", sample_id)
+            if m_bids: return m_bids.group(1)
+            for mkr in ["_s", "_t", "_epoch"]:
+                if mkr in sample_id: return sample_id.split(mkr, 1)[0]
+            if "_" in sample_id: return sample_id.split("_", 1)[0]
             return sample_id
 
         sample_ids_train = getattr(t_latent_features, "sample_ids", None)
         if sample_ids_train and len(sample_ids_train) == len(t_latent_features.dataset):
             subject_groups = [_extract_subject_id(sid) for sid in sample_ids_train]
             gss = GroupShuffleSplit(n_splits=1, test_size=val_split_opt, random_state=42)
-            split_iter = gss.split(list(range(len(subject_groups))), groups=subject_groups)
-            train_indices_global, val_indices_global = next(split_iter)
-            print(f"Using subject-wise split: {len(set([subject_groups[i] for i in train_indices_global]))} subjects train | "
-                  f"{len(set([subject_groups[i] for i in val_indices_global]))} subjects val")
+            train_indices_global, val_indices_global = next(gss.split(list(range(len(subject_groups))), groups=subject_groups))
+            print(f"Subject-wise split: {len(set([subject_groups[i] for i in train_indices_global]))} train | "
+                  f"{len(set([subject_groups[i] for i in val_indices_global]))} val subjects")
         else:
-            # Safe fallback to per-epoch random split if IDs missing
-            all_indices = list(range(len(t_latent_features.dataset)))
             train_indices_global, val_indices_global = train_test_split(
-                all_indices,
-                test_size=val_split_opt,
-                random_state=42,
-                shuffle=True,
+                list(range(len(t_latent_features.dataset))), test_size=val_split_opt, random_state=42
             )
-            print("WARNING: sample_ids missing; falling back to per-epoch random split.")
+            print("WARNING: sample_ids missing; using random epoch split.")
 
-        # Define tasks dynamically based on dataset corpus
+        # Define tasks
         task_map = {}
         if data_corp == "lemon":
-            # LEMON represents healthy participants; we only predict age
             task_map[0] = ("regression", "age", 2)
         elif data_corp in ("tuh", "harvard"):
-            # TUH/Harvard are clinical; we predict abnormality
             task_map[0] = ("classification", "abnormal", 3)
         else:
-            # Fallback: run both
             task_map[0] = ("regression", "age", 2)
             task_map[1] = ("classification", "abnormal", 3)
-            
-        num_tasks = len(task_map)
 
-        def build_xy(dataset, target_tuple_idx):
+        def build_xy(dataset, target_idx):
             X = torch.stack([s[0].detach().clone().float() for s in dataset])
-            y = torch.tensor([float(s[target_tuple_idx]) for s in dataset], dtype=torch.float32)
+            y = torch.tensor([float(s[target_idx]) for s in dataset], dtype=torch.float32)
             return X, y
 
         def map_class_labels(y_tensor):
-            if torch.all((y_tensor == 1) | (y_tensor == 2)):
-                return (y_tensor == 1).float()
-            if torch.all((y_tensor == 0) | (y_tensor == 1)):
-                return y_tensor.float()
+            if torch.all((y_tensor == 1) | (y_tensor == 2)): return (y_tensor == 1).float()
+            if torch.all((y_tensor == 0) | (y_tensor == 1)): return y_tensor.float()
             return y_tensor
 
         def discretize_age(y_tensor):
             bins = torch.arange(20, 81, 5).float()
-            indices = torch.bucketize(y_tensor, bins) - 1
-            return torch.clamp(indices, 0, len(bins) - 2).float()
+            return torch.clamp(torch.bucketize(y_tensor, bins) - 1, 0, len(bins) - 2).float()
 
-        for task_idx in range(num_tasks):
-            # Resolve task type/name and announce
+        for task_idx in range(len(task_map)):
             task_type, task_name, tuple_idx = task_map[task_idx]
+            num_classes, ordinal_sigma = 1, None
             
-            # --- Task overrides for specific datasets ---
-            num_classes = 1
-            ordinal_sigma = None
             if data_corp == "lemon" and task_name == "age":
-                task_type = "classification"
-                num_classes = 12 # 5-year bins from 20 to 80
-                ordinal_sigma = 1.0 # Standard smoothing for ordinal bins
-                print(f"🔹 Task {task_idx+1}: [{data_corp.upper()}] Adjusting '{task_name}' to {task_type} with {num_classes} bins (ordinal_sigma={ordinal_sigma})")
+                task_type, num_classes, ordinal_sigma = "classification", 12, 1.0
+                print(f"🔹 Task {task_idx+1}: [LEMON] Age Classification (12 bins)")
             else:
-                print(f"🔹 Task {task_idx+1}: hardcoded as {task_type} → '{task_name}'")
+                print(f"🔹 Task {task_idx+1}: {task_name} ({task_type})")
 
-            # Build train tensors
-            X_train, y_train_tensor = build_xy(t_latent_features.dataset, tuple_idx)
+            # Build train
+            X_train, y_train = build_xy(t_latent_features.dataset, tuple_idx)
             if task_type == "classification":
-                if data_corp == "lemon" and task_name == "age":
-                     y_train_tensor = discretize_age(y_train_tensor)
-                else:
-                     y_train_tensor = map_class_labels(y_train_tensor)
-            assert X_train.shape[0] == y_train_tensor.shape[0], "Mismatch: features and labels have different lengths (train)."
+                y_train = discretize_age(y_train) if (data_corp == "lemon" and task_name == "age") else map_class_labels(y_train)
 
-            # ---- Cross-Validation path ----
+            # CV Path
             if args.cv:
-                print(f"\n🔄 Running 5-fold CV for task '{task_name}' ...")
-                cv = CrossValidator(
-                    n_splits=5,
-                    n_trials=n_trials_opt,
-                    batch_size=batch_size,
-                    early_stopping_patience=patience_opt,
-                    device=device,
-                )
+                cv = CrossValidator(n_splits=5, n_trials=n_trials_opt, batch_size=batch_size, device=device)
                 cv_result = cv.run(
-                    X=X_train.numpy(),
-                    y=y_train_tensor.numpy(),
+                    X=X_train.numpy(), y=y_train.numpy(), 
                     sample_ids=sample_ids_train or [str(i) for i in range(len(X_train))],
-                    task_type=task_type,
-                    num_classes=num_classes,
-                    task_name=task_name,
-                    ordinal_sigma=ordinal_sigma,
-                    results_dir=results_path,
+                    task_type=task_type, num_classes=num_classes, task_name=task_name,
+                    ordinal_sigma=ordinal_sigma, results_dir=results_path
                 )
                 cv_results_all[task_name] = cv_result
 
-                # Print summary
-                for k in ['mlp.accuracy_mean', 'mlp.accuracy_std',
-                           'linear_probe.accuracy_mean', 'linear_probe.accuracy_std']:
-                    if k in cv_result:
-                        print(f"  CV {task_name} {k}: {cv_result[k]:.4f}")
+            # Normalization (Train split)
+            train_tensor_idx = torch.tensor(train_indices_global)
+            X_mean = X_train[train_tensor_idx].mean(0, keepdim=True)
+            X_std = X_train[train_tensor_idx].std(0, keepdim=True) + 1e-8
+            X_train_norm = (X_train - X_mean) / X_std
 
-            # ---- Standard single-split path (always runs for eval-set metrics) ----
-            # Normalize features using only the training split (avoid leakage)
-            train_idx_tensor = torch.as_tensor(train_indices_global, dtype=torch.long)
-            X_mean = X_train.index_select(0, train_idx_tensor).mean(dim=0, keepdim=True)
-            X_std = X_train.index_select(0, train_idx_tensor).std(dim=0, keepdim=True) + 1e-8
-            X_train = (X_train - X_mean) / X_std
+            train_loader = DataLoader(Subset(TensorDataset(X_train_norm, y_train), train_indices_global), batch_size=batch_size, shuffle=True)
+            val_loader = DataLoader(Subset(TensorDataset(X_train_norm, y_train), val_indices_global), batch_size=batch_size, shuffle=False)
 
-            # Datasets and loaders (global split)
-            train_dataset_full = TensorDataset(X_train, y_train_tensor)
-            train_loader = DataLoader(Subset(train_dataset_full, train_indices_global), batch_size=batch_size, shuffle=True)
-            val_loader   = DataLoader(Subset(train_dataset_full, val_indices_global),   batch_size=batch_size, shuffle=True)
-
-            # Build eval tensors
-            X_eval, y_eval_tensor = build_xy(e_latent_features.dataset, tuple_idx)
+            # Build eval
+            X_eval, y_eval = build_xy(e_latent_features.dataset, tuple_idx)
             if task_type == "classification":
-                if data_corp == "lemon" and task_name == "age":
-                     y_eval_tensor = discretize_age(y_eval_tensor)
-                else:
-                     y_eval_tensor = map_class_labels(y_eval_tensor)
-            assert X_eval.shape[0] == y_eval_tensor.shape[0], "Mismatch: features and labels have different lengths (eval)."
-            
-            # Apply same normalization as training data
-            X_eval = (X_eval - X_mean) / X_std
-            eval_loader = DataLoader(TensorDataset(X_eval, y_eval_tensor), batch_size=batch_size, shuffle=False)
+                y_eval = discretize_age(y_eval) if (data_corp == "lemon" and task_name == "age") else map_class_labels(y_eval)
+            X_eval_norm = (X_eval - X_mean) / X_std
+            eval_loader = DataLoader(TensorDataset(X_eval_norm, y_eval), batch_size=batch_size, shuffle=False)
 
-            print(f"   → Optuna search (n_trials={n_trials_opt}) for {task_type} …")
+            # Optuna
             search_out = tune_hyperparameters(
-                train_loader,
-                val_loader,
-                input_dim=input_dim,
-                output_type=task_type,
-                num_classes=num_classes,
-                n_trials=n_trials_opt,
-                device=device,
-                val_split=val_split_opt,
-                early_stopping_patience=patience_opt,
-                results_dir=results_path,
-                ordinal_sigma=ordinal_sigma,
+                train_loader, val_loader, input_dim=input_dim, output_type=task_type,
+                num_classes=num_classes, n_trials=n_trials_opt, device=device, 
+                results_dir=results_path, ordinal_sigma=ordinal_sigma
             )
             
-            model = search_out["best_model"]
-            best_params = search_out["best_params"]
-
-            task_plot_dir = os.path.join(results_path, f"plots_{task_name}")
-            os.makedirs(task_plot_dir, exist_ok=True)
-            task_metrics = model.evaluate(
-                eval_loader,
-                output_type=task_type,
-                device=device,
-                plot_dir=task_plot_dir,
-                ordinal_sigma=ordinal_sigma,
+            # Final Eval
+            metrics_all[task_name] = search_out["best_model"].evaluate(
+                eval_loader, output_type=task_type, device=device, 
+                plot_dir=os.path.join(results_path, f"plots_{task_name}"),
+                ordinal_sigma=ordinal_sigma
             )
+            hyperparams_all[task_name] = search_out["best_params"]
 
-            metrics_all[task_name] = task_metrics
-            hyperparams_all[task_name] = best_params
-
-        # ------------------------------------------------------------------
-        # 8) Dataset statistics
-        # ------------------------------------------------------------------
-        train_stats = compute_dataset_stats(t_latent_features)
-        eval_stats  = compute_dataset_stats(e_latent_features)
-
-        # ------------------------------------------------------------------
-        # 9) Collate and persist results
-        # ------------------------------------------------------------------
+        # Persist
         final_results = {
             "metrics_per_task": metrics_all,
             "hyperparams_per_task": hyperparams_all,
-            "train_dataset_stats": train_stats,
-            "eval_dataset_stats": eval_stats,
-            "latent":   latent_metrics if latent_metrics is not None else None,
+            "train_dataset_stats": compute_dataset_stats(t_latent_features),
+            "eval_dataset_stats": compute_dataset_stats(e_latent_features),
+            "latent": latent_metrics
         }
-
-        # Merge CV results if --cv was used
-        if args.cv and cv_results_all:
-            cv_formatted = {}
-            for task_name, cv_res in cv_results_all.items():
-                cv_formatted.update(cv_results_to_dict(cv_res, task_name))
-            final_results["cross_validation"] = cv_formatted
-            print(f"\n📊 Cross-validation results included for tasks: {list(cv_results_all.keys())}")
-
-        print("Saving results …")
+        if args.cv:
+            final_results["cross_validation"] = {k: cv_results_to_dict(v, k) for k, v in cv_results_all.items()}
+            
         eval.save_results(final_results, results_path)
+        print(f"✅ Dataset {data_corp} done!")
 
-        print(f"✅ Dataset {data_corp} completed successfully to the path {results_path}!")
-        
     print("\n✅ All datasets processed successfully!")
 
 if __name__ == "__main__":
