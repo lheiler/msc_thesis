@@ -5,4 +5,5 @@ Datasets/tuh-eeg-ab-clean/
 env_thesis/
 CLAUDE.md
 venv
-
+Datasets/harvard-eeg-clean/
+Datasets/lemon/
