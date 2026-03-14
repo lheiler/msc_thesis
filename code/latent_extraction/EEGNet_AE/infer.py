@@ -199,7 +199,7 @@ def _models_dir() -> Path:
     return _this_dir() / "models"
 
 
-def _resolve_latest_ckpt() -> Path:
+def _resolve_latest_ckpt(dataset_name: str = "tuh") -> Path:
     # Allow override via env var
     env_path = os.environ.get("EEGNET_AE_CKPT", "").strip()
     if env_path:
@@ -208,24 +208,28 @@ def _resolve_latest_ckpt() -> Path:
             return p
     # Prefer newest checkpoint within models/ (favor files containing 'best')
     models_dir = _models_dir()
-    candidates = list(models_dir.glob("*.pth"))
+    candidates = list(models_dir.glob(f"{dataset_name}_best.pth"))
     if not candidates:
         # Backward-compatible default
-        return models_dir / "best.pth"
+        candidates = list(models_dir.glob("best.pth"))
+        if not candidates:
+            return models_dir / "best.pth"
+        else:
+            print(f"⚠️ Warning: No dataset specific ({dataset_name}) model found, falling back to: {candidates[0]}")
     def sort_key(p: Path):
         return (p.stat().st_mtime, 1 if "best" in p.name.lower() else 0)
     candidates.sort(key=sort_key, reverse=True)
     return candidates[0]
 
 
-def get_eegnet_ae_model(*, device: Optional[torch.device | str] = None, latent_dim: int = 128) -> EEGNetAE:
+def get_eegnet_ae_model(*, device: Optional[torch.device | str] = None, latent_dim: int = 128, dataset_name: str = "tuh") -> EEGNetAE:
     """Load the EEGNetAE model with the best checkpoint if available."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     device = torch.device(device)
 
     model = EEGNetAE(n_channels=19, latent_dim=latent_dim, fixed_len=10 * 128)
-    ckpt = _resolve_latest_ckpt()
+    ckpt = _resolve_latest_ckpt(dataset_name=dataset_name)
     if ckpt.exists():
         state = torch.load(ckpt, map_location=device)
         if isinstance(state, dict) and "model_state" in state:
@@ -249,6 +253,7 @@ def extract_eegnet_ae(
     device: Optional[torch.device | str] = None,
     latent_dim: int = 128,
     model: Optional[EEGNetAE] = None,
+    dataset_name: str = "tuh"
 ) -> torch.Tensor:
     """Return a 1‑D latent vector for the given Raw recording.
 
@@ -259,7 +264,7 @@ def extract_eegnet_ae(
     device = torch.device(device)
 
     if model is None:
-        model = get_eegnet_ae_model(device=device, latent_dim=latent_dim)
+        model = get_eegnet_ae_model(device=device, latent_dim=latent_dim, dataset_name=dataset_name)
     data = preprocess_time_domain_input(raw, target_sfreq=128.0, segment_len_sec=10)
     x = torch.as_tensor(data, dtype=torch.float32, device=device).unsqueeze(0)  # (1, C, T)
     z = model.encode(x).squeeze(0).detach().cpu()  # (latent_dim,)

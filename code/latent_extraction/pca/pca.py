@@ -271,9 +271,15 @@ def extract_pca_from_raw(raw: mne.io.BaseRaw, *, model: FrozenPCATorch, device: 
         return model.transform_vec(psd).cpu().numpy().flatten()
 
 
+import argparse
+
 def main():
-    # Hardcoded configuration – no CLI args
-    train_pickle = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl"
+    parser = argparse.ArgumentParser(description="Fit PCA on dataset")
+    parser.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl", help="Path to train_epochs.pkl")
+    parser.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
+    args = parser.parse_args()
+
+    train_pickle = args.data_root
     out_dir = Path("/rds/general/user/lrh24/home/thesis/code/latent_extraction/pca/models/")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -291,7 +297,7 @@ def main():
     psd_n_per_seg = PSD_CALCULATION_PARAMS.get("n_per_seg", 512)
     psd_n_fft = PSD_CALCULATION_PARAMS.get("n_fft", 512)
 
-    model_stem = f"pca_pc_psd_k{k}"
+    model_stem = f"{args.dataset_name}_pca_pc_psd_k{k}"
     model_out = out_dir / f"{model_stem}.npz"
 
     # Use cleaned epoch pickle instead of scanning FIF files

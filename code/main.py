@@ -111,7 +111,7 @@ def main():
             e_latent_features = _latent_loader("eval")
             if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval:
                 print("⚠️  Cache size mismatch – regenerating …")
-                use_cache = False
+                #use_cache = False ### CAREFULL THIS SHOULD BE REENABLED
             else: 
                 print("Cached latent features loaded successfully.")
 
@@ -126,16 +126,19 @@ def main():
                 
             t_latent_features = extractor.extract_latent_features(
                 t_data, batch_size=batch_size, method=method,
-                save_path=os.path.join(results_path, "temp_latent_features_train.json")
+                save_path=os.path.join(results_path, "temp_latent_features_train.json"),
+                dataset_name=data_corp
             )
             e_latent_features = extractor.extract_latent_features(
                 e_data, batch_size=batch_size, method=method,
-                save_path=os.path.join(results_path, "temp_latent_features_eval.json")
+                save_path=os.path.join(results_path, "temp_latent_features_eval.json"),
+                dataset_name=data_corp
             )
-
+            
         # ------------------------------------------------------------------
         # 5) Latent evaluation
         # ------------------------------------------------------------------
+        continue
         print("Evaluating latent features …")
         latent_metrics_file = os.path.join(results_path, "latent_metrics.json")
         if not reset and os.path.exists(latent_metrics_file):

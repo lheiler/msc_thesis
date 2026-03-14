@@ -7,15 +7,14 @@
 #wong_wang_avg, wong_wang_pc, 
 #hopf_avg, hopf_pc, 
 #psd_ae_avg, psd_ae_pc, 
-#psd_ae_channel, psd_ae_ch
 #ctm_cma_pc, ctm_cma_avg
 
 method: c22
 
 # Ensure datasets are specified correctly for evaluation
 datasets:
-  lemon: "/Users/lorenzheiler/msc_thesis/Datasets/lemon"
-  tuh: "/Users/lorenzheiler/msc_thesis/Datasets/tuh-eeg-ab-clean"
+  lemon: "/rds/general/user/lrh24/home/msc_thesis/Datasets/lemon"
+  tuh: "/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean"
 
 paths:
   results_root: "Results"

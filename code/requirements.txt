@@ -14,7 +14,7 @@ autoreject
 
 # Optimisation & feature extraction
 cma
-pycatch22
+catch22
 
 # Visualisation
 matplotlib

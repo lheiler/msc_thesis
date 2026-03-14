@@ -94,6 +94,7 @@ def train(
     data_root: Path,
     out_dir: Path,
     *,
+    dataset_name: str = "tuh",
     latent_dim: int = 128,
     batch_size: int = 16,
     lr: float = 5e-4,
@@ -124,7 +125,7 @@ def train(
     out_dir = Path(out_dir)
     models_dir = out_dir / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
-    best_path = models_dir / "best.pth"
+    best_path = models_dir / f"{dataset_name}_best.pth"
 
     patience = 0
 
@@ -188,7 +189,8 @@ def train(
 
 def main():
     p = argparse.ArgumentParser()
-    data_root = Path("/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl")
+    p.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl")
+    p.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
     out_dir = Path("/rds/general/user/lrh24/home/thesis/code/latent_extraction/EEGNet_AE/")
     p.add_argument("--latent_dim", type=int, default=128)
     p.add_argument("--batch_size", type=int, default=256)
@@ -198,9 +200,12 @@ def main():
     p.add_argument("--num_workers", type=int, default=4)
     args = p.parse_args()
 
+    # Pass dataset_name by writing it to train function 
+    # Notice we modified train below to take dataset_name, let's fix that
     train(
-        data_root=Path(data_root),
+        data_root=Path(args.data_root),
         out_dir=Path(out_dir),
+        dataset_name=args.dataset_name,
         latent_dim=args.latent_dim,
         batch_size=args.batch_size,
         lr=args.lr,

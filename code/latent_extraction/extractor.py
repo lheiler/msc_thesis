@@ -53,7 +53,7 @@ def _run_single_parallel(method: str, x):
         return extract_c22(x)
     raise ValueError(f"Method not supported for parallel execution: {method}")
 
-def extract_latent_features(data: DataLoader, batch_size, method, save_path="", n_workers: int = 32):
+def extract_latent_features(data: DataLoader, batch_size, method, save_path="", n_workers: int = 64, dataset_name: str = "tuh"):
     """
     Extract latent features from the EEG data and optionally save them.
     """
@@ -93,14 +93,14 @@ def extract_latent_features(data: DataLoader, batch_size, method, save_path="", 
 
     if method == "ctm_nn_pc" or method == "ctm_nn_avg":
         model = ParameterRegressor().to(device)
-        state = torch.load("/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/models/regressor.pt", map_location=device, weights_only=False)
+        state = torch.load("/rds/general/user/lrh24/home/msc_thesis/code/latent_extraction/ctm_nn/amore/models/regressor.pt", map_location=device, weights_only=False)
         model.load_state_dict(state["model_state"]) 
     elif method == "eegnet":
-        model = get_eegnet_ae_model(device=device)
+        model = get_eegnet_ae_model(device=device, dataset_name=dataset_name)
     elif method == "pca_pc" or method == "pca_avg":
-        model = FrozenPCATorch("latent_extraction/pca/models/pca_pc_psd_k8.npz", device=device)
+        model = FrozenPCATorch(f"latent_extraction/pca/models/{dataset_name}_pca_pc_psd_k8.npz", device=device)
     elif method == "psd_ae_pc" or method == "psd_ae_avg":
-        model = get_psd_ae_model(device=device)
+        model = get_psd_ae_model(device=device, dataset_name=dataset_name)
     
     for item in data:
         # Require (raw, g, a, ab, sample_id)
