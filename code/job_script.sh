@@ -17,11 +17,10 @@
 #python main.py --method psd_ae_avg
 #python main.py --method psd_ae_pc
 
-#python main.py --method c22
-python main.py --method jr_avg
-python main.py --method jr_pc
-python main.py --method wong_wang_avg
-python main.py --method wong_wang_pc
+# python main.py --method c22
+# python main.py --method jr_avg
+# python main.py --method jr_pc
+# python main.py --method wong_wang_avg
 python main.py --method hopf_avg
 python main.py --method hopf_pc
 python main.py --method ctm_cma_pc

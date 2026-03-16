@@ -1,0 +1,9 @@
+Task,Metric,Best Method,Value
+Gender,Accuracy,hopf_avg,0.5955
+Gender,F1,hopf_avg,0.6602
+Gender,Roc Auc,hopf_avg,0.6071
+Gender,Pr Auc,pca_avg,0.6312
+Abnormal,Accuracy,psd_ae_avg,0.7435
+Abnormal,F1,hopf_avg,0.7199
+Abnormal,Roc Auc,psd_ae_avg,0.8254
+Abnormal,Pr Auc,psd_ae_avg,0.8055

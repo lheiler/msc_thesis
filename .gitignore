@@ -3,7 +3,8 @@ Datasets/tuh-eeg-ab-clean/
 **/.DS_Store
 **/__pycache__/
 env_thesis/
-CLAUDE.md
 venv
 Datasets/harvard-eeg-clean/
 Datasets/lemon/
+temp_latent_features_*.json
+*.pth

@@ -1,0 +1,109 @@
+metrics_per_task.gender.loss: 0.6866888993933734
+metrics_per_task.gender.accuracy: 0.555229895585272    # Classification accuracy (gender)
+metrics_per_task.gender.pred_counts.label_0: 1890
+metrics_per_task.gender.pred_counts.label_1: 3569
+metrics_per_task.gender.precision: 0.5687867750070048
+metrics_per_task.gender.recall: 0.6954436450839329
+metrics_per_task.gender.f1: 0.62577065351418    # Binary F1-score (gender)
+metrics_per_task.gender.f1_macro: 0.538844694702914    # Macro-averaged F1 (gender)
+metrics_per_task.gender.roc_auc: 0.5645129790430872    # ROC-AUC (gender)
+metrics_per_task.gender.pr_auc: 0.5896062517263183    # Precision–Recall AUC (gender)
+metrics_per_task.gender.confusion: [[1001, 1539], [889, 2030]]
+metrics_per_task.abnormal.loss: 0.649981871173591
+metrics_per_task.abnormal.accuracy: 0.6131159553031691    # Classification accuracy (abnormal)
+metrics_per_task.abnormal.pred_counts.label_0: 2779
+metrics_per_task.abnormal.pred_counts.label_1: 2680
+metrics_per_task.abnormal.precision: 0.5697761194029851
+metrics_per_task.abnormal.recall: 0.6142397425583266
+metrics_per_task.abnormal.f1: 0.5911730545876888    # Binary F1-score (abnormal)
+metrics_per_task.abnormal.f1_macro: 0.6119982101867512    # Macro-averaged F1 (abnormal)
+metrics_per_task.abnormal.roc_auc: 0.6582759179626563    # ROC-AUC (abnormal)
+metrics_per_task.abnormal.pr_auc: 0.6017973136197664    # Precision–Recall AUC (abnormal)
+metrics_per_task.abnormal.confusion: [[1820, 1153], [959, 1527]]
+hyperparams_per_task.gender.architecture.input_dim: 5
+hyperparams_per_task.gender.architecture.output_type: classification
+hyperparams_per_task.gender.architecture.hidden_dims: (64, 32, 16, 16)
+hyperparams_per_task.gender.architecture.dropout: 0.2319292318978257
+hyperparams_per_task.abnormal.architecture.input_dim: 5
+hyperparams_per_task.abnormal.architecture.output_type: classification
+hyperparams_per_task.abnormal.architecture.hidden_dims: (448, 224, 112, 56)
+hyperparams_per_task.abnormal.architecture.dropout: 0.05515467124479303
+train_dataset_stats.n_samples: 53622    # Number of training samples
+train_dataset_stats.gender_counts.female(0): 25039
+train_dataset_stats.gender_counts.male(1): 28583
+train_dataset_stats.abnormal_counts.abnormal(1): 26545
+train_dataset_stats.abnormal_counts.normal(0): 27077
+train_dataset_stats.age_bin_counts.0–10: 53622
+train_dataset_stats.age_bin_counts.10–20: 0
+train_dataset_stats.age_bin_counts.20–30: 0
+train_dataset_stats.age_bin_counts.30–40: 0
+train_dataset_stats.age_bin_counts.40–50: 0
+train_dataset_stats.age_bin_counts.50–60: 0
+train_dataset_stats.age_bin_counts.60–70: 0
+train_dataset_stats.age_bin_counts.70–80: 0
+train_dataset_stats.age_bin_counts.80–120: 0
+eval_dataset_stats.n_samples: 5459    # Number of evaluation samples
+eval_dataset_stats.gender_counts.female(0): 2540
+eval_dataset_stats.gender_counts.male(1): 2919
+eval_dataset_stats.abnormal_counts.abnormal(1): 2486
+eval_dataset_stats.abnormal_counts.normal(0): 2973
+eval_dataset_stats.age_bin_counts.0–10: 5459
+eval_dataset_stats.age_bin_counts.10–20: 0
+eval_dataset_stats.age_bin_counts.20–30: 0
+eval_dataset_stats.age_bin_counts.30–40: 0
+eval_dataset_stats.age_bin_counts.40–50: 0
+eval_dataset_stats.age_bin_counts.50–60: 0
+eval_dataset_stats.age_bin_counts.60–70: 0
+eval_dataset_stats.age_bin_counts.70–80: 0
+eval_dataset_stats.age_bin_counts.80–120: 0
+latent.train.n_samples: 53622
+latent.train.dim: 5
+latent.train.variance_per_dim: <array shape (5,)>
+latent.train.active_units: 4
+latent.train.hsic_global_score: 0.007189212832599878
+latent.train.cluster.silhouette: 0.645646870136261
+latent.train.cluster.davies_bouldin: 0.4707096999485548
+latent.train.cluster.calinski_harabasz: 556440.625
+latent.train.geometry.trustworthiness: 0.9967318166315579
+latent.train.geometry.continuity: 0.9990717424014445
+latent.train.geometry.dist_corr: 0.9999994456708224
+latent.train.mi_zy.gender.mean: 0.0007394701669192205
+latent.train.mi_zy.gender.per_dim: <array shape (5,)>
+latent.train.mi_zy.abnormal.mean: 0.016130513346441555
+latent.train.mi_zy.abnormal.per_dim: <array shape (5,)>
+latent.eval.n_samples: 5459
+latent.eval.dim: 5
+latent.eval.variance_per_dim: <array shape (5,)>
+latent.eval.active_units: 4
+latent.eval.hsic_global_score: 0.007233288139104843
+latent.eval.cluster.silhouette: 0.6359460949897766
+latent.eval.cluster.davies_bouldin: 0.48313030663513123
+latent.eval.cluster.calinski_harabasz: 55897.6875
+latent.eval.geometry.trustworthiness: 0.9972797873407564
+latent.eval.geometry.continuity: 0.999085256294513
+latent.eval.geometry.dist_corr: 0.9999994700139344
+latent.eval.mi_zy.gender.mean: 0.014283618491030037
+latent.eval.mi_zy.gender.per_dim: <array shape (5,)>
+latent.eval.mi_zy.abnormal.mean: 0.014901548681851428
+latent.eval.mi_zy.abnormal.per_dim: <array shape (5,)>
+latent.pca.top5_ratio_sum: 1.0000001192092896
+latent.pca.explained_variance_ratio: <array shape (5,)>
+latent.pca.train_shape: (53622, 5)
+latent.pca.eval_shape: (5459, 5)
+latent.pca.note: PCA fitted on training data only to avoid data leakage
+latent.train_vs_eval_comparison.active_units_ratio: 1.0
+latent.train_vs_eval_comparison.hsic_score_ratio: 1.0061307555543637
+latent.train_vs_eval_comparison.variance_distribution.train_mean: 264.2041015625
+latent.train_vs_eval_comparison.variance_distribution.eval_mean: 267.2498779296875
+latent.train_vs_eval_comparison.variance_distribution.ratio: 1.0115281191668668
+latent.train_vs_eval_comparison.geometry_preservation.trustworthiness_ratio: 1.0005497674500352
+latent.train_vs_eval_comparison.geometry_preservation.continuity_ratio: 1.0000135264490977
+latent.subsampling_info.hsic_max_samples: 10000
+latent.subsampling_info.geometry_max_samples: 5000
+latent.subsampling_info.tsne_max_samples: 2000
+latent.subsampling_info.shepard_max_samples: 10000
+latent.subsampling_info.note: None means no subsampling was applied. Subsampling uses seeded random sampling for reproducibility.
+latent.analysis_recommendations.dataset_size: large
+latent.analysis_recommendations.most_useful_plots: ['HSIC heatmap: Shows latent independence patterns', 'Latent space analysis: Reveals dimension utilization and generalization', 'Variance histograms: Identifies active vs inactive dimensions', 'Train vs eval scatter: Detects overfitting in latent space']
+latent.analysis_recommendations.less_useful_at_scale: ['Individual scatter points: Too dense to interpret', 't-SNE: Representative but subsampled', 'Shepard plots: Shows overall trends but subsampled']
+latent.analysis_recommendations.key_metrics_to_focus_on: ['Active units ratio (train vs eval)', 'HSIC global score', 'Dimension utilization patterns', 'Train-eval variance correlation', 'Effective dimensionality']
