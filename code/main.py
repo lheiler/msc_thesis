@@ -111,6 +111,8 @@ def main():
             e_latent_features = _latent_loader("eval")
             if len(t_latent_features.dataset) != n_train or len(e_latent_features.dataset) != n_eval:
                 print("⚠️  Cache size mismatch – regenerating …")
+                print(f"Expected {n_train} train samples, got {len(t_latent_features.dataset)}")
+                print(f"Expected {n_eval} eval samples, got {len(e_latent_features.dataset)}")
                 #use_cache = False ### CAREFULL THIS SHOULD BE REENABLED
             else: 
                 print("Cached latent features loaded successfully.")

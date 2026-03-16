@@ -13,11 +13,15 @@ from typing import Union
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-# Add the utils directory to the Python path
-utils_path = Path(__file__).resolve().parent.parent.parent / "utils"
-sys.path.insert(0, str(utils_path))
+# Add the root and utils directory to the Python path
+root_path = Path(__file__).resolve().parent.parent.parent
+if str(root_path) not in sys.path:
+    sys.path.insert(0, str(root_path))
+utils_path = root_path / "utils"
+if str(utils_path) not in sys.path:
+    sys.path.insert(0, str(utils_path))
 
-from gen_dataset import TUHFIF60sDataset
+from data_preprocessing.gen_dataset import TUHFIF60sDataset
 from util import compute_psd_from_raw, PSD_CALCULATION_PARAMS, compute_psd_from_array, normalize_psd
 
 SEED = 42
@@ -94,8 +98,8 @@ class PSDAE(nn.Module):
         return self.decode(z)
 
 
-def _resolve_latest_checkpoint() -> Path:
-    """Find the newest PSD-AE checkpoint in the models directory.
+def _resolve_latest_checkpoint(dataset_name: str = "tuh") -> Path:
+    """Find the newest PSD-AE checkpoint in the models directory for a specific dataset.
 
     Returns:
         Path: Path to the newest checkpoint file.
@@ -103,14 +107,20 @@ def _resolve_latest_checkpoint() -> Path:
         RuntimeError: If no checkpoint is found.
     """
     models_dir = Path(__file__).resolve().parent / "models"
-    candidates = sorted(models_dir.glob("psd_ae_*.pth"), key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = sorted(models_dir.glob(f"{dataset_name}_psd_ae_*.pth"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not candidates:
-        raise RuntimeError(f"No PSD-AE checkpoint found in {models_dir}. Train via latent_extraction/psd_ae/psd_ae.py")
-    print(f"Using checkpoint {candidates[0]}")
+        # Fallback to general models if dataset specific one isn't found just in case, but warn
+        candidates = sorted(models_dir.glob("psd_ae_*.pth"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not candidates:
+            raise RuntimeError(f"No PSD-AE checkpoint found in {models_dir}. Train via latent_extraction/psd_ae/psd_ae.py")
+        else:
+            print(f"⚠️ Warning: No dataset specific ({dataset_name}) model found, falling back to: {candidates[0]}")
+    else:
+        print(f"Using checkpoint {candidates[0]}")
     return candidates[0]
 
 
-def get_psd_ae_model(device: Union[str, torch.device] = "cpu", ckpt_path: Optional[str] = None) -> PSDAE:
+def get_psd_ae_model(device: Union[str, torch.device] = "cpu", ckpt_path: Optional[str] = None, dataset_name: str = "tuh") -> PSDAE:
     """Load PSD-AE model from a checkpoint and put it on device.
 
     Args:
@@ -121,7 +131,7 @@ def get_psd_ae_model(device: Union[str, torch.device] = "cpu", ckpt_path: Option
         PSDAE: Model loaded and set to eval mode on the specified device.
     """
     if ckpt_path is None:
-        ckpt = _resolve_latest_checkpoint()
+        ckpt = _resolve_latest_checkpoint(dataset_name=dataset_name)
     else:
         ckpt = Path(ckpt_path)
         if not ckpt.exists():
@@ -280,7 +290,7 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
                 best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
                  # Save model
                 Path("models").mkdir(parents=True, exist_ok=True)
-                save_path = Path(f"models/psd_ae_{latent_dim}.pth")
+                save_path = Path(f"models/{args.dataset_name}_psd_ae_{latent_dim}.pth")
                 torch.save({
                     "state_dict": model.state_dict(),
                     "freqs": torch.from_numpy(freqs_np.astype(np.float32)),
@@ -304,14 +314,21 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
     
         
 
+import argparse
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train PSD-AE model")
+    parser.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl", help="Path to train_epochs.pkl")
+    parser.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
+    args = parser.parse_args()
+
     set_seed()
     device = get_device()
     print("[INFO] Starting PSD-AE training run")
     # Load dataset (time-domain segments)
     latent_dim = 8
-    batch_size = 512    
-    dataset = TUHFIF60sDataset("/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl")
+    batch_size = 64    
+    dataset = TUHFIF60sDataset(args.data_root)
     print(f"Loaded {len(dataset)} files")
 
     # Determine input_dim from actual PSD frequency bins used (respects fmin/fmax)
@@ -336,16 +353,4 @@ if __name__ == "__main__":
 
     train(model, train_loader, val_loader, device=device, sfreq=dataset.sfreq)
     print("[INFO] Training finished")
-
-    # Save model
-    Path("models").mkdir(parents=True, exist_ok=True)
-    save_path = Path(f"models/psd_ae_{latent_dim}.pth")
-    torch.save({
-        "state_dict": model.state_dict(),
-        "freqs": torch.from_numpy(freqs_np.astype(np.float32)),
-        "latent_dim": latent_dim,
-        "input_dim": input_dim,
-    }, str(save_path))
-
-    print(f"[INFO] Saved model to {save_path}")
     

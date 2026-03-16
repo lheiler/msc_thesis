@@ -290,7 +290,7 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
                 best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
                  # Save model
                 Path("models").mkdir(parents=True, exist_ok=True)
-                save_path = Path(f"models/psd_ae_{latent_dim}.pth")
+                save_path = Path(f"models/{args.dataset_name}_psd_ae_{latent_dim}.pth")
                 torch.save({
                     "state_dict": model.state_dict(),
                     "freqs": torch.from_numpy(freqs_np.astype(np.float32)),
@@ -318,7 +318,7 @@ import argparse
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train PSD-AE model")
-    parser.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl", help="Path to train_epochs.pkl")
+    parser.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl", help="Path to train_epochs.pkl")
     parser.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
     args = parser.parse_args()
 
@@ -327,7 +327,7 @@ if __name__ == "__main__":
     print("[INFO] Starting PSD-AE training run")
     # Load dataset (time-domain segments)
     latent_dim = 8
-    batch_size = 512    
+    batch_size = 64    
     dataset = TUHFIF60sDataset(args.data_root)
     print(f"Loaded {len(dataset)} files")
 
@@ -353,17 +353,4 @@ if __name__ == "__main__":
 
     train(model, train_loader, val_loader, device=device, sfreq=dataset.sfreq)
     print("[INFO] Training finished")
-
-    # Save model
-    models_dir = Path(__file__).resolve().parent / "models"
-    models_dir.mkdir(parents=True, exist_ok=True)
-    save_path = models_dir / f"{args.dataset_name}_psd_ae_{latent_dim}.pth"
-    torch.save({
-        "state_dict": model.state_dict(),
-        "freqs": torch.from_numpy(freqs_np.astype(np.float32)),
-        "latent_dim": latent_dim,
-        "input_dim": input_dim,
-    }, str(save_path))
-
-    print(f"[INFO] Saved model to {save_path}")
     

@@ -15,9 +15,9 @@ import numpy as np
 import importlib.util
 import sys
 import matplotlib.pyplot as plt
-sys.path.insert(0, "/rds/general/user/lrh24/home/thesis/code")
+sys.path.insert(0, "/rds/general/user/lrh24/home/msc_thesis/code")
 from utils.util import PSD_CALCULATION_PARAMS
-from utils.gen_dataset import TUHFIF60sDataset
+from data_preprocessing.gen_dataset import TUHFIF60sDataset
 
 
 def _load_infer_module():
@@ -51,7 +51,7 @@ def welch_psd_torch(x: torch.Tensor, fs: float = 128.0, nperseg: int = 256, nove
     F = torch.linspace(0, fs / 2, Pxx.shape[1], device=x.device, dtype=x.dtype)
     return F, Pxx.view(B, C, -1)
 
-# replace your mixed_recon_loss with this
+
 def mixed_recon_loss(x_hat: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     """Differentiable spectral loss using Welch PSD; normalized; MSE weight 0.0."""
     # Align time
@@ -66,8 +66,8 @@ def mixed_recon_loss(x_hat: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     _, X_psd  = welch_psd_torch(x,     fs=128.0, nperseg=256, noverlap=128)
 
     # Restrict comparison to configured frequency band (e.g., ≤45 Hz)
-    fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 0.0))
-    fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", 64.0))
+    fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 1.0))
+    fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", 45.0))
     mask = (F >= fmin) & (F <= fmax)
     Xh_psd = Xh_psd[..., mask]
     X_psd  = X_psd[..., mask]
@@ -80,17 +80,21 @@ def mixed_recon_loss(x_hat: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     Xh_psd = (Xh_psd - Xh_psd.mean(dim=-1, keepdim=True)) / (Xh_psd.std(dim=-1, keepdim=True) + 1e-8)
     X_psd = (X_psd - X_psd.mean(dim=-1, keepdim=True)) / (X_psd.std(dim=-1, keepdim=True) + 1e-8)
 
+
     # Spectral MSE in log space
     spec = nn.functional.mse_loss(Xh_psd, X_psd)
 
     # Time-domain term is disabled
     mse = nn.functional.mse_loss(x_hat, x)
-    return 1.0 * mse + 1.0 * spec
+    
+    return spec
+
 
 def train(
     data_root: Path,
     out_dir: Path,
     *,
+    dataset_name: str = "tuh",
     latent_dim: int = 128,
     batch_size: int = 16,
     lr: float = 5e-4,
@@ -121,7 +125,7 @@ def train(
     out_dir = Path(out_dir)
     models_dir = out_dir / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
-    best_path = models_dir / "best.pth"
+    best_path = models_dir / f"{dataset_name}_best.pth"
 
     patience = 0
 
@@ -155,7 +159,7 @@ def train(
             patience = 0
         else:
             patience += 1
-            if patience >= 8:
+            if patience >= 15:
                 print("Early stopping: no val improvement.")
                 break
             
@@ -185,19 +189,23 @@ def train(
 
 def main():
     p = argparse.ArgumentParser()
-    data_root = Path("/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl")
-    out_dir = Path("/rds/general/user/lrh24/home/thesis/code/latent_extraction/EEGNet_AE/")
+    p.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl")
+    p.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
+    out_dir = Path("/rds/general/user/lrh24/home/msc_thesis/code/latent_extraction/EEGNet_AE/")
     p.add_argument("--latent_dim", type=int, default=128)
-    p.add_argument("--batch_size", type=int, default=16)
+    p.add_argument("--batch_size", type=int, default=256)
     p.add_argument("--lr", type=float, default=5e-3)
     p.add_argument("--epochs", type=int, default=1000)
     p.add_argument("--val_ratio", type=float, default=0.1)
     p.add_argument("--num_workers", type=int, default=4)
     args = p.parse_args()
 
+    # Pass dataset_name by writing it to train function 
+    # Notice we modified train below to take dataset_name, let's fix that
     train(
-        data_root=Path(data_root),
+        data_root=Path(args.data_root),
         out_dir=Path(out_dir),
+        dataset_name=args.dataset_name,
         latent_dim=args.latent_dim,
         batch_size=args.batch_size,
         lr=args.lr,

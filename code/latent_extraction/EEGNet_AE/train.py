@@ -15,9 +15,9 @@ import numpy as np
 import importlib.util
 import sys
 import matplotlib.pyplot as plt
-sys.path.insert(0, "/rds/general/user/lrh24/home/thesis/code")
+sys.path.insert(0, "/rds/general/user/lrh24/home/msc_thesis/code")
 from utils.util import PSD_CALCULATION_PARAMS
-from utils.gen_dataset import TUHFIF60sDataset
+from data_preprocessing.gen_dataset import TUHFIF60sDataset
 
 
 def _load_infer_module():
@@ -189,9 +189,9 @@ def train(
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl")
+    p.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl")
     p.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
-    out_dir = Path("/rds/general/user/lrh24/home/thesis/code/latent_extraction/EEGNet_AE/")
+    out_dir = Path("/rds/general/user/lrh24/home/msc_thesis/code/latent_extraction/EEGNet_AE/")
     p.add_argument("--latent_dim", type=int, default=128)
     p.add_argument("--batch_size", type=int, default=256)
     p.add_argument("--lr", type=float, default=5e-3)

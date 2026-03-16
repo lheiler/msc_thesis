@@ -10,7 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import torch
 import sys
-sys.path.append("/rds/general/user/lrh24/home/thesis/code")
+sys.path.append("/rds/general/user/lrh24/home/msc_thesis/code")
 from utils.util import compute_psd_from_raw, PSD_CALCULATION_PARAMS, STANDARD_EEG_CHANNELS
 
 
@@ -275,12 +275,12 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser(description="Fit PCA on dataset")
-    parser.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl", help="Path to train_epochs.pkl")
+    parser.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl", help="Path to train_epochs.pkl")
     parser.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
     args = parser.parse_args()
 
     train_pickle = args.data_root
-    out_dir = Path("/rds/general/user/lrh24/home/thesis/code/latent_extraction/pca/models/")
+    out_dir = Path("/rds/general/user/lrh24/home/msc_thesis/code/latent_extraction/pca/models/")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # PCA settings

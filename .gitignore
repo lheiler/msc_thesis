@@ -1,4 +1,3 @@
-Datasets/old-tuh-eeg-ab-clean/
 Datasets/tuh-eeg-ab-clean/
 **/.DS_Store
 **/__pycache__/
@@ -6,5 +5,7 @@ env_thesis/
 venv
 Datasets/harvard-eeg-clean/
 Datasets/lemon/
-temp_latent_features_*.json
-*.pth
+code/Results
+# Ignore Jupyter temporary files
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
