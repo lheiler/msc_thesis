@@ -140,7 +140,6 @@ def main():
         # ------------------------------------------------------------------
         # 5) Latent evaluation
         # ------------------------------------------------------------------
-        continue
         print("Evaluating latent features …")
         latent_metrics_file = os.path.join(results_path, "latent_metrics.json")
         if not reset and os.path.exists(latent_metrics_file):
@@ -148,9 +147,15 @@ def main():
                 latent_metrics = json.load(f)
         else:
             try:
+                class NumpyEncoder(json.JSONEncoder):
+                    def default(self, obj):
+                        if isinstance(obj, np.ndarray): return obj.tolist()
+                        if isinstance(obj, np.generic): return obj.item()
+                        return super().default(obj)
+                        
                 latent_metrics = metrics.evaluate_latent_features(t_latent_features, e_latent_features, results_path)
                 with open(latent_metrics_file, "w") as f:
-                    json.dump(latent_metrics, f, indent=4)
+                    json.dump(latent_metrics, f, indent=4, cls=NumpyEncoder)
             except Exception as e:
                 print(f"⚠️ Latent evaluation failed: {e}")
                 latent_metrics = None
@@ -158,6 +163,7 @@ def main():
         # ------------------------------------------------------------------
         # 6) Training setup
         # ------------------------------------------------------------------
+        continue
         print("Training models for each task")
         input_dim = t_latent_features.dataset[0][0].numel()
         metrics_all = {}
