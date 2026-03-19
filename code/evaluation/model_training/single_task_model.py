@@ -504,7 +504,7 @@ def train(
             val_loss = None
             val_acc  = None
 
-        if epoch % 1 == 0: print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
+        if epoch % 10 == 0: print(f"[Task-specific] Epoch {epoch:03d}: {msg}")
 
         # ---------------- Early-stopping tracking ------------------
         # Use validation loss for selection; require a minimum number of epochs

@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.model_selection import GroupKFold
+from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 from sklearn.linear_model import LogisticRegression, RidgeClassifier, Ridge
 from sklearn.metrics import (
     accuracy_score,
@@ -64,15 +64,24 @@ def _set_seed(seed: int = _SEED):
 # =====================================================================
 
 def extract_subject_id(sample_id: str) -> str:
-    """Extract base subject ID from a TUH-style sample ID.
+    """Extract base subject ID from a sample ID.
 
-    E.g. 'aaaaapjb_s001_t001_epoch0000' → 'aaaaapjb'
+    Handles both TUH and BIDS/LEMON formats:
+      TUH:   'aaaaapjb_s001_t001_epoch0000' → 'aaaaapjb'
+      LEMON: 'sub-032400_EC_epoch0'         → 'sub-032400'
     """
-    m = re.match(r"^([A-Za-z0-9]+)_s\d+", sample_id)
-    if m:
-        return m.group(1)
-    if "_t" in sample_id:
-        return sample_id.split("_t", 1)[0].split("_s", 1)[0]
+    # BIDS format (LEMON): sub-XXXXXX_...
+    m_bids = re.match(r"^(sub-[A-Za-z0-9]+)", sample_id)
+    if m_bids:
+        return m_bids.group(1)
+    # TUH format: subjectid_sXXX_tXXX_epochXXXX
+    m_tuh = re.match(r"^([A-Za-z0-9]+)_s\d+", sample_id)
+    if m_tuh:
+        return m_tuh.group(1)
+    # Fallback markers
+    for mkr in ["_s", "_t", "_epoch"]:
+        if mkr in sample_id:
+            return sample_id.split(mkr, 1)[0]
     if "_" in sample_id:
         return sample_id.split("_", 1)[0]
     return sample_id
@@ -275,11 +284,9 @@ class CrossValidator:
             test_loader = DataLoader(test_ds, batch_size=self.batch_size, shuffle=False)
 
             # ---- Split fold-train into train/val for Optuna / early stopping ----
-            n_train = len(train_idx)
-            val_size = max(1, int(n_train * 0.15))
-            perm = torch.randperm(n_train)
-            inner_train_idx = perm[val_size:]
-            inner_val_idx = perm[:val_size]
+            fold_subject_groups = subject_groups[train_idx]
+            gss_inner = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=_SEED + fold_idx)
+            inner_train_idx, inner_val_idx = next(gss_inner.split(np.arange(len(train_idx)), groups=fold_subject_groups))
 
             inner_train_loader = DataLoader(
                 TensorDataset(X_train_norm[inner_train_idx], y_train_fold[inner_train_idx]),
@@ -387,6 +394,7 @@ class CrossValidator:
             task_name, task_type,
         )
         results["best_architecture"] = best_arch_spec
+        results["best_optuna_params"] = best_optuna_params
         return results
 
     def _aggregate(

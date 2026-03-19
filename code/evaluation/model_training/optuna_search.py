@@ -25,7 +25,7 @@ def _set_global_seed(seed: int = _SEED) -> None:
 
 def _suggest_hidden_dims(trial: optuna.Trial, input_dim: int) -> tuple[int, ...]:
     n_layers = trial.suggest_int("n_layers", 2, 4)
-    base     = trial.suggest_int("base_width", 64, 512, step=64)
+    base = trial.suggest_int("base_width", max(32, input_dim), min(input_dim * 8, 512), step=32)
     return tuple(max(int(base * (0.5 ** i)), 16) for i in range(n_layers))
 
 
@@ -70,7 +70,7 @@ def tune_hyperparameters(
     def objective(trial: optuna.Trial):
         # ---------------- Hyper-parameter suggestions -----------------
         lr           = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
-        dropout      = trial.suggest_float("dropout", 0.0, 0.3)
+        dropout      = trial.suggest_float("dropout", 0.0, 0.5)
         weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
         scheduler     = trial.suggest_categorical("scheduler", ["plateau", "cosine", "none"])
         hidden_dims  = _suggest_hidden_dims(trial, input_dim)
@@ -145,6 +145,7 @@ def tune_hyperparameters(
     return {
         "best_params": {
             "architecture": best_arch_spec,
+            **study.best_trial.params,    # lr, dropout, weight_decay, scheduler, etc.
         },
         "study": study,
         "best_model": model_best,

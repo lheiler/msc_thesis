@@ -1,5 +1,6 @@
 from data_preprocessing import data_loading as dl
 from evaluation.model_training.optuna_search import tune_hyperparameters
+from evaluation.model_training.single_task_model import SingleTaskModel, train as train_single_task
 import evaluation.evaluation as eval
 import latent_extraction.extractor as extractor
 import numpy as np
@@ -16,7 +17,7 @@ from evaluation.data_metrics import compute_dataset_stats
 from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.decomposition import PCA
 import evaluation.metrix as metrics
-from evaluation.cross_validation import CrossValidator, cv_results_to_dict
+from evaluation.cross_validation import CrossValidator, cv_results_to_dict, LogisticProbe
 from pathlib import Path
 import pickle
 
@@ -36,7 +37,6 @@ def main():
     parser.add_argument("--config", type=str, default="configs/default.yaml", help="Path to YAML configuration file")
     parser.add_argument("--reset", action="store_true", help="Reset the pipeline")
     parser.add_argument("--method", type=str, help="Method to use for latent feature extraction")
-    parser.add_argument("--cv", action="store_false", default=True, help="Enable 5-fold cross-validation with linear probe")
     args = parser.parse_args()
     reset = args.reset 
 
@@ -140,7 +140,9 @@ def main():
         # ------------------------------------------------------------------
         # 5) Latent evaluation
         # ------------------------------------------------------------------
-        print("Evaluating latent features …")
+        print(f"\n{'─'*60}")
+        print(f"📊  PHASE 1: Latent Feature Evaluation")
+        print(f"{'─'*60}")
         latent_metrics_file = os.path.join(results_path, "latent_metrics.json")
         if not reset and os.path.exists(latent_metrics_file):
             with open(latent_metrics_file, "r") as f:
@@ -163,8 +165,9 @@ def main():
         # ------------------------------------------------------------------
         # 6) Training setup
         # ------------------------------------------------------------------
-        continue
-        print("Training models for each task")
+        print(f"\n{'─'*60}")
+        print(f"⚙️  PHASE 2: Training Setup")
+        print(f"{'─'*60}")
         input_dim = t_latent_features.dataset[0][0].numel()
         metrics_all = {}
         hyperparams_all = {}
@@ -216,16 +219,18 @@ def main():
             return y_tensor
 
         def discretize_age(y_tensor):
-            bins = torch.arange(20, 81, 5).float()
-            return torch.clamp(torch.bucketize(y_tensor, bins) - 1, 0, len(bins) - 2).float()
+            """Binary: 0 = Young (<45), 1 = Old (>=45).
+            The LEMON dataset has a bimodal distribution around these two cohorts,
+            with the gap naturally falling around 45 years."""
+            return (y_tensor >= 45).float()
 
         for task_idx in range(len(task_map)):
             task_type, task_name, tuple_idx = task_map[task_idx]
             num_classes, ordinal_sigma = 1, None
             
             if data_corp == "lemon" and task_name == "age":
-                task_type, num_classes, ordinal_sigma = "classification", 12, 1.0
-                print(f"🔹 Task {task_idx+1}: [LEMON] Age Classification (12 bins)")
+                task_type, num_classes, ordinal_sigma = "classification", 1, None
+                print(f"🔹 Task {task_idx+1}: [LEMON] Age Binary Classification (Young <45 vs Old ≥45)")
             else:
                 print(f"🔹 Task {task_idx+1}: {task_name} ({task_type})")
 
@@ -234,16 +239,18 @@ def main():
             if task_type == "classification":
                 y_train = discretize_age(y_train) if (data_corp == "lemon" and task_name == "age") else map_class_labels(y_train)
 
-            # CV Path
-            if args.cv:
-                cv = CrossValidator(n_splits=5, n_trials=n_trials_opt, batch_size=batch_size, device=device)
-                cv_result = cv.run(
-                    X=X_train.numpy(), y=y_train.numpy(), 
-                    sample_ids=sample_ids_train or [str(i) for i in range(len(X_train))],
-                    task_type=task_type, num_classes=num_classes, task_name=task_name,
-                    ordinal_sigma=ordinal_sigma, results_dir=results_path
-                )
-                cv_results_all[task_name] = cv_result
+            # CV: 5-fold subject-wise cross-validation on TRAINING data
+            print(f"\n{'─'*60}")
+            print(f"🔄  PHASE 3: Cross-Validation ({task_name}) — 5-fold on TRAINING data")
+            print(f"{'─'*60}")
+            cv = CrossValidator(n_splits=5, n_trials=n_trials_opt, batch_size=batch_size, device=device)
+            cv_result = cv.run(
+                X=X_train.numpy(), y=y_train.numpy(), 
+                sample_ids=sample_ids_train or [str(i) for i in range(len(X_train))],
+                task_type=task_type, num_classes=num_classes, task_name=task_name,
+                ordinal_sigma=ordinal_sigma, results_dir=results_path
+            )
+            cv_results_all[task_name] = cv_result
 
             # Normalization (Train split)
             train_tensor_idx = torch.tensor(train_indices_global)
@@ -261,22 +268,65 @@ def main():
             X_eval_norm = (X_eval - X_mean) / X_std
             eval_loader = DataLoader(TensorDataset(X_eval_norm, y_eval), batch_size=batch_size, shuffle=False)
 
-            # Optuna
-            search_out = tune_hyperparameters(
-                train_loader, val_loader, input_dim=input_dim, output_type=task_type,
-                num_classes=num_classes, n_trials=n_trials_opt, device=device, 
-                results_dir=results_path, ordinal_sigma=ordinal_sigma
+            # Reuse architecture discovered during CV (fold 0 Optuna)
+            best_arch = cv_results_all[task_name]["best_architecture"]
+            best_params = cv_results_all[task_name]["best_optuna_params"]
+
+            print(f"\n{'─'*60}")
+            print(f"🏗️  PHASE 4: Retrain CV architecture ({task_name}) — on full TRAINING set")
+            print(f"    Architecture: {best_arch['hidden_dims']}, dropout={best_arch['dropout']:.2f}")
+            print(f"    lr={best_params.get('lr', 1e-3):.5f}, wd={best_params.get('weight_decay', 1e-4):.6f}, sched={best_params.get('scheduler', 'plateau')}")
+            print(f"{'─'*60}")
+
+            model = SingleTaskModel(
+                input_dim=input_dim,
+                output_type=task_type,
+                hidden_dims=tuple(best_arch["hidden_dims"]),
+                dropout=best_arch["dropout"],
+                num_classes=best_arch.get("num_classes", num_classes),
             )
-            
+            train_single_task(
+                model,
+                train_loader,
+                val_loader=val_loader,
+                n_epochs=300,
+                lr=best_params.get("lr", 1e-3),
+                weight_decay=best_params.get("weight_decay", 1e-4),
+                device=device,
+                scheduler=best_params.get("scheduler", "plateau"),
+                early_stopping_patience=patience_opt,
+                ordinal_sigma=ordinal_sigma,
+            )
+            hyperparams_all[task_name] = best_params
+
             # Final Eval
-            metrics_all[task_name] = search_out["best_model"].evaluate(
+            print(f"\n{'─'*60}")
+            print(f"🎯  PHASE 5: Final Evaluation ({task_name}) — on held-out EVAL set")
+            print(f"{'─'*60}")
+            metrics_all[task_name] = model.evaluate(
                 eval_loader, output_type=task_type, device=device, 
                 plot_dir=os.path.join(results_path, f"plots_{task_name}"),
                 ordinal_sigma=ordinal_sigma
             )
-            hyperparams_all[task_name] = search_out["best_params"]
+
+            # Linear probe baseline on eval set
+            print(f"\n{'─'*60}")
+            print(f"📏  PHASE 5b: Linear Probe Baseline ({task_name}) — on held-out EVAL set")
+            print(f"{'─'*60}")
+            probe = LogisticProbe(task_type=task_type, num_classes=num_classes)
+            X_train_np = X_train_norm[train_tensor_idx].numpy()
+            y_train_np = y_train[train_tensor_idx].numpy()
+            probe.fit(X_train_np, y_train_np)
+            probe_eval_metrics = probe.evaluate(X_eval_norm.numpy(), y_eval.numpy())
+            metrics_all[f"{task_name}_linear_probe"] = probe_eval_metrics
+            print(f"  Linear probe eval: "
+                  + ", ".join(f"{k}={v:.4f}" for k, v in probe_eval_metrics.items()
+                              if isinstance(v, (int, float))))
 
         # Persist
+        print(f"\n{'─'*60}")
+        print(f"💾  PHASE 6: Saving Results")
+        print(f"{'─'*60}")
         final_results = {
             "metrics_per_task": metrics_all,
             "hyperparams_per_task": hyperparams_all,
@@ -284,8 +334,7 @@ def main():
             "eval_dataset_stats": compute_dataset_stats(e_latent_features),
             "latent": latent_metrics
         }
-        if args.cv:
-            final_results["cross_validation"] = {k: cv_results_to_dict(v, k) for k, v in cv_results_all.items()}
+        final_results["cross_validation"] = {k: cv_results_to_dict(v, k) for k, v in cv_results_all.items()}
             
         eval.save_results(final_results, results_path)
         print(f"✅ Dataset {data_corp} done!")
