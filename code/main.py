@@ -79,6 +79,11 @@ def main():
         val_split_opt  = optuna_cfg.get("val_split", 0.2)
         patience_opt   = optuna_cfg.get("patience", 10)
         batch_size   = optuna_cfg.get("batch_size", 64)
+
+        if data_corp == "tuh": 
+            batch_size *= 2 
+            print("Increase tuh batch size by 2x")
+            print("Batch size = " + str(batch_size))
         
         # Load counts from pickle files
         train_pickle = os.path.join(data_path, "train_epochs.pkl")
