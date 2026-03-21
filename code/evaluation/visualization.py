@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import pickle
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -336,18 +337,50 @@ def figure_2_spectral(output_dir: str, results_dir: str, data_path: str = "", **
     mosaic = fig.subplot_mosaic([["A", "B"], ["C", "C"]])
 
     # Try to load real PSD data; fall back to synthetic
-    freqs = np.linspace(1, 45, 90)
     raw_psd = None
+    freqs = None
 
     try:
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
         from latent_extraction.cortico_thalamic import _P_omega as ctm_P_omega, fit_parameters as ctm_fit
         from latent_extraction.jansen_rit import _P_omega as jr_P_omega
+        from utils.util import compute_psd_from_raw
 
-        # Generate representative synthetic PSD (1/f + alpha peak)
-        raw_psd = 1.0 / (freqs ** 1.2) + 0.8 * np.exp(-0.5 * ((freqs - 10) / 2) ** 2)
-        raw_psd += 0.02 * np.random.RandomState(42).randn(len(freqs))
-        raw_psd = np.abs(raw_psd)
+        # Load real training data if possible
+        if not data_path:
+            # Try a default path if none provided
+            potential_paths = [
+                "/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl",
+                "/rds/general/user/lrh24/home/msc_thesis/Datasets/lemon/train_epochs.pkl"
+            ]
+            for p in potential_paths:
+                if os.path.exists(p):
+                    data_path = p
+                    break
+
+        if data_path and os.path.exists(data_path):
+            print(f"  Loading training sample for Figure 2 from: {data_path}")
+            with open(data_path, "rb") as f:
+                records = pickle.load(f)
+            
+            if isinstance(records, list) and len(records) > 0:
+                # Use the first sample's raw object
+                raw_obj = records[0][0]
+                # Compute average PSD across all channels, without normalization for the raw plot
+                # (since the plotting code adds its own log10 transform)
+                res = compute_psd_from_raw(raw_obj, calculate_average=True, normalize=False, return_freqs=True)
+                raw_psd, freqs = res
+                print(f"  Successfully extracted real PSD from {data_path} ({len(freqs)} bins)")
+            else:
+                print(f"  ⚠ Pickle at {data_path} is empty or not a list")
+
+        if raw_psd is None:
+            # Generate representative synthetic PSD (1/f + alpha peak) as fallback
+            print("  Using synthetic fallback for Figure 2")
+            freqs = np.linspace(1, 45, 90)
+            raw_psd = 1.0 / (freqs ** 1.2) + 0.8 * np.exp(-0.5 * ((freqs - 10) / 2) ** 2)
+            raw_psd += 0.02 * np.random.RandomState(42).randn(len(freqs))
+            raw_psd = np.abs(raw_psd)
 
         # Fit CTM
         try:
@@ -1074,7 +1107,7 @@ if __name__ == "__main__":
                         help="Output directory for figures")
     parser.add_argument("--data-path", type=str, default="",
                         help="Path to raw EEG data for Fig 2")
-    parser.add_argument("--max-samples", type=int, default=2000,
+    parser.add_argument("--max-samples", type=int, default=5000,
                         help="Max samples per method for cross-method analysis")
     args = parser.parse_args()
     generate_all_figures(args.results_dir, args.output_dir, args.data_path, args.max_samples)
