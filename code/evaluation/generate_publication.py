@@ -47,21 +47,46 @@ plt.rcParams.update({
     "savefig.transparent": False,
 })
 
+METHOD_BLUE = "#1F4E79"      # data-driven
+METHOD_ORANGE = "#BC3B00"    # mechanistic
+METHOD_FALLBACK = "#5B9BD5"  # unknown/unmapped
+
+DATA_DRIVEN_METHODS = {
+    "psd_ae_avg", "psd_ae_pc", "c22", "pca_avg", "pca_pc", "eegnet"
+}
+MECHANISTIC_METHODS = {
+    "hopf_avg", "hopf_pc", "jr_avg", "jr_pc", "wong_wang_avg",
+    "ctm_cma_avg", "ctm_nn_avg", "ctm_nn_pc"
+}
+
+def get_method_color(method_name: str) -> str:
+    """Get consistent color by method family."""
+    clean_name = method_name
+    for prefix in ("tuh-", "lemon-", "ntuh-", "harvard-"):
+        if clean_name.startswith(prefix):
+            clean_name = clean_name[len(prefix):]
+            break
+    if clean_name in DATA_DRIVEN_METHODS:
+        return METHOD_BLUE
+    if clean_name in MECHANISTIC_METHODS:
+        return METHOD_ORANGE
+    return METHOD_FALLBACK
+
 METHOD_META = {
-    "ctm_cma_avg":  {"label": "CTM-CMA",      "color": "#1b9e77"},
-    "ctm_nn_avg":   {"label": "CTM-NN",       "color": "#d95f02"},
-    "ctm_nn_pc":    {"label": "CTM-NN (pc)",  "color": "#e6ab02"},
-    "jr_avg":       {"label": "JR",           "color": "#66a61e"},
-    "jr_pc":        {"label": "JR (pc)",      "color": "#a6d854"},
-    "hopf_avg":     {"label": "Hopf",         "color": "#377eb8"},
-    "hopf_pc":      {"label": "Hopf (pc)",    "color": "#984ea3"},
-    "wong_wang_avg":{"label": "Wong-Wang",    "color": "#4daf4a"},
-    "c22":          {"label": "catch22",      "color": "#e41a1c"},
-    "eegnet":       {"label": "EEGNet",       "color": "#ff7f00"},
-    "pca_avg":      {"label": "PCA",          "color": "#a65628"},
-    "pca_pc":       {"label": "PCA (pc)",     "color": "#f781bf"},
-    "psd_ae_avg":   {"label": "PSD-AE",       "color": "#999999"},
-    "psd_ae_pc":    {"label": "PSD-AE (pc)",  "color": "#636363"},
+    "ctm_cma_avg":  {"label": "CTM-CMA",      "color": get_method_color("ctm_cma_avg")},
+    "ctm_nn_avg":   {"label": "CTM-NN",       "color": get_method_color("ctm_nn_avg")},
+    "ctm_nn_pc":    {"label": "CTM-NN (pc)",  "color": get_method_color("ctm_nn_pc")},
+    "jr_avg":       {"label": "JR",           "color": get_method_color("jr_avg")},
+    "jr_pc":        {"label": "JR (pc)",      "color": get_method_color("jr_pc")},
+    "hopf_avg":     {"label": "Hopf",         "color": get_method_color("hopf_avg")},
+    "hopf_pc":      {"label": "Hopf (pc)",    "color": get_method_color("hopf_pc")},
+    "wong_wang_avg":{"label": "Wong-Wang",    "color": get_method_color("wong_wang_avg")},
+    "c22":          {"label": "catch22",      "color": get_method_color("c22")},
+    "eegnet":       {"label": "EEGNet",       "color": get_method_color("eegnet")},
+    "pca_avg":      {"label": "PCA",          "color": get_method_color("pca_avg")},
+    "pca_pc":       {"label": "PCA (pc)",     "color": get_method_color("pca_pc")},
+    "psd_ae_avg":   {"label": "PSD-AE",       "color": get_method_color("psd_ae_avg")},
+    "psd_ae_pc":    {"label": "PSD-AE (pc)",  "color": get_method_color("psd_ae_pc")},
 }
 
 # =====================================================================
@@ -237,63 +262,6 @@ def linear_cka_fast(X, Y):
 # MAIN TEXT FIGURES & TABLES
 # =====================================================================
 
-def generate_fig1_pipeline(output_dir):
-    fig = plt.figure(figsize=(7.5, 5.0))
-    mosaic = fig.subplot_mosaic([["A"], ["B"]], height_ratios=[1, 1.4])
-
-    ax_a = mosaic["A"]
-    ax_a.set_xlim(0, 10); ax_a.set_ylim(0, 2); ax_a.axis("off")
-    _panel_label(ax_a, "A", x=-0.02, y=1.05)
-    boxes_a = [(0.3, 0.6, "Raw EEG\\n(TUH-AB)"), (2.5, 0.6, "Band-pass\\n1–45 Hz"),
-               (4.7, 0.6, "Epoch\\n(10 s)"), (6.9, 0.6, "PSD\\n(Welch)")]
-    bw, bh = 1.6, 0.9
-    for x, y, txt in boxes_a:
-        ax_a.add_patch(FancyBboxPatch((x, y), bw, bh, boxstyle="round,pad=0.1",
-                       facecolor="#e8f4f8", edgecolor="#2c3e50", linewidth=1.2))
-        ax_a.text(x + bw/2, y + bh/2, txt, ha="center", va="center", fontsize=8, fontweight="bold")
-    for i in range(len(boxes_a) - 1):
-        ax_a.annotate("", xy=(boxes_a[i+1][0], boxes_a[i][1]+bh/2),
-                      xytext=(boxes_a[i][0]+bw, boxes_a[i][1]+bh/2),
-                      arrowprops=dict(arrowstyle="->", lw=1.5, color="#2c3e50"))
-
-    ax_b = mosaic["B"]
-    ax_b.set_xlim(0, 10); ax_b.set_ylim(0, 3.5); ax_b.axis("off")
-    _panel_label(ax_b, "B", x=-0.02, y=1.05)
-    ax_b.add_patch(FancyBboxPatch((3.5, 2.6), 3.0, 0.7, boxstyle="round,pad=0.12",
-                   facecolor="#ffeaa7", edgecolor="#2c3e50", linewidth=1.2))
-    ax_b.text(5.0, 2.95, "Latent Feature\\nExtraction", ha="center", va="center",
-              fontsize=9, fontweight="bold")
-
-    dd_boxes = [(0.2, 0.8, "EEGNet\\n(AE)"), (2.2, 0.8, "catch22"),
-                (0.2, 0.0, "PSD-AE"), (2.2, 0.0, "PCA")]
-    for x, y, txt in dd_boxes:
-        ax_b.add_patch(FancyBboxPatch((x, y), 1.7, 0.65, boxstyle="round,pad=0.08",
-                       facecolor="#fab1a0", edgecolor="#d63031", linewidth=1.0))
-        ax_b.text(x+0.85, y+0.325, txt, ha="center", va="center", fontsize=7.5)
-    ax_b.text(1.9, 1.75, "Data-Driven", ha="center", va="center", fontsize=9,
-              fontweight="bold", color="#d63031")
-
-    mech_boxes = [(6.1, 0.8, "CTM\\n(CMA-ES)"), (8.1, 0.8, "Jansen-Rit"),
-                  (6.1, 0.0, "Wong-Wang"), (8.1, 0.0, "Hopf")]
-    for x, y, txt in mech_boxes:
-        ax_b.add_patch(FancyBboxPatch((x, y), 1.7, 0.65, boxstyle="round,pad=0.08",
-                       facecolor="#81ecec", edgecolor="#00b894", linewidth=1.0))
-        ax_b.text(x+0.85, y+0.325, txt, ha="center", va="center", fontsize=7.5)
-    ax_b.text(8.0, 1.75, "Mechanistic", ha="center", va="center", fontsize=9,
-              fontweight="bold", color="#00b894")
-
-    ax_b.add_patch(FancyBboxPatch((4.0, 0.3), 1.8, 0.65, boxstyle="round,pad=0.08",
-                   facecolor="#ffeaa7", edgecolor="#d95f02", linewidth=1.5))
-    ax_b.text(4.9, 0.625, "CTM-NN\\n(Hybrid)", ha="center", va="center",
-              fontsize=8, fontweight="bold", color="#d95f02")
-    ax_b.text(4.9, 1.75, "Hybrid", ha="center", va="center", fontsize=9,
-              fontweight="bold", color="#d95f02")
-
-    for tx in [1.9, 4.9, 8.0]:
-        ax_b.annotate("", xy=(tx, 1.85), xytext=(5.0, 2.6),
-                      arrowprops=dict(arrowstyle="->", lw=1.3, color="#636e72"))
-    _save_figure(fig, "fig1_pipeline", output_dir)
-
 
 def generate_table1_capacity_efficiency(all_metrics, output_dir):
     rows = []
@@ -343,14 +311,21 @@ def generate_table2_summary_acc(all_metrics, output_dir):
 
 
 def generate_fig2_probe_delta(all_metrics, output_dir):
-    """Performance comparison with linear probe delta, faceted by dataset."""
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=False)
+    """Performance comparison with linear probe delta, faceted by dataset.
+
+    Methods are grouped by family (mechanistic first, data-driven second) and
+    sorted by MLP accuracy descending within each group. A dashed separator and
+    shaded band make the group boundary immediately visible.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 9), sharey=False)
 
     for col, ds in enumerate(["tuh", "lemon"]):
         ax = axes[col]
         task = DATASET_TASK[ds]
-        methods, mlp_accs, probe_accs, colors = [], [], [], []
 
+        # Collect entries as (group_order, -mlp_acc, label, mlp, probe, color)
+        # group 0 = mechanistic (orange), group 1 = data-driven (blue)
+        entries = []
         for full_name, data in all_metrics.items():
             if _get_dataset(full_name) != ds:
                 continue
@@ -358,17 +333,47 @@ def generate_fig2_probe_delta(all_metrics, output_dir):
             if clean not in METHOD_META:
                 continue
             txt = data.get("raw_txt", "")
-
-            mlp_match = re.search(rf"metrics_per_task\.{task}\.accuracy:\s+([0-9.]+)", txt)
+            mlp_match   = re.search(rf"metrics_per_task\.{task}\.accuracy:\s+([0-9.]+)", txt)
             probe_match = re.search(rf"metrics_per_task\.{task}_linear_probe\.accuracy:\s+([0-9.]+)", txt)
-
             if mlp_match and probe_match:
-                methods.append(METHOD_META[clean]["label"])
-                mlp_accs.append(float(mlp_match.group(1)) * 100)
-                probe_accs.append(float(probe_match.group(1)) * 100)
-                colors.append(METHOD_META[clean]["color"])
+                mlp   = float(mlp_match.group(1))   * 100
+                probe = float(probe_match.group(1)) * 100
+                group = 0 if clean in MECHANISTIC_METHODS else 1
+                entries.append((group, -mlp, METHOD_META[clean]["label"],
+                                 mlp, probe, METHOD_META[clean]["color"]))
+
+        # Sort: mechanistic block first, then data-driven; within each block by MLP ↓
+        entries.sort(key=lambda e: (e[0], e[1]))
+        if not entries:
+            continue
+
+        groups     = [e[0] for e in entries]
+        methods    = [e[2] for e in entries]
+        mlp_accs   = [e[3] for e in entries]
+        probe_accs = [e[4] for e in entries]
+        colors     = [e[5] for e in entries]
 
         y_pos = np.arange(len(methods))
+
+        # Shaded background band per group
+        group_indices: dict = {}
+        for i, g in enumerate(groups):
+            group_indices.setdefault(g, []).append(i)
+        group_meta = {0: (METHOD_ORANGE, "Mechanistic"),
+                      1: (METHOD_BLUE,   "Data-Driven")}
+        for g, indices in sorted(group_indices.items()):
+            band_color, _ = group_meta[g]
+            y_lo = min(indices) - 0.45
+            y_hi = max(indices) + 0.45
+            ax.axhspan(y_lo, y_hi, alpha=0.05, color=band_color, zorder=0)
+
+        # Dashed separator between groups
+        for i in range(1, len(groups)):
+            if groups[i] != groups[i - 1]:
+                ax.axhline(i - 0.5, color='gray', linewidth=0.8,
+                           linestyle='--', alpha=0.6, zorder=1)
+
+        # Draw dots and connectors
         for y, mlp, probe, col_c in zip(y_pos, mlp_accs, probe_accs, colors):
             ax.plot([probe, mlp], [y, y], '-', color='gray', alpha=0.5, zorder=1)
             ax.scatter(probe, y, color='white', edgecolor=col_c, s=80, zorder=2,
@@ -376,22 +381,23 @@ def generate_fig2_probe_delta(all_metrics, output_dir):
             ax.scatter(mlp, y, color=col_c, s=80, zorder=3,
                        label='Non-Linear (MLP)' if y == 0 else "")
             delta = mlp - probe
-            ax.text(max(probe, mlp)+0.5, y,
+            ax.text(max(probe, mlp) + 0.5, y,
                     f"+{delta:.1f}%" if delta > 0 else f"{delta:.1f}%",
                     va='center', fontsize=7, color=col_c)
 
         ax.set_yticks(y_pos)
         ax.set_yticklabels(methods)
+        for tick, col in zip(ax.get_yticklabels(), colors):
+            tick.set_color(col)
         ax.set_xlabel('Test Accuracy (%)')
         ax.set_title(DATASET_LABEL[ds])
-        if len(methods) > 0:
-            ax.legend(fontsize=7)
-
-    fig.suptitle("Figure 2: Performance & Linear Probe Delta", fontweight="bold")
+        if methods:
+            ax.legend(fontsize=8)
     _save_figure(fig, "fig2_performance_delta", output_dir)
 
 
-def generate_fig3_bifurcation(output_dir):
+def generate_fig3_bifurcation(output_dir, results_dir):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     fig = plt.figure(figsize=(7.5, 4.5))
     mosaic = fig.subplot_mosaic([["A", "B"]])
     ax_a = mosaic["A"]; _panel_label(ax_a, "A")
@@ -425,34 +431,64 @@ def generate_fig3_bifurcation(output_dir):
 
     ax_b = mosaic["B"]; _panel_label(ax_b, "B")
     ax_b.set_xlabel("G_ee"); ax_b.set_ylabel("G_srs")
-    ax_b.set_title("Empirical Latents Overlay (Simulated)")
     ax_b.contourf(GE, GS, stability_map, levels=30, cmap="RdBu_r", alpha=0.3)
     ax_b.contour(GE, GS, stability_map, levels=[0], colors="black", linewidths=1.0)
+
+    # Load real fitted CTM parameters (G_ee=index 0, G_srs=index 4 per _PARAM_KEYS)
     rng = np.random.RandomState(42)
-    tuh_gee = rng.normal(8, 2, 50); tuh_gsrs = rng.normal(-1.5, 0.5, 50)
-    lemon_gee = rng.normal(12, 1.5, 50); lemon_gsrs = rng.normal(-2.5, 0.4, 50)
-    ax_b.scatter(tuh_gee, tuh_gsrs, s=15, alpha=0.6, color="#e41a1c", label="TUH-AB")
-    ax_b.scatter(lemon_gee, lemon_gsrs, s=15, alpha=0.6, color="#377eb8", label="LEMON")
+    try:
+        def _load_gee_gsrs(path, n_sample=200):
+            gee, gsrs = [], []
+            with open(path) as f:
+                for line in f:
+                    row = json.loads(line)
+                    gee.append(row[0][0])
+                    gsrs.append(row[0][4])
+            idx = rng.choice(len(gee), min(n_sample, len(gee)), replace=False)
+            return np.array(gee)[idx], np.array(gsrs)[idx]
+
+        tuh_gee, tuh_gsrs = _load_gee_gsrs(
+            os.path.join(results_dir, "tuh-ctm_cma_avg", "temp_latent_features_eval.json"))
+        lemon_gee, lemon_gsrs = _load_gee_gsrs(
+            os.path.join(results_dir, "lemon-ctm_cma_avg", "temp_latent_features_eval.json"))
+        ax_b.set_title("Empirical CTM Latents Overlay")
+    except Exception as e:
+        print(f"  Warning: could not load real CTM params for fig3B ({e}); no overlay plotted.")
+        tuh_gee = tuh_gsrs = lemon_gee = lemon_gsrs = np.array([])
+        ax_b.set_title("Empirical CTM Latents Overlay (data unavailable)")
+
+    if len(tuh_gee):
+        ax_b.scatter(tuh_gee, tuh_gsrs, s=12, alpha=0.5, color="#e41a1c", label="TUH-AB")
+    if len(lemon_gee):
+        ax_b.scatter(lemon_gee, lemon_gsrs, s=12, alpha=0.5, color="#377eb8", label="LEMON")
     ax_b.legend()
     _save_figure(fig, "fig3_bifurcation", output_dir)
 
 
 # =====================================================================
-# FIGURE 4: CKA SIMILARITY MATRICES (2×2: Task × Scale)
+# FIGURE 4: DISTANCE-GEOMETRY CORRELATION MATRICES (2×2: Dataset × Scale)
 # =====================================================================
 
 def generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir):
-    print("  Computing CKA Similarity Matrices (2×2 grid)...")
+    """Pairwise distance-geometry correlation between all methods (report §3.6).
+
+    For each pair of methods, aligns latent vectors by sample_id, subsamples to
+    ≤2 000 common epochs (seed 42), then computes the Pearson correlation between
+    their upper-triangular pairwise Euclidean distance matrices.  Values near 1
+    mean the two methods agree on which subjects are globally close or far apart.
+    """
+    print("  Computing Distance-Geometry Correlation Matrices (2×2 grid)...")
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
     scale_labels = {"small": "Small (Channel-Averaged)", "medium": "Medium (Per-Channel)"}
     panel_labels = [["A", "B"], ["C", "D"]]
+    _MAX_SAMPLES = 10000   # pairwise distances scale as O(n²); 2k is fast & stable
 
     for row, ds in enumerate(["tuh", "lemon"]):
         for col, scale in enumerate(["small", "medium"]):
             ax = axes[row, col]
             _panel_label(ax, panel_labels[row][col])
 
-            methods, labels = [], []
+            methods, labels, cleans = [], [], []
             for full_name in sorted(all_metrics.keys()):
                 if _get_dataset(full_name) != ds:
                     continue
@@ -461,6 +497,7 @@ def generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir):
                     continue
                 methods.append(full_name)
                 labels.append(METHOD_META[clean]["label"])
+                cleans.append(clean)
 
             if len(methods) < 2:
                 ax.text(0.5, 0.5, "Insufficient data", ha="center", va="center",
@@ -468,7 +505,7 @@ def generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir):
                 ax.set_title(f"{DATASET_LABEL[ds]} — {scale_labels[scale]}")
                 continue
 
-            # Load features
+            # Load latent features
             feat = {}
             for m in methods:
                 Z, ids = load_latent_features(results_dir, m)
@@ -478,20 +515,28 @@ def generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir):
             n = len(methods)
             sim = np.eye(n)
             for i in range(n):
-                for j in range(i+1, n):
+                for j in range(i + 1, n):
                     m1, m2 = methods[i], methods[j]
-                    if m1 in feat and m2 in feat:
-                        d1, d2 = feat[m1], feat[m2]
-                        idx1_map = {sid: k for k, sid in enumerate(d1["ids"])}
-                        idx2_map = {sid: k for k, sid in enumerate(d2["ids"])}
-                        common = [sid for sid in d1["ids"] if sid in idx2_map]
-                        if len(common) > 10:
-                            a1 = np.array([idx1_map[s] for s in common])
-                            a2 = np.array([idx2_map[s] for s in common])
-                            score = linear_cka_fast(d1["Z"][a1], d2["Z"][a2])
-                            sim[i, j] = sim[j, i] = score
+                    if m1 not in feat or m2 not in feat:
+                        continue
+                    d1, d2 = feat[m1], feat[m2]
+                    idx1_map = {sid: k for k, sid in enumerate(d1["ids"])}
+                    idx2_map = {sid: k for k, sid in enumerate(d2["ids"])}
+                    common = [sid for sid in d1["ids"] if sid in idx2_map]
+                    if len(common) < 20:
+                        continue
+                    a1 = np.array([idx1_map[s] for s in common])
+                    a2 = np.array([idx2_map[s] for s in common])
+                    Z1 = d1["Z"][a1];  Z2 = d2["Z"][a2]
+                    # Subsample for tractability
+                    if len(Z1) > _MAX_SAMPLES:
+                        rng = np.random.RandomState(42)
+                        sub = rng.choice(len(Z1), _MAX_SAMPLES, replace=False)
+                        Z1 = Z1[sub];  Z2 = Z2[sub]
+                    score = _distance_correlation(Z1, Z2)
+                    sim[i, j] = sim[j, i] = score
 
-            # Cluster ordering
+            # Cluster ordering by similarity
             dist = np.clip(1 - sim, 0, 2)
             np.fill_diagonal(dist, 0)
             try:
@@ -503,15 +548,19 @@ def generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir):
 
             sim_ord = sim[order][:, order]
             lab_ord = [labels[i] for i in order]
+            col_ord = [get_method_color(cleans[i]) for i in order]
 
             im = ax.imshow(sim_ord, cmap="viridis", vmin=0, vmax=1)
             ax.set_xticks(np.arange(len(lab_ord)))
             ax.set_yticks(np.arange(len(lab_ord)))
             ax.set_xticklabels(lab_ord, rotation=45, ha='right', fontsize=7)
             ax.set_yticklabels(lab_ord, fontsize=7)
+            for tick, col in zip(ax.get_xticklabels(), col_ord):
+                tick.set_color(col)
+            for tick, col in zip(ax.get_yticklabels(), col_ord):
+                tick.set_color(col)
             ax.set_title(f"{DATASET_LABEL[ds]} — {scale_labels[scale]}", fontsize=9)
 
-            # Annotate cells
             for ii in range(len(lab_ord)):
                 for jj in range(len(lab_ord)):
                     val = sim_ord[ii, jj]
@@ -521,8 +570,9 @@ def generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir):
     fig.subplots_adjust(right=0.88)
     cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
     fig.colorbar(plt.cm.ScalarMappable(cmap="viridis", norm=plt.Normalize(0, 1)),
-                 cax=cbar_ax, label="CKA Similarity")
-    fig.suptitle("Figure 4: Representational Similarity (Linear CKA)", fontweight="bold", y=0.98)
+                 cax=cbar_ax, label="Distance-Geometry Correlation (Pearson r)")
+    # fig.suptitle("Figure 4: Representational Similarity (Distance-Geometry Correlation)",
+    #              fontweight="bold", y=0.98)
     _save_figure(fig, "fig4_similarity_matrices", output_dir)
 
 
@@ -531,17 +581,23 @@ def generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir):
 # =====================================================================
 
 def generate_fig5_mi_concentration(all_metrics, output_dir):
+    """Mean per-dimension MI(Z_j; Y) per method (report §3.6: Information Content).
+
+    Uses pre-computed mean MI from latent_metrics.json (sklearn mutual_information_classif).
+    Task label: 'abnormal' for TUH-AB, 'age' for LEMON.
+    """
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.subplots_adjust(hspace=0.45)
     scale_labels = {"small": "Small (Channel-Averaged)", "medium": "Medium (Per-Channel)"}
     panel_labels = [["A", "B"], ["C", "D"]]
 
     for row, ds in enumerate(["tuh", "lemon"]):
-        task = DATASET_TASK[ds]
+        task = DATASET_TASK[ds]   # 'abnormal' | 'age'
         for col, scale in enumerate(["small", "medium"]):
             ax = axes[row, col]
             _panel_label(ax, panel_labels[row][col])
 
-            y_val, colors, labels = [], [], []
+            entries = []
             for full_name, data in sorted(all_metrics.items()):
                 if _get_dataset(full_name) != ds:
                     continue
@@ -550,25 +606,26 @@ def generate_fig5_mi_concentration(all_metrics, output_dir):
                     continue
 
                 ev = data.get("latent", {}).get("eval", {})
-                mi_task = ev.get("mi_zy", {}).get(task, {}).get("per_dim", [])
+                mi_mean = ev.get("mi_zy", {}).get(task, {}).get("mean")
+                if mi_mean is not None:
+                    entries.append((float(mi_mean), METHOD_META[clean]["color"],
+                                    METHOD_META[clean]["label"]))
 
-                if mi_task:
-                    sorted_mi = np.sort(mi_task)[::-1]
-                    top_20 = max(1, int(len(sorted_mi) * 0.2))
-                    s_mi = np.sum(sorted_mi)
-                    if s_mi > 0:
-                        mi_conc = np.sum(sorted_mi[:top_20]) / s_mi
-                        y_val.append(mi_conc)
-                        colors.append(METHOD_META[clean]["color"])
-                        labels.append(METHOD_META[clean]["label"])
+            # Sort descending by MI value
+            entries.sort(key=lambda e: e[0], reverse=True)
 
-            if y_val:
-                x_pos = np.arange(len(labels))
+            if entries:
+                y_val  = [e[0] for e in entries]
+                colors = [e[1] for e in entries]
+                labels = [e[2] for e in entries]
+                x_pos  = np.arange(len(labels))
                 ax.bar(x_pos, y_val, color=colors, alpha=0.85, edgecolor='black', linewidth=0.5)
                 ax.set_xticks(x_pos)
-                ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=7)
-                ax.set_ylabel('MI Concentration\n(Top 20% Dims)')
-                ax.set_ylim(0, 1.05)
+                ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+                for tick, col in zip(ax.get_xticklabels(), colors):
+                    tick.set_color(col)
+                ax.set_ylabel('Mean MI per Dimension\n' r'$\bar{I}(Z_j\,;\,Y)$')
+                ax.set_ylim(bottom=0)
                 ax.grid(axis='y', alpha=0.3)
             else:
                 ax.text(0.5, 0.5, "No MI data", ha="center", va="center",
@@ -576,7 +633,6 @@ def generate_fig5_mi_concentration(all_metrics, output_dir):
 
             ax.set_title(f"{DATASET_LABEL[ds]} — {scale_labels[scale]}", fontsize=9)
 
-    fig.suptitle("Figure 5: Mutual Information Concentration", fontweight="bold", y=0.98)
     _save_figure(fig, "fig5_mi_concentration", output_dir)
 
 
@@ -636,11 +692,11 @@ def generate_figA1_multidim_efficiency(all_metrics, output_dir):
             ve = -np.sum(norm_var * np.log(norm_var + 1e-10))
 
             marker = ds_markers.get(ds, "^")
-            ax.scatter(active/dim, ve, s=dim*8, alpha=0.7, edgecolors='black',
+            ax.scatter(active/dim, ve, s=np.sqrt(dim)*30, alpha=0.7, edgecolors='black',
                        color=METHOD_META[clean]["color"], marker=marker)
             ax.annotate(METHOD_META[clean]["label"],
                         (active/dim, ve), xytext=(5, 5),
-                        textcoords='offset points', fontsize=6)
+                        textcoords='offset points', fontsize=8)
 
         ax.set_xlabel('Dimensional Efficiency (Active/Total)')
         ax.set_ylabel('Variance Entropy (Uniformity)')
@@ -655,26 +711,121 @@ def generate_figA1_multidim_efficiency(all_metrics, output_dir):
                             markersize=8, label='LEMON')]
         ax.legend(handles=legend_ds, loc='upper left')
 
-    fig.suptitle("Figure A1: Multi-Dimensional Efficiency", fontweight="bold")
+    # fig.sup title("Figure A1: Multi-Dimensional Efficiency", fontweight="bold")
     _save_figure(fig, "figA1_multidim_efficiency", output_dir)
 
 
 # =====================================================================
-# FIGURE A4: GEOMETRIC PRESERVATION (2×2: Task × Scale, computed on-the-fly)
+# FIGURE A4: GEOMETRIC PRESERVATION HELPERS
+# =====================================================================
+
+_GEO_DATASET_PATHS = {
+    "tuh":   "/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl",
+    "lemon": "/rds/general/user/lrh24/home/msc_thesis/Datasets/lemon/eval_epochs.pkl",
+}
+
+def _distance_correlation(X: np.ndarray, Y: np.ndarray) -> float:
+    """Pearson r between upper-triangular pairwise Euclidean distance matrices.
+
+    Captures global distance structure agreement, independent of rotation or
+    translation (report §3.6: 'Distance correlation').
+    """
+    from scipy.spatial.distance import pdist
+    d1 = pdist(X)
+    d2 = pdist(Y)
+    if d1.std() < 1e-10 or d2.std() < 1e-10:
+        return 0.0
+    return float(np.corrcoef(d1, d2)[0, 1])
+
+
+def _build_psd_reference(ds: str, scale: str, epoch_cache: dict) -> dict:
+    """Compute {sample_id: flat_psd_vector} reference for a dataset+scale combo.
+
+    Per report §3.6:
+      Small group  → channel-averaged PSD (log10 + z-scored) → 1-D vector.
+      Medium group → per-channel PSD (log10 + z-scored per channel), flattened → 1-D.
+    Welch params: nfft=512, nper_seg=512, noverlap=256, 1–45 Hz.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        import pickle
+        import mne
+        mne.set_log_level('WARNING')
+        from utils.util import compute_psd_from_raw
+    except ImportError as e:
+        print(f"    ⚠ PSD reference import failed: {e}")
+        return {}
+
+    if ds not in epoch_cache:
+        path = _GEO_DATASET_PATHS.get(ds)
+        if not path or not os.path.exists(path):
+            print(f"    ⚠ No epoch file for '{ds}'")
+            return {}
+        print(f"    Loading {ds} eval epochs for PSD reference...")
+        try:
+            with open(path, 'rb') as f:
+                epoch_cache[ds] = pickle.load(f)
+        except Exception as e:
+            print(f"    ⚠ Could not load {ds} epochs: {e}")
+            return {}
+
+    calc_avg = (scale == 'small')
+    ref = {}
+    for item in epoch_cache[ds]:
+        raw, _, _, _, sid = item
+        try:
+            psd = compute_psd_from_raw(raw, calculate_average=calc_avg, normalize=True)
+            ref[sid] = psd.flatten().astype(np.float32)
+        except Exception:
+            continue
+    print(f"    PSD reference built: {ds}/{scale} → {len(ref)} epochs")
+    return ref
+
+
+# =====================================================================
+# FIGURE A4: GEOMETRIC PRESERVATION (2×2: Dataset × Scale, computed on-the-fly)
 # =====================================================================
 
 def generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir):
-    print("  Computing geometric preservation metrics on-the-fly...")
+    """Geometric preservation of latent space relative to PSD reference (report §3.6).
+
+    Three metrics per method:
+      - Trustworthiness (k=10): penalises false neighbours introduced in latent space.
+      - Continuity      (k=10): penalises true PSD neighbours dropped in latent space.
+      - Distance correlation:   Pearson r between pairwise distance matrices.
+    Reference space: Welch PSD (1–45 Hz, log10 + z-score).
+      Small  group → channel-averaged PSD.
+      Medium group → per-channel PSD, flattened.
+    Subsampled to ≤5 000 samples with seed 42 (report spec).
+    """
+    print("  Computing geometric preservation vs PSD reference (report §3.6)...")
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig.subplots_adjust(hspace=0.45)
     scale_labels = {"small": "Small (Channel-Averaged)", "medium": "Medium (Per-Channel)"}
     panel_labels = [["A", "B"], ["C", "D"]]
+
+    epoch_cache: dict = {}   # loaded once per dataset, reused across panels
+    psd_cache:   dict = {}   # {(ds, scale): {sid: psd_vec}}
 
     for row, ds in enumerate(["tuh", "lemon"]):
         for col, scale in enumerate(["small", "medium"]):
             ax = axes[row, col]
             _panel_label(ax, panel_labels[row][col])
 
-            method_labels, trust_vals, cont_vals = [], [], []
+            # Build / reuse PSD reference
+            cache_key = (ds, scale)
+            if cache_key not in psd_cache:
+                psd_cache[cache_key] = _build_psd_reference(ds, scale, epoch_cache)
+            psd_ref = psd_cache[cache_key]
+
+            if not psd_ref:
+                ax.text(0.5, 0.5, "PSD reference unavailable",
+                        ha="center", va="center", transform=ax.transAxes)
+                ax.set_title(f"{DATASET_LABEL[ds]} — {scale_labels[scale]}", fontsize=9)
+                continue
+
+            method_labels, method_cleans = [], []
+            trust_vals, cont_vals = [], []
 
             for full_name in sorted(all_metrics.keys()):
                 if _get_dataset(full_name) != ds:
@@ -683,37 +834,61 @@ def generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir):
                 if clean not in METHOD_META or _get_scale(clean) != scale:
                     continue
 
-                Z, _ = load_latent_features(results_dir, full_name)
-                if len(Z) < 20:
+                Z_all, ids_all = load_latent_features(results_dir, full_name)
+                if len(Z_all) < 20:
                     continue
 
-                print(f"    Geometry: {full_name} ({Z.shape})...", end=" ", flush=True)
-                geo = compute_geometry(Z)
-                if geo:
+                # Align Z with PSD by sample_id
+                common = [(i, sid) for i, sid in enumerate(ids_all) if sid in psd_ref]
+                if len(common) < 20:
+                    print(f"    {full_name}: only {len(common)} common IDs, skipping")
+                    continue
+
+                idx_z = np.array([i for i, _ in common])
+                sids  = [sid for _, sid in common]
+                Z     = Z_all[idx_z].astype(np.float32)
+                X_psd = np.array([psd_ref[s] for s in sids], dtype=np.float32)
+
+                # Subsample to 5 000 with seed 42 (report §3.6)
+                if len(Z) > 5000:
+                    rng = np.random.RandomState(42)
+                    sub = rng.choice(len(Z), 5000, replace=False)
+                    Z = Z[sub]; X_psd = X_psd[sub]
+
+                print(f"    Geometry: {full_name} (n={len(Z)})...", end=" ", flush=True)
+                try:
+                    # max_samples > actual n → no internal resampling
+                    t  = _trustworthiness(X_psd, Z, n_neighbors=10, max_samples=6000)
+                    c  = _continuity(X_psd, Z,     n_neighbors=10, max_samples=6000)
                     method_labels.append(METHOD_META[clean]["label"])
-                    trust_vals.append(geo["trustworthiness"])
-                    cont_vals.append(geo["continuity"])
-                    print(f"T={geo['trustworthiness']:.3f} C={geo['continuity']:.3f}")
-                else:
-                    print("skipped (too few dims)")
+                    method_cleans.append(clean)
+                    trust_vals.append(t)
+                    cont_vals.append(c)
+                    print(f"T={t:.3f} C={c:.3f}")
+                except Exception as e:
+                    print(f"error ({e})")
 
             if method_labels:
-                avg = [(t+c)/2 for t, c in zip(trust_vals, cont_vals)]
+                avg   = [(t + c) / 2 for t, c in zip(trust_vals, cont_vals)]
                 order = np.argsort(avg)[::-1]
                 method_labels = [method_labels[i] for i in order]
-                trust_vals = [trust_vals[i] for i in order]
-                cont_vals = [cont_vals[i] for i in order]
+                method_cleans = [method_cleans[i] for i in order]
+                trust_vals    = [trust_vals[i]    for i in order]
+                cont_vals     = [cont_vals[i]     for i in order]
 
-                x = np.arange(len(method_labels))
+                x     = np.arange(len(method_labels))
                 width = 0.35
                 ax.bar(x - width/2, trust_vals, width, label='Trustworthiness',
                        color='#1b9e77', alpha=0.9)
-                ax.bar(x + width/2, cont_vals, width, label='Continuity',
+                ax.bar(x + width/2, cont_vals,  width, label='Continuity',
                        color='#d95f02', alpha=0.9)
                 ax.set_xticks(x)
                 ax.set_xticklabels(method_labels, rotation=45, ha='right', fontsize=7)
+                for tick, clean in zip(ax.get_xticklabels(), method_cleans):
+                    tick.set_color(get_method_color(clean))
                 ax.set_ylabel('Score')
                 ax.set_ylim(0, 1.05)
+                ax.axhline(0, color='black', linewidth=0.5)
                 ax.legend(fontsize=7)
                 ax.grid(axis='y', alpha=0.3)
             else:
@@ -722,8 +897,6 @@ def generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir):
 
             ax.set_title(f"{DATASET_LABEL[ds]} — {scale_labels[scale]}", fontsize=9)
 
-    fig.suptitle("Figure A4: Geometric Manifold Preservation\n(Trustworthiness & Continuity via PCA(2))",
-                 fontweight="bold", y=1.0)
     _save_figure(fig, "figA4_geometric_preservation", output_dir)
 
 
@@ -731,32 +904,102 @@ def generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir):
 # METHODOLOGY FIGURE: PSD RECONSTRUCTION
 # =====================================================================
 
-def generate_figM1_psd_reconstruction(output_dir):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.5))
-    freqs = np.linspace(1, 45, 90)
+def generate_figM1_psd_reconstruction(output_dir, results_dir):
+    """Real PSD reconstruction comparison: CTM-CMA (mechanistic) vs PSD-AE (data-driven).
 
-    # Best Fit
-    raw_psd = 1.0 / (freqs ** 1.2) + 0.8 * np.exp(-0.5 * ((freqs - 10) / 2) ** 2)
-    raw_log = np.log10(np.abs(raw_psd) + 1e-12)
-    ctm_psd = 1.0 / (freqs ** 1.2) + 0.78 * np.exp(-0.5 * ((freqs - 10) / 2.1) ** 2)
-    ctm_log = np.log10(np.abs(ctm_psd) + 1e-12)
-    ax1.plot(freqs, raw_log, "k-", linewidth=1.5, label="Empirical PSD", alpha=0.8)
-    ax1.plot(freqs, ctm_log, "-", color="#1b9e77", linewidth=2.0, label="CBM Best Fit")
-    ax1.set_xlabel("Frequency (Hz)"); ax1.set_ylabel("log₁₀ Power")
-    ax1.set_title("A) Qualitative PSD Best Fit"); ax1.legend(frameon=False)
-    ax1.set_xlim(1, 45)
+    Picks the best-fitting CTM epoch from the first 200 eval subjects in TUH and plots:
+      A) Empirical PSD vs CTM-CMA fit (_P_omega with real fitted parameters)
+      B) Empirical PSD vs PSD-AE decoded reconstruction (same epoch)
+    """
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        import pickle
+        import torch
+        import mne
+        mne.set_log_level('WARNING')
+        from utils.util import normalize_psd, compute_psd_from_raw
+        from latent_extraction.cortico_thalamic import _P_omega, _PARAM_KEYS
+        from latent_extraction.psd_ae.psd_ae import get_psd_ae_model
+    except ImportError as e:
+        print(f"  ⚠ figM1: import failed ({e}), skipping")
+        return
 
-    # Average Fit
-    raw_psd2 = 1.0 / (freqs ** 1.1) + 0.6 * np.exp(-0.5 * ((freqs - 11) / 1.5) ** 2)
-    raw_log2 = np.log10(np.abs(raw_psd2) + 1e-12)
-    ctm_psd2 = 1.0 / (freqs ** 1.15) + 0.4 * np.exp(-0.5 * ((freqs - 9.5) / 2.5) ** 2)
-    ctm_log2 = np.log10(np.abs(ctm_psd2) + 1e-12)
-    ax2.plot(freqs, raw_log2, "k-", linewidth=1.5, label="Empirical PSD", alpha=0.8)
-    ax2.plot(freqs, ctm_log2, "-", color="#d95f02", linewidth=2.0, label="CBM Average Fit")
-    ax2.set_xlabel("Frequency (Hz)"); ax2.set_title("B) Qualitative PSD Average Fit")
-    ax2.legend(frameon=False); ax2.set_xlim(1, 45)
+    dataset_path = '/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl'
+    ctm_feat_path  = os.path.join(results_dir, 'tuh-ctm_cma_avg',  'temp_latent_features_eval.json')
+    psdae_feat_path = os.path.join(results_dir, 'tuh-psd_ae_avg', 'temp_latent_features_eval.json')
 
-    plt.suptitle("Figure M1: Power Spectral Density Reconstructions", fontweight='bold')
+    try:
+        print("    Loading TUH eval epochs for figM1...")
+        with open(dataset_path, 'rb') as f:
+            epochs = pickle.load(f)
+    except Exception as e:
+        print(f"  ⚠ figM1: could not load epochs ({e}), skipping")
+        return
+
+    id_to_raw = {item[4]: item[0] for item in epochs}
+
+    ctm_rows, psdae_rows = {}, {}
+    with open(ctm_feat_path) as f:
+        for line in f:
+            row = json.loads(line); ctm_rows[row[4]] = row[0]
+    with open(psdae_feat_path) as f:
+        for line in f:
+            row = json.loads(line); psdae_rows[row[4]] = row[0]
+
+    common_ids = [eid for eid in ctm_rows if eid in psdae_rows and eid in id_to_raw]
+    if not common_ids:
+        print("  ⚠ figM1: no common epoch IDs found, skipping")
+        return
+
+    # Pick the epoch with the lowest CTM reconstruction loss from the first 200 candidates
+    print(f"    Selecting best representative epoch from {min(200, len(common_ids))} candidates...")
+    best_id, best_loss = common_ids[0], float('inf')
+    for eid in common_ids[:200]:
+        raw = id_to_raw[eid]
+        p = {k: float(ctm_rows[eid][i]) for i, k in enumerate(_PARAM_KEYS)}
+        try:
+            emp_psd, freqs = compute_psd_from_raw(
+                raw, calculate_average=True, normalize=False, return_freqs=True)
+            loss = float(np.mean(
+                (normalize_psd(_P_omega(p, freqs)) - normalize_psd(emp_psd)) ** 2))
+            if loss < best_loss:
+                best_loss, best_id = loss, eid
+        except Exception:
+            continue
+    print(f"    Representative epoch: {best_id}  (CTM loss={best_loss:.4f})")
+
+    raw = id_to_raw[best_id]
+    emp_psd, freqs = compute_psd_from_raw(
+        raw, calculate_average=True, normalize=False, return_freqs=True)
+    emp_norm = normalize_psd(emp_psd)
+
+    # CTM-CMA: reconstruct PSD from fitted parameters
+    p = {k: float(ctm_rows[best_id][i]) for i, k in enumerate(_PARAM_KEYS)}
+    ctm_norm = normalize_psd(_P_omega(p, freqs))
+
+    # PSD-AE: decode latent code (output is already in normalized log-space)
+    psdae_model = get_psd_ae_model(device='cpu', dataset_name='tuh')
+    z = torch.tensor(psdae_rows[best_id], dtype=torch.float32).unsqueeze(0)
+    with torch.no_grad():
+        psdae_recon = psdae_model.decode(z).squeeze().numpy()
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.5), sharey=False)
+
+    _panel_label(ax1, "A")
+    ax1.plot(freqs, emp_norm, "k-", linewidth=1.5, label="Empirical PSD", alpha=0.8)
+    ax1.plot(freqs, ctm_norm, "-", color=METHOD_ORANGE, linewidth=2.0, label="CTM-CMA Fit")
+    ax1.set_xlabel("Frequency (Hz)"); ax1.set_ylabel("Normalized log Power (a.u.)")
+    ax1.set_title("A) CTM-CMA – Mechanistic Fit"); ax1.legend(frameon=False)
+    ax1.set_xlim(freqs[0], freqs[-1])
+
+    _panel_label(ax2, "B")
+    ax2.plot(freqs, emp_norm, "k-", linewidth=1.5, label="Empirical PSD", alpha=0.8)
+    ax2.plot(freqs, psdae_recon, "-", color=METHOD_BLUE, linewidth=2.0, label="PSD-AE Reconstruction")
+    ax2.set_xlabel("Frequency (Hz)")
+    ax2.set_title("B) PSD-AE – Data-Driven Reconstruction")
+    ax2.legend(frameon=False); ax2.set_xlim(freqs[0], freqs[-1])
+
+    plt.suptitle("Figure M1: PSD Representation – Mechanistic vs Data-Driven", fontweight='bold')
     _save_figure(fig, "figM1_psd_reconstruction", output_dir)
 
 
@@ -772,16 +1015,16 @@ def main():
     print(f"Loaded {len(all_metrics)} model evaluations.")
 
     print("\nGenerating Main Text Figures & Tables...")
-    generate_fig1_pipeline(output_dir)
+
     generate_table1_capacity_efficiency(all_metrics, output_dir)
     generate_table2_summary_acc(all_metrics, output_dir)
     generate_fig2_probe_delta(all_metrics, output_dir)
-    generate_fig3_bifurcation(output_dir)
+    generate_fig3_bifurcation(output_dir, results_dir)
     generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir)
     generate_fig5_mi_concentration(all_metrics, output_dir)
 
     print("\nGenerating Methodology Figures...")
-    generate_figM1_psd_reconstruction(output_dir)
+    generate_figM1_psd_reconstruction(output_dir, results_dir)
 
     print("\nGenerating Appendix Figures & Tables...")
     generate_tableA1_full_matrix(all_metrics, output_dir)
