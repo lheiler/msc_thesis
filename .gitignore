@@ -1,10 +1,9 @@
-Datasets/tuh-eeg-ab-clean/
+Datasets/
 **/.DS_Store
 **/__pycache__/
 env_thesis/
 venv
-Datasets/harvard-eeg-clean/
-Datasets/lemon/
+Datasets/
 code/Results
 # Ignore Jupyter temporary files
 .ipynb_checkpoints/

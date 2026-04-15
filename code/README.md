@@ -1,6 +1,6 @@
-## EEG Latent-Feature Pipeline (TUH-focused)
+## EEG Latent-Feature Pipeline
 
-Research-grade, end-to-end pipeline for EEG latent-feature extraction and downstream evaluation/classification. The current code path is TUH-centric and driven by a simple YAML config. Cached latent features are reused between runs unless reset.
+End-to-end pipeline for EEG latent-feature extraction and downstream evaluation/classification. Supports multiple datasets (TUH, LEMON, Harvard) in a single run via a YAML config. Cached latent features are reused between runs unless reset.
 
 ---
 
@@ -20,36 +20,33 @@ Research-grade, end-to-end pipeline for EEG latent-feature extraction and downst
 ---
 
 ## Features
-- **Modular pipeline**: data loading → latent extraction → Optuna hyperparameter search → evaluation → reports.
+- **Modular pipeline**: data loading → latent extraction → 5-fold cross-validation → evaluation → results.
+- **Multi-dataset**: runs the full pipeline for every corpus listed in the config in a single invocation.
 - **Many extraction options**: mechanistic models (CTM-CMA, CTM-NN, JR, Wong–Wang, Hopf), statistical (Catch22, PCA), and learned (EEGNet-AE, PSD-AE).
-- **Config/CLI driven**: choose dataset root, method, and optimisation knobs via YAML/flags.
+- **Config/CLI driven**: choose datasets, method, and optimisation knobs via YAML/flags.
 - **Caching**: latent features written as JSONL and reused on subsequent runs.
 - **Parallel processing**: CPU-based methods support parallel extraction for faster processing.
-- **Subject-wise splitting**: Proper subject-level train/validation splits to prevent data leakage.
-- **Comprehensive evaluation**: Unsupervised metrics (clustering, geometry) + supervised tasks (abnormal classification, gender classification).
-- **Reproducible reports**: text, markdown, JSON, and figures per run under `Results/`.
+- **Subject-wise splitting**: Proper subject-level GroupKFold splits to prevent data leakage.
+- **Comprehensive evaluation**: Unsupervised latent metrics (clustering, geometry, independence) + supervised tasks (abnormality classification, age classification) with both MLP and linear-probe baselines.
+- **Reproducible results**: metrics and figures per run under `Results/`.
 
 ---
 
 ## Project Structure
 ```
 code/
-├── data_preprocessing/      # TUH .fif loader
-├── latent_extraction/       # All extractors and models
-├── evaluation/              # Latent metrics, reporting, model training
-│   ├── model_training/      # Optuna search + single-task head
-├── utils/                   # Cleaning, PSD, dataset utilities
+├── data_preprocessing/      # Data loading, cleaning (TUH, LEMON, Harvard)
+├── latent_extraction/       # All extractors and pre-trained models
+├── evaluation/              # Latent metrics, cross-validation, model training
+│   ├── model_training/      # Optuna search + single-task MLP head
+├── utils/                   # PSD helpers, channel list, JSONL serialisation
 ├── Results/                 # Auto-generated per-run outputs
-├── configs/                 # Example (legacy) configs
+├── configs/                 # YAML configuration files
 ├── main.py                  # Entry point
-├── run_all_configs.sh       # Batch runner (PBS example)
-├── run_cleanup.sh           # Force re-extraction across methods
-├── run_latent_extraction.sh # SLURM example (update paths before use)
+├── job_script.sh            # PBS batch script (update paths before use)
 ├── requirements.txt
 └── README.md
 ```
-
-Note: some configs under `configs/` use a legacy schema and may not match the current loader (see Configuration below).
 
 ---
 
@@ -110,51 +107,47 @@ If starting from raw TUH EDFs, see `utils/cleanup_real_eeg_tuh.py` for a compreh
 ---
 
 ## Configuration
-Current schema (example `config.yaml`):
+Current schema (`configs/default.yaml`):
 ```yaml
 # Choose one of the supported methods (see Extraction methods section)
-# Available: ctm_cma_avg, ctm_cma_pc, ctm_nn_avg, ctm_nn_pc, jr_avg, jr_pc,
-#           wong_wang_avg, wong_wang_pc, hopf_avg, hopf_pc, c22, 
-#           pca_avg, pca_pc, psd_ae_avg, psd_ae_pc, eegnet
-method: wong_wang_avg
+method: ctm_nn_avg
 
-# Dataset corpus identifier (used for result directory naming)
-data_corp: tuh
+# Multiple datasets – the pipeline loops over each corpus
+datasets:
+  lemon: "/path/to/Datasets/lemon"
+  tuh: "/path/to/Datasets/tuh-eeg-ab-clean"
 
 paths:
-  # Root directory containing train_epochs.pkl and eval_epochs.pkl
-  data_path: "~/thesis/Datasets/tuh-eeg-ab-clean"
-  # Directory where all results will be written  
   results_root: "Results"
 
-# Hyperparameter optimization settings
+# Hyperparameter optimisation (Optuna, used inside cross-validation)
 optuna:
-  n_trials: 50      # Number of optimization trials per task
-  val_split: 0.15   # Fraction of training data for validation (subject-wise split)
-  patience: 7       # Early stopping patience for each trial
-  batch_size: 512   # Batch size for data loading and training
+  n_trials: 50       # Trials per fold
+  val_split: 0.15    # Fraction of training data reserved for validation
+  patience: 10       # Early-stopping patience within each trial
+  batch_size: 64     # Batch size (doubled automatically for TUH)
 ```
 
 **CLI Usage:**
 ```bash
 # Basic run with config file
-python main.py --config config.yaml
+python main.py --config configs/default.yaml
 
 # Force re-extraction of latent features (ignore cache)
-python main.py --config config.yaml --reset
+python main.py --config configs/default.yaml --reset
 
 # Override method from command line
-python main.py --config config.yaml --method c22
+python main.py --config configs/default.yaml --method c22
 
-# Run with default config.yaml
+# Run with default config
 python main.py --method jr_avg
 ```
 
 **Important Notes:**
-- The pipeline expects preprocessed pickle files (`train_epochs.pkl`, `eval_epochs.pkl`) in the data directory
-- Results are organized as `{results_root}/{data_corp}-{method}/`
+- The pipeline expects preprocessed pickle files (`train_epochs.pkl`, `eval_epochs.pkl`) in each dataset directory
+- Results are organised as `{results_root}/{dataset_name}-{method}/`
 - Latent features are cached as JSONL files and reused unless `--reset` is specified
-- Subject-wise train/validation splitting prevents data leakage
+- Subject-wise GroupKFold splitting prevents data leakage
 
 ---
 
@@ -162,87 +155,85 @@ python main.py --method jr_avg
 
 ### Single Method Execution
 ```bash
-# Run with specific method
+# Run with specific method (uses configs/default.yaml)
 python main.py --method wong_wang_avg
 
-# Run with config file
-python main.py --config config.yaml
+# Run with explicit config file
+python main.py --config configs/default.yaml
 
 # Force re-extraction (ignore cached latent features)
 python main.py --method c22 --reset
 ```
 
 ### Batch Execution
-For running multiple methods, use the provided shell scripts:
+Use the provided PBS script to run multiple methods sequentially on a cluster:
 
 ```bash
-# Example batch script (run.sh) - customize methods as needed
-bash run.sh
-
-# Force re-extraction for multiple methods
-bash run_cleanup.sh
+qsub job_script.sh
 ```
 
-### Pipeline Workflow
-1. **Data Loading**: Loads preprocessed pickle files from `data_path`
-2. **Latent Extraction**: Extracts features using specified method (with caching)
-3. **Hyperparameter Search**: Optuna optimization for downstream tasks
-4. **Evaluation**: 
-   - Unsupervised metrics (clustering, geometry, independence)
-   - Supervised tasks (abnormal classification, gender classification)
-5. **Results**: Saves metrics, plots, and reports to `Results/{data_corp}-{method}/`
+Edit `job_script.sh` to select which methods to run.
 
-### Performance Optimization
+### Pipeline Workflow
+For each dataset in the config, the pipeline executes:
+
+1. **Data Loading**: Load preprocessed pickle files (`train_epochs.pkl`, `eval_epochs.pkl`)
+2. **Latent Extraction**: Extract features using the specified method (with caching)
+3. **Unsupervised Latent Evaluation**: Compute clustering, geometry, and independence metrics
+4. **5-Fold Cross-Validation**: Subject-wise GroupKFold CV with Optuna inside each fold
+5. **Retrain**: Train final MLP using the best architecture from CV on the full training set
+6. **Final Evaluation**: Evaluate on the held-out eval set (MLP + linear probe baseline)
+7. **Save Results**: Write `final_metrics.txt` and plots to `Results/{dataset}-{method}/`
+
+### Performance Optimisation
 - **Parallel Processing**: CPU-based methods support parallel extraction via `n_workers` parameter
 - **GPU Acceleration**: Neural network methods automatically use GPU when available
-- **Caching**: Latent features are cached to avoid re-computation across runs
-
-**Execution Details:**
-1. **Data Loading**: Load preprocessed pickle files (`train_epochs.pkl`, `eval_epochs.pkl`)
-2. **Latent Extraction**: Extract features using the specified method (with optional parallel processing)
-3. **Caching**: Save latent features as JSONL files for reuse across runs
-4. **Hyperparameter Search**: Optuna optimization for downstream task heads
-5. **Evaluation**: Compute unsupervised and supervised metrics
-6. **Reporting**: Generate plots, summaries, and structured results
-
-**Caching Behavior**: Cached latent features are reused unless `--reset` is specified or dataset size changes.
+- **Caching**: Latent features are cached as JSONL to avoid re-computation across runs; reused unless `--reset` is specified or dataset size changes
 
 ---
 
 ## Outputs
-Results are organized in: `Results/{data_corp}-{method}/`
+Results are organised in: `Results/{dataset}-{method}/`
 
 ### Core Files
 ```
-├── temp_latent_features_train.json    # Cached training latent features
-├── temp_latent_features_eval.json     # Cached evaluation latent features  
-├── final_metrics.txt                  # Human-readable metrics with descriptions
-├── final_metrics.md                   # Markdown summary report
-├── final_metrics.json                 # Structured metrics in JSON format
-└── study.db                          # Optuna hyperparameter search database
+├── temp_latent_features_train.json    # Cached training latent features (JSONL)
+├── temp_latent_features_eval.json     # Cached evaluation latent features (JSONL)
+├── latent_metrics.json                # Unsupervised latent evaluation metrics
+└── final_metrics.txt                  # Human-readable metrics with inline descriptions
 ```
 
-### Visualization Outputs
+### Visualisation Outputs
 ```
-├── pca_explained_variance_curve.png   # PCA analysis of latent features
-├── train/                            # Training set visualizations
-│   ├── hsic_matrix.png              # Feature independence heatmap
-│   ├── variance_hist.png            # Latent feature variance distribution
-│   ├── pca2_scatter.png             # 2D PCA projection
-│   └── tsne_scatter.png             # t-SNE embedding
-├── eval/                             # Evaluation set visualizations
+├── latent_space_analysis.png          # Combined latent-space overview
+├── train/                             # Training set visualisations
+│   ├── hsic_matrix.png               # Feature independence heatmap
+│   ├── variance_hist.png             # Latent feature variance distribution
+│   ├── pca2_scatter.png              # 2D PCA projection
+│   └── tsne_scatter.png              # t-SNE embedding
+├── eval/                              # Evaluation set visualisations
 │   └── (same as train/)
-├── plots_abnormal/                   # Abnormal classification results
+├── plots_abnormal/                    # Abnormal classification results (TUH)
 │   ├── confusion_matrix.png
 │   ├── roc_curve.png
 │   └── classification_report.png
-└── plots_gender/                     # Gender classification results
+└── plots_gender/                      # Gender classification results (TUH)
     └── (same structure as abnormal/)
+```
+
+### Aggregated Outputs (under `Results/`)
+```
+├── metrics_and_plots/                 # Cross-method comparison matrices (CKA, Procrustes, CCA)
+├── publication_figures/               # Publication-ready figures and tables
+├── summary_table.md                   # Comparative summary across all methods
+└── summary_table.tex                  # LaTeX version of the summary table
 ```
 
 ### Evaluation Metrics Summary
 - **Latent Quality**: Active units, feature independence (HSIC), clustering scores, geometry preservation
-- **Downstream Performance**: Classification accuracy, F1-scores, ROC-AUC for abnormal/gender tasks
+- **Downstream Performance**: Classification accuracy, F1-scores, ROC-AUC for abnormality/age tasks
+- **Linear Probe Baseline**: Logistic regression baseline for each downstream task
+- **Cross-Validation**: 5-fold subject-wise CV results with per-fold metrics
 - **Dataset Statistics**: Sample counts, label distributions, train/eval splits
 
 ---
@@ -280,24 +271,22 @@ Method names accepted by `--method` and `config.yaml`:
 ---
 
 ## HPC Usage
-Example job scripts are provided for cluster environments. Update paths and modules for your system:
+A PBS job script (`job_script.sh`) is provided. Update paths and modules for your system:
 
-### PBS Scripts
-- **`run.sh`**: Basic PBS script for running specific methods
-  ```bash
-  #!/bin/bash
-  #PBS -lwalltime=24:00:00
-  #PBS -q v1_large24
-  #PBS -lselect=1:ncpus=64:mem=64gb
-  
-  cd /path/to/thesis/code
-  source ~/env_thesis/bin/activate
-  
-  python main.py --method jr_pc
-  python main.py --method hopf_pc
-  ```
+```bash
+#!/bin/bash
+#PBS -N final_eval
+#PBS -q v1_large24
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=64:mem=128gb
 
-- **`run_cleanup.sh`**: Force re-extraction across multiple methods using `--reset`
+cd /path/to/thesis/code
+source ~/env_thesis/bin/activate
+
+python main.py --method jr_avg
+python main.py --method hopf_pc
+# ... add more methods as needed
+```
 
 ### Key HPC Considerations
 - **Memory**: Large datasets may require 32-64GB RAM for parallel processing
@@ -341,25 +330,28 @@ Example job scripts are provided for cluster environments. Update paths and modu
 ---
 
 ## Dependencies
-See `requirements.txt` for complete list. Key dependencies:
+See `requirements.txt` for the core list. Key dependencies:
 
 ### Core Libraries
 - **`torch`**: PyTorch for neural network methods and tensor operations
 - **`scikit-learn`**: Machine learning utilities, PCA, clustering
-- **`optuna`**: Hyperparameter optimization framework
+- **`optuna`**: Hyperparameter optimisation framework
 - **`numpy`, `scipy`**: Numerical computing
 
 ### EEG Processing
 - **`mne`, `mne-bids`**: EEG data loading and preprocessing
-- **`braindecode==0.7.1`**: EEG-specific deep learning utilities
+- **`braindecode`**: EEG-specific deep learning utilities
+- **`autoreject`**: Automated epoch rejection during preprocessing
 
 ### Method-Specific
 - **`pycatch22`**: Catch22 time-series features (may require source build)
-- **`cma`**: CMA-ES optimization for mechanistic model fitting
+- **`cma`**: CMA-ES optimisation for mechanistic model fitting
 - **`torcheeg`**: Additional EEG processing utilities
+- **`numba`** *(optional)*: JIT compilation for faster CBM fitting
 
-### Visualization & Utilities
-- **`matplotlib`, `seaborn`**: Plotting and visualization
+### Visualisation & Utilities
+- **`matplotlib`, `seaborn`**: Plotting and visualisation
+- **`pandas`**: Data manipulation (used in preprocessing and publication scripts)
 - **`PyYAML`**: Configuration file parsing
 - **`tqdm`**: Progress bars
 

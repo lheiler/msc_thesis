@@ -9,16 +9,17 @@ This thesis benchmarks four families of **Computational Brain Models (CBMs)**—
 These mechanistic models are compared against traditional data-driven baselines, including PCA, spectral autoencoders, EEGNet-style autoencoders, and the catch22 feature set. 
 
 ## Key Contributions
-* **Unified Benchmark:** A modular pipeline built on the **Temple University Hospital Abnormal EEG Corpus (TUH-AB)**.
+* **Unified Benchmark:** A modular pipeline built on the **Temple University Hospital Abnormal EEG Corpus (TUH-AB)** and the **LEMON** dataset, with extensibility to other corpora.
 * **Hybrid Approach:** Implementation of **amortized parameter-inference** for the cortico-thalamic model, achieving 78.4% accuracy in abnormality screening while maintaining physiological interpretability.
 * **Comparative Analysis:** Evaluation of latent space quality based on dimensionality efficiency, geometry preservation, and information content.
 
 ## Repository Structure
-* **/code**: Core implementation, model training, and parameter inference. 
+* **/code**: Core implementation, model training, and parameter inference.
   * *See the [Detailed Code README](./code/README.md) for execution instructions.*
 * **/Datasets**: EEG data and preprocessing artifacts.
-* **/model_comparison_results_complete**: Logs and performance metrics for all evaluated models.
-* **/testing**: Validation scripts and unit tests.
+* **final_report.pdf**: The completed thesis document.
 
-## Dataset
-This project utilizes the **TUH Abnormal EEG Corpus (v3.0.1)**, consisting of 2,993 sessions. 
+## Datasets
+This project utilizes:
+* **TUH Abnormal EEG Corpus (v3.0.1):** 2,993 sessions of clinical EEG, used for abnormality classification.
+* **LEMON (Leipzig Study for Mind-Body-Emotion Interactions):** Healthy participant resting-state EEG, used for age classification.
