@@ -13,8 +13,8 @@ method: ctm_nn_avg
 
 # Ensure datasets are specified correctly for evaluation
 datasets:
-  lemon: "/rds/general/user/lrh24/home/msc_thesis/Datasets/lemon"
-  tuh: "/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean"
+  lemon: "../Datasets/lemon"
+  tuh: "../Datasets/tuh-eeg-ab-clean"
 
 paths:
   results_root: "Results"

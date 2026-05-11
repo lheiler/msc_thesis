@@ -27,7 +27,7 @@ End-to-end pipeline for EEG latent-feature extraction and downstream evaluation/
 - **Caching**: latent features written as JSONL and reused on subsequent runs.
 - **Parallel processing**: CPU-based methods support multi-core extraction via `ProcessPoolExecutor`.
 - **Subject-wise splitting**: subject-level `GroupKFold` / `GroupShuffleSplit` splits to prevent data leakage.
-- **Comprehensive evaluation**: unsupervised latent metrics (HSIC independence, clustering, geometry) + supervised tasks (abnormality classification for TUH, age classification for LEMON) with both MLP and logistic-regression probe baselines.
+- **Comprehensive evaluation**: unsupervised latent metrics (HSIC independence, clustering, geometry) + supervised tasks (abnormality classification for TUH, age classification for LEMON) with both MLP and linear probe baselines (logistic regression for classification, Ridge for regression).
 - **Reproducible results**: metrics and figures per run under `Results/`.
 
 ---
@@ -65,7 +65,8 @@ code/
 │       ├── optuna_search.py
 │       └── single_task_model.py
 ├── utils/                       # PSD helpers, channel list, JSONL serialisation
-│   └── util.py
+│   ├── util.py
+│   └── channel_name_test.py     # Canonical 19-channel name resolution
 ├── Results/                     # Auto-generated per-run outputs
 ├── configs/                     # YAML configuration files
 │   └── default.yaml
@@ -86,7 +87,7 @@ python -m venv ~/env_thesis && source ~/env_thesis/bin/activate
 pip install -r requirements.txt
 ```
 
-**Note:** On some HPC clusters, `catch22` may need to be compiled from source (see [HPC Usage](#hpc-usage)).
+**Note:** On some HPC clusters, `pycatch22` may need to be compiled from source (see [HPC Usage](#hpc-usage)).
 
 ---
 
@@ -94,7 +95,7 @@ pip install -r requirements.txt
 
 ### TUH Abnormal EEG Corpus
 
-If starting from raw TUH EDF files, run the cleaning pipeline first. It performs: channel renaming, bad-channel interpolation, edge trimming, notch filtering (mains + harmonics), ICA artifact removal (EOG/ECG), re-referencing, low-pass filtering, artifact annotation, canonical 19-channel ordering, epoching, AutoReject, QC, and per-epoch z-scoring.
+If starting from raw TUH EDF files, run the cleaning pipeline first. It performs: channel renaming, bad-channel interpolation, edge trimming, bandpass filtering, ICA artifact removal (EOG/ECG), average re-referencing, artifact annotation, canonical 19-channel ordering, epoching, AutoReject, and beta/alpha QC.
 
 ```python
 from data_preprocessing.cleanup_real_eeg_tuh import load_data
@@ -104,7 +105,7 @@ load_data(
     data_path_eval="/path/to/tuh/edf/eval",
     save_path="/path/to/tuh-eeg-ab-clean",
     sfreq=128,
-    epoch_len_s=7.0,
+    epoch_len_s=10.0,
 )
 ```
 
@@ -177,7 +178,7 @@ For each dataset in the config, the pipeline executes:
 3. **Unsupervised Latent Evaluation** — HSIC independence, clustering scores, geometry metrics
 4. **5-Fold Cross-Validation** — subject-wise `GroupKFold` CV with Optuna hyperparameter search inside each fold
 5. **Retrain** — train final MLP on full training set using best architecture from CV
-6. **Final Evaluation** — evaluate on held-out eval set (MLP + logistic regression probe)
+6. **Final Evaluation** — evaluate on held-out eval set (MLP + linear probe)
 7. **Save Results** — write `final_metrics.txt` and plots to `Results/{dataset}-{method}/`
 
 ### Dataset-Specific Tasks
@@ -185,7 +186,6 @@ For each dataset in the config, the pipeline executes:
 | Dataset | Task                          | Target Field | Details                                   |
 |---------|-------------------------------|--------------|-------------------------------------------|
 | TUH     | Abnormality classification    | `abnormal`   | Binary: normal (0) vs abnormal (1)        |
-| TUH     | Gender classification         | `gender`     | Binary: female (0) vs male (1)            |
 | LEMON   | Age classification            | `age`        | Binary: young (<45) vs old (>=45)         |
 
 ### Batch Execution (HPC)
@@ -217,8 +217,6 @@ Results/{dataset}-{method}/
 │   ├── confusion_matrix.png
 │   ├── roc_curve.png
 │   └── pr_curve.png
-├── plots_gender/                      # TUH: gender classification results
-│   └── (same structure as plots_abnormal/)
 └── plots_age/                         # LEMON: age classification results
     └── (same structure as plots_abnormal/)
 ```
@@ -292,10 +290,10 @@ python main.py --method hopf_pc
 - **Memory**: large datasets may require 32–64 GB RAM for parallel processing
 - **CPU cores**: parallelisable methods benefit from high core counts (`n_workers=64`)
 - **GPU**: neural network methods (`ctm_nn_*`, `psd_ae_*`, `eegnet`) benefit from GPU acceleration
-- **catch22**: may need compilation from source on some clusters:
+- **pycatch22**: may need compilation from source on some clusters:
   ```bash
-  pip uninstall -y catch22
-  pip install --no-cache-dir --no-binary=:all: catch22
+  pip uninstall -y pycatch22
+  pip install --no-cache-dir --no-binary=:all: pycatch22
   ```
 
 ---
@@ -319,10 +317,10 @@ See `requirements.txt`. Key packages:
 | Category             | Packages                                            |
 |----------------------|-----------------------------------------------------|
 | Core                 | `numpy`, `scipy`, `scikit-learn`                    |
-| Deep learning        | `torch`, `braindecode`                              |
+| Deep learning        | `torch`                                             |
 | EEG processing       | `mne`, `mne-bids`, `autoreject`                     |
 | Optimisation         | `optuna`, `cma`                                     |
-| Feature extraction   | `catch22`, `torcheeg`                               |
+| Feature extraction   | `pycatch22`                                         |
 | Visualisation        | `matplotlib`, `seaborn`                             |
 | Utilities            | `PyYAML`, `tqdm`                                    |
 
