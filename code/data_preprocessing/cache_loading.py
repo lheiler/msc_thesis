@@ -1,17 +1,41 @@
-import re
+"""Load cached latent features from JSONL files into PyTorch DataLoaders."""
+from __future__ import annotations
+
 import json
+import logging
+from typing import Any
+
 import torch
 from torch.utils.data import DataLoader
 
+logger = logging.getLogger(__name__)
 
-def load_latent_parameters_array(file_path: str, batch_size: int = 32):
-    """Read a .json lines file where each line is a JSON list:
-        [[float, ...], gender, age, abnormal, sample_id]
-    and return a DataLoader with tensor fields. Sample IDs are attached on the
-    returned loader as ``.sample_ids`` (list[str]).
+
+def load_latent_parameters_array(
+    file_path: str, batch_size: int = 32
+) -> DataLoader:
+    """Read a JSONL file of latent feature records into a DataLoader.
+
+    Each line must be a JSON list:
+    ``[[float, ...], gender, age, abnormal, sample_id]``.
+
+    The first element may also be a ``dict`` of named parameters; keys are
+    sorted to ensure consistent ordering across rows.
+
+    Args:
+        file_path: Path to the ``.json`` file (extension appended if missing).
+        batch_size: Batch size for the returned DataLoader.
+
+    Returns:
+        DataLoader with tensor samples. Sample IDs are attached as
+        ``.sample_ids`` (``list[str]``).
+
+    Raises:
+        ValueError: If any line is missing the required ``sample_id`` field.
     """
-    latent_params = []
-    file_path = file_path + ".json" if not file_path.endswith(".json") else file_path
+    latent_params: list[tuple[torch.Tensor, ...]] = []
+    if not file_path.endswith(".json"):
+        file_path = file_path + ".json"
 
     sample_ids: list[str] = []
     with open(file_path, "r") as f:
@@ -19,11 +43,9 @@ def load_latent_parameters_array(file_path: str, batch_size: int = 32):
             if not line.strip():
                 continue
             try:
-                entry = json.loads(line)
+                entry: list[Any] = json.loads(line)
                 vec_or_dict = entry[0]
-                # Handle both list-of-floats and dict-of-name->value formats
                 if isinstance(vec_or_dict, dict):
-                    # Sort keys to ensure consistent ordering across rows
                     ordered_vals = [float(vec_or_dict[k]) for k in sorted(vec_or_dict.keys())]
                     latent_vec = torch.tensor(ordered_vals, dtype=torch.float32)
                 else:
@@ -31,20 +53,16 @@ def load_latent_parameters_array(file_path: str, batch_size: int = 32):
                 g = torch.tensor(entry[1], dtype=torch.float32)
                 a = torch.tensor(entry[2], dtype=torch.float32)
                 ab = torch.tensor(entry[3], dtype=torch.float32)
-                # Require sample_id at index 4
                 if len(entry) < 5:
-                    raise ValueError("Latent JSONL missing sample_id; expected 5 items per line.")
-                sid = str(entry[4])
-                sample_ids.append(sid)
+                    raise ValueError(
+                        "Latent JSONL missing sample_id; expected 5 items per line."
+                    )
+                sample_ids.append(str(entry[4]))
                 latent_params.append((latent_vec, g, a, ab))
-            except json.JSONDecodeError as e:
-                print(f"Skipping invalid JSON line: {e}")
+            except json.JSONDecodeError as exc:
+                logger.warning("Skipping invalid JSON line: %s", exc)
 
-    print(f"Loaded {len(latent_params)} latent parameters from {file_path}")
+    logger.info("Loaded %d latent parameters from %s", len(latent_params), file_path)
     loader = DataLoader(latent_params, batch_size=batch_size, shuffle=False)
-    # Attach IDs for downstream alignment
-    try:
-        loader.sample_ids = sample_ids  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    loader.sample_ids = sample_ids  # type: ignore[attr-defined]
     return loader

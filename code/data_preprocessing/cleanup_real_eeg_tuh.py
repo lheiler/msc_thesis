@@ -1,20 +1,22 @@
-"""
-Cleaned EEG preprocessing pipeline for TUH dataset.
-Refactored for conciseness while preserving all logic.
-"""
+"""EEG preprocessing pipeline for the TUH Abnormal EEG dataset."""
+from __future__ import annotations
+
+import logging
+import os
+import pickle
+from collections import Counter
+from typing import Callable, Iterable, Optional
 
 import mne
-import os
 import numpy as np
 import pandas as pd
-import pickle
 from autoreject import AutoReject
-from mne.time_frequency import psd_array_welch
-from typing import List, Iterable, Optional
-from tqdm import tqdm
 from joblib import Parallel, delayed
+from mne.time_frequency import psd_array_welch
+from tqdm import tqdm
 from tqdm_joblib import tqdm_joblib
-from collections import Counter
+
+logger = logging.getLogger(__name__)
 
 # === Constants ===
 EDGE_PAD_S: float = 0.5
@@ -41,7 +43,7 @@ def _is_cardiac(name: str) -> bool:
     return any(x in name.upper() for x in ('ECG', 'EKG', 'PULSE'))
 
 
-def _suppress(fn, *args, **kwargs):
+def _suppress(fn: Callable, *args, **kwargs):
     """Suppress exceptions and return None on failure."""
     try:
         return fn(*args, **kwargs)
@@ -49,19 +51,19 @@ def _suppress(fn, *args, **kwargs):
         return None
 
 
-def _safe_set_montage(inst, montage='standard_1020'):
-    """Set montage safely, print warning on failure."""
+def _safe_set_montage(inst: mne.io.BaseRaw, montage: str = 'standard_1020') -> None:
+    """Set montage safely, logging a warning on failure."""
     try:
         inst.set_montage(montage, verbose=False)
-    except Exception:
-        print(f"🛑[canonical] {montage} montage not found")
+    except (ValueError, RuntimeError):
+        logger.warning("[canonical] %s montage could not be set", montage)
 
 
 def _fmt_dur(sec: float) -> str:
     """Format seconds with 2 decimals, fallback to str on error."""
     try:
         return f"{sec:.2f}s"
-    except:
+    except (TypeError, ValueError):
         return str(sec)
 
 
@@ -109,7 +111,7 @@ def rename_channel(name: str) -> str:
     return legacy_map.get(name, name)
 
 
-def trim_zero_edges(raw: mne.io.BaseRaw, eps: float = 0.0, min_keep_sec: float = 1.0, verbose=print) -> None:
+def trim_zero_edges(raw: mne.io.BaseRaw, eps: float = 0.0, min_keep_sec: float = 1.0, verbose: Callable = print) -> None:
     """Trim leading/trailing regions where all EEG samples are near zero."""
     picks = mne.pick_types(raw.info, eeg=True, eog=False, ecg=False, emg=False, stim=False, misc=False)
     if not len(picks):
@@ -131,7 +133,7 @@ def trim_zero_edges(raw: mne.io.BaseRaw, eps: float = 0.0, min_keep_sec: float =
         verbose(f"[trim] zero edges to [{_fmt_dur(tmin)}, {_fmt_dur(tmax)}]")
 
 
-def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str], max_missing_pct: float = 0.2, montage: str = 'standard_1020') -> mne.io.BaseRaw:
+def conform_to_canonical(raw: mne.io.BaseRaw, canonical: list[str], max_missing_pct: float = 0.2, montage: str = 'standard_1020') -> mne.io.BaseRaw:
     """Pick and order channels to canonical set; interpolate if any are missing."""
     # Ensure current channels have locations
     _safe_set_montage(raw, montage)
@@ -149,7 +151,7 @@ def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str], max_missing_
         if len(eeg_picks) < 10:
              raise ValueError(f"🛑 [canonical] too few EEG channels ({len(eeg_picks)}) to interpolate missing {missing}")
              
-        print(f"🟠 [canonical] interpolating missing channels: {missing}")
+        logger.info("[canonical] interpolating missing channels: %s", missing)
         
         # Add missing channels as zeroed data
         for ch in missing:
@@ -178,7 +180,7 @@ def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str], max_missing_
 
 
 # === Artifact Detection ===
-def annotate_artifacts(raw: mne.io.BaseRaw, verbose=print) -> None:
+def annotate_artifacts(raw: mne.io.BaseRaw, verbose: Callable = print) -> None:
     """Annotate artifact segments as BAD_* without altering data."""
     sfreq = raw.info['sfreq']
     orig_time = getattr(raw.annotations, 'orig_time', None)
@@ -297,7 +299,7 @@ def cleanup_real_eeg_tuh(raw: mne.io.BaseRaw, sfreq: float, montage: str = 'stan
         good = stds > 1e-12
         if not np.all(good):
             bad_names = [raw.ch_names[picks_eeg[i]] for i in np.where(~good)[0]]
-            print(f"🟥 [ICA] excluding near-zero-variance channels: {bad_names}")
+            logger.warning("[ICA] excluding near-zero-variance channels: %s", bad_names)
             picks_eeg = picks_eeg[good]
         
         if len(picks_eeg):
@@ -376,7 +378,7 @@ def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = -1) -> mne.Epochs | N
     """Apply AutoReject with fallback strategies."""
     n_ep = len(epochs)
     if n_ep < 2:
-        print("🟥 [autoreject] skipping: insufficient epochs (n<2)")
+        logger.warning("[autoreject] skipping: insufficient epochs (n<2)")
         return None
     
     def _try_autoreject(ep_copy):
@@ -388,7 +390,7 @@ def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = -1) -> mne.Epochs | N
         epochs_ar = _try_autoreject(epochs.copy())
         
         if len(epochs_ar) == 0:
-            print("🟠 [autoreject] rejected all epochs; trying with µV→V scaling")
+            logger.info("[autoreject] rejected all epochs; trying with uV->V scaling")
             data_range = epochs.get_data().max() - epochs.get_data().min()
             
             if data_range > 1e-3:  # Likely in µV
@@ -397,19 +399,19 @@ def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = -1) -> mne.Epochs | N
                 epochs_ar = _try_autoreject(epochs_scaled)
                 
                 if len(epochs_ar) > 0:
-                    print(f"[autoreject] µV scaling worked; n_epochs_out={len(epochs_ar)}")
+                    logger.info("[autoreject] uV scaling worked; n_epochs_out=%d", len(epochs_ar))
                     return epochs_ar
                 else:
-                    print("🟥 [autoreject] all epochs rejected; discarding sample")
+                    logger.warning("[autoreject] all epochs rejected; discarding sample")
                     return None
             else:
-                print("🟥 [autoreject] all epochs rejected; discarding sample")
+                logger.warning("[autoreject] all epochs rejected; discarding sample")
                 return None
         else:
             return epochs_ar
-            
+
     except Exception as e:
-        print(f"🟥 [autoreject] failed ({e}); discarding sample")
+        logger.warning("[autoreject] failed (%s); discarding sample", e)
         return None
 
 
@@ -434,8 +436,8 @@ def _qc_epoch_mask(epochs: mne.Epochs, muscle_ratio_thr: float = 2.0) -> np.ndar
     
     mask = ratio_ep < muscle_ratio_thr
     if not mask.any():
-        print("🟥 [qc] no epochs passed beta/alpha ratio threshold")
-        return mask  # Return all False - don't force keep bad epochs
+        logger.warning("[qc] no epochs passed beta/alpha ratio threshold")
+        return mask
     
     return mask
 
@@ -479,7 +481,7 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
     elif 'normal' in parts:
         label = 0
     else:
-        print(f"🛑 [skip] {eeg_path}: unknown label (expected 'abnormal' or 'normal' in path)")
+        logger.warning("[skip] %s: unknown label (expected 'abnormal' or 'normal' in path)", eeg_path)
         return {"file": fn, "epochs_saved": 0, "reason": "unknown_label", "epoch_tuples": []}
     
     # Load and validate
@@ -490,14 +492,14 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
         if sex < 0:
             raise ValueError("Invalid sex")
     except Exception:
-        print("🟥 [labels] sex unknown (0) -> discarding this recording")
+        logger.warning("[labels] sex unknown -> discarding this recording")
         return {"file": fn, "epochs_saved": 0, "reason": "sex_unknown", "epoch_tuples": []}
     
     # Clean
     try:
         clean = cleanup_real_eeg_tuh(raw, sfreq=sfreq)
     except Exception as e:
-        print(f"🟥 [skip] {eeg_path}: {e}")
+        logger.warning("[skip] %s: %s", eeg_path, e)
         return {"file": fn, "epochs_saved": 0, "reason": f"cleanup_failed: {e}", "epoch_tuples": []}
     
     # Epoching + AR + QC
@@ -508,7 +510,7 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
     
     # Check if AutoReject returned None (all epochs rejected)
     if ep is None:
-        print(f"🟥 [summary] AutoReject rejected all epochs; skipping")
+        logger.warning("[summary] AutoReject rejected all epochs; skipping")
         return {"file": fn, "epochs_saved": 0, "reason": "autoreject_rejected_all", "epoch_tuples": []}
     
     mask = _qc_epoch_mask(ep)
@@ -516,7 +518,7 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
     ep = ep[mask]
     
     if len(ep) == 0:
-        print(f"🟥 [summary] no {split_name} epochs kept; skipping")
+        logger.warning("[summary] no %s epochs kept; skipping", split_name)
         return {"file": fn, "epochs_saved": 0, "reason": "no_epochs_after_qc", "epoch_tuples": []}
     
     # Cap at 20 epochs, prefer best quality
@@ -529,18 +531,17 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
             # Verify quality of kept epochs
             kept_scores = scores[keep_idx]
             if np.median(kept_scores) > 2.0:  # Same as muscle_ratio_thr
-                print(f"🟠 [warning] Poor epoch quality: median beta/alpha = {np.median(kept_scores):.2f}")
+                logger.warning("[warning] Poor epoch quality: median beta/alpha = %.2f", np.median(kept_scores))
         except Exception as e:
-            print(f"🟥 [skip] Quality scoring failed: {e}; discarding sample")
+            logger.warning("[skip] Quality scoring failed: %s; discarding sample", e)
             return {"file": fn, "epochs_saved": 0, "reason": "quality_scoring_failed", "epoch_tuples": []}
     else:
-        print(f"🟠 [summary] only {len(ep)} epochs kept (< 20)")
-        
-        # Check quality when <20 epochs
+        logger.info("[summary] only %d epochs kept (< 20)", len(ep))
+
         try:
             scores = _epoch_quality_scores(ep)
             if np.median(scores) > 2.0:
-                print(f"🟠 [warning] Poor epoch quality: median beta/alpha = {np.median(scores):.2f}")
+                logger.warning("[warning] Poor epoch quality: median beta/alpha = %.2f", np.median(scores))
         except Exception:
             pass
     
@@ -606,26 +607,26 @@ def _process_split(data_path: str, save_path: str, sfreq: int, epoch_len_s: floa
     
     # Save all epochs to single pickle file
     output_file = os.path.join(save_path, f"{split_name}_epochs.pkl")
-    print(f"[{split_name}] Saving {len(all_epoch_tuples)} epochs to {output_file}")
+    logger.info("[%s] Saving %d epochs to %s", split_name, len(all_epoch_tuples), output_file)
     
     with open(output_file, 'wb') as f:
         pickle.dump(all_epoch_tuples, f, protocol=pickle.HIGHEST_PROTOCOL)
     
     # Report statistics
     if insufficient_files:
-        print(f"\n🟠 [{split_name.upper()}] Files with <20 clean epochs:")
+        logger.info("[%s] Files with <20 clean epochs:", split_name.upper())
         for result in insufficient_files:
-            print(f"  - {result['file']}: {result['epochs_saved']} epochs ({result['reason']})")
-        print(f"Total files with <20 epochs: {len(insufficient_files)}/{len(results)}")
+            logger.info("  - %s: %d epochs (%s)", result['file'], result['epochs_saved'], result['reason'])
+        logger.info("Total files with <20 epochs: %d/%d", len(insufficient_files), len(results))
     else:
-        print(f"\n✅ [{split_name.upper()}] All {len(results)} files produced ≥20 clean epochs!")
-    
-    print(f"📁 [{split_name.upper()}] Saved {len(all_epoch_tuples)} total epochs to {output_file}")
+        logger.info("[%s] All %d files produced >=20 clean epochs", split_name.upper(), len(results))
+
+    logger.info("[%s] Saved %d total epochs to %s", split_name.upper(), len(all_epoch_tuples), output_file)
     
     return results
 
 
-def load_data(data_path_train, data_path_eval, save_path, sfreq=128, epoch_len_s: float = 10.0, n_jobs: int = 16, ar_n_jobs: Optional[int] = None):
+def load_data(data_path_train: str, data_path_eval: str, save_path: str, sfreq: int = 128, epoch_len_s: float = 10.0, n_jobs: int = 16, ar_n_jobs: Optional[int] = None) -> None:
     """Main entry point for TUH EEG dataset processing."""
     # Clean paths
     data_path_train = data_path_train.rstrip("/")
@@ -641,25 +642,14 @@ def load_data(data_path_train, data_path_eval, save_path, sfreq=128, epoch_len_s
     all_results = train_results + eval_results
     all_insufficient = [r for r in all_results if r["epochs_saved"] < 20]
     
-    print(f"\n{'='*60}")
-    print(f"FINAL SUMMARY:")
-    print(f"Total files processed: {len(all_results)}")
-    print(f"Files with ≥20 epochs: {len(all_results) - len(all_insufficient)}")
-    print(f"Files with <20 epochs: {len(all_insufficient)}")
-    
+    logger.info("FINAL SUMMARY: %d files processed, %d with >=20 epochs, %d with <20",
+                 len(all_results), len(all_results) - len(all_insufficient), len(all_insufficient))
+
     if all_insufficient:
-        print(f"\nALL FILES WITH <20 EPOCHS:")
         for result in all_insufficient:
-            print(f"  - {result['file']}: {result['epochs_saved']} epochs ({result['reason']})")
-    
-    print("[save] Done. Data saved in train_epochs.pkl and eval_epochs.pkl")
-    print("Each entry is a tuple: (raw, g, a, ab, sample_id)")
-    print("  raw: mne.Raw object")
-    print("  g: gender (0=female, 1=male)")  
-    print("  a: age (set to 0 for compatibility)")
-    print("  ab: abnormal label (0=normal, 1=abnormal)")
-    print("  sample_id: unique epoch identifier")
-    print(f"{'='*60}")
+            logger.info("  - %s: %d epochs (%s)", result['file'], result['epochs_saved'], result['reason'])
+
+    logger.info("[save] Done. Data saved in train_epochs.pkl and eval_epochs.pkl")
 
 
 

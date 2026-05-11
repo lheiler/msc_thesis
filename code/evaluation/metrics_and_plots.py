@@ -1,34 +1,31 @@
 #!/usr/bin/env python3
-"""
-Comprehensive metrics comparison and visualization script for EEG feature extraction methods.
-This script loads metrics from different extraction methods and creates comparative plots and tables.
-"""
+"""Comparative metrics and visualizations for EEG feature extraction methods."""
+from __future__ import annotations
 
 import json
+import logging
 import os
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from math import pi
+import shutil
+import time
 import warnings
-import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
-import time
-import shutil
-#arnings.filterwarnings('ignore')
+from math import pi
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-# Import pairwise comparison functions
-from sklearn.metrics import pairwise_distances
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from scipy.cluster.hierarchy import dendrogram, leaves_list, linkage
+from scipy.spatial import procrustes
+from scipy.spatial.distance import squareform
 from sklearn.cross_decomposition import CCA
 from sklearn.decomposition import PCA
-from scipy.spatial import procrustes
-from scipy.cluster.hierarchy import dendrogram, linkage, leaves_list
-from scipy.spatial.distance import squareform
-import seaborn as sns
+from sklearn.metrics import pairwise_distances
+
+logger = logging.getLogger(__name__)
 
 # Try to import CUDA libraries for GPU acceleration
 try:
@@ -185,7 +182,7 @@ def _global_compute_pair_worker(args):
                 else:
                     corrs.append(float(np.corrcoef(x, y)[0, 1]))
             return float(np.max(np.abs(corrs))) if corrs else 0.0
-        except:
+        except Exception:
             return 0.0
 
     def distance_geometry_corr(Z1, Z2):
@@ -373,7 +370,7 @@ def compute_geometry(Z: np.ndarray) -> Dict[str, float]:
     }
 
 class MetricsComparison:
-    def __init__(self, results_dir: str = "/rds/general/user/lrh24/home/msc_thesis/code/Results", 
+    def __init__(self, results_dir: str = "Results",
                  method_group: Dict[str, List[str]] = None,
                  all_methods: List[str] = None):
         """Initialize the metrics comparison with the results directory and optional method group.
@@ -3146,7 +3143,7 @@ class MetricsComparison:
                         corrs.append(0.0)
             
             return float(max(corrs)) if corrs else 0.0
-        except:
+        except Exception:
             return 0.0
 
     def distance_geometry_corr(self, Z1: np.ndarray, Z2: np.ndarray) -> float:
@@ -3630,7 +3627,7 @@ class MetricsComparison:
                 row_order, col_order = self._compute_hierarchical_method_order_for_matrix(pivot_matrix)
                 try:
                     pivot_matrix = pivot_matrix.reindex(index=row_order, columns=col_order)
-                except:
+                except (KeyError, ValueError):
                     # Keep original order if reordering fails
                     pass
             
@@ -4319,7 +4316,7 @@ class MetricsComparison:
 
 def main():
     """Main function to run the comprehensive metrics comparison."""
-    results_dir = "/rds/general/user/lrh24/home/msc_thesis/code/Results"
+    results_dir = os.environ.get("RESULTS_DIR", "Results")
     
     # Run for both datasets
     for ds_prefix in ["tuh", "lemon"]:

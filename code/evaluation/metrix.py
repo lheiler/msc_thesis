@@ -1,22 +1,29 @@
+"""Latent-space evaluation metrics: HSIC, clustering, geometry preservation."""
+from __future__ import annotations
+
+import gc
+import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
+
+import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import torch
+from scipy.stats import pearsonr
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from sklearn.metrics import (
-    silhouette_score,
-    davies_bouldin_score,
-    calinski_harabasz_score,
-    pairwise_distances,
-)
-from sklearn.manifold import TSNE
 from sklearn.feature_selection import mutual_info_classif, mutual_info_regression
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy import stats
-from scipy.stats import pearsonr
+from sklearn.manifold import TSNE
+from sklearn.metrics import (
+    calinski_harabasz_score,
+    davies_bouldin_score,
+    pairwise_distances,
+    silhouette_score,
+)
+
+logger = logging.getLogger(__name__)
 
 # Set up consistent plot styling
 plt.style.use('default')
@@ -64,7 +71,7 @@ def independence_of_features(xs: torch.Tensor, save_path, device: str = "cpu", m
     # Subsample for computational efficiency if dataset is large
     original_n = n
     if n > max_samples:
-        print(f"HSIC: Subsampling {max_samples:,} from {n:,} samples for efficiency")
+        logger.info("HSIC: Subsampling %d from %d samples for efficiency", max_samples, n)
         # Use seeded random sampling for reproducibility
         torch.manual_seed(42)
         idx = torch.randperm(n, device=device)[:max_samples]
@@ -293,15 +300,14 @@ def _distance_correlation(X_high: np.ndarray, X_low: np.ndarray, max_samples: in
 
 def evaluate_latent_features(t_latent_features, e_latent_features, results_path: str | os.PathLike[str], 
                             subsample_config: Dict[str, int] = None) -> Dict[str, Any]:
-    # Memory monitoring helper
-    def _log_memory_usage(stage: str):
+    def _log_memory_usage(stage: str) -> None:
         try:
             import psutil
             process = psutil.Process()
             memory_mb = process.memory_info().rss / 1024 / 1024
-            print(f"  Memory usage at {stage}: {memory_mb:.1f} MB")
+            logger.debug("Memory usage at %s: %.1f MB", stage, memory_mb)
         except ImportError:
-            pass  # psutil not available
+            pass
     
     """Compute a practical subset of latent-evaluation metrics that do not require labels or original inputs.
 
@@ -356,10 +362,9 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         eval_set = set(eval_sample_ids)
         overlap = train_set.intersection(eval_set)
         if overlap:
-            print(f"WARNING: Found {len(overlap)} overlapping sample IDs between train and eval sets.")
-            print(f"   This may indicate data leakage. Overlapping IDs: {list(overlap)[:5]}{'...' if len(overlap) > 5 else ''}")
+            logger.warning("Found %d overlapping sample IDs between train and eval sets", len(overlap))
         else:
-            print(f"✓ No sample overlap detected between train ({len(train_set)}) and eval ({len(eval_set)}) sets.")
+            logger.info("No sample overlap detected between train (%d) and eval (%d) sets", len(train_set), len(eval_set))
 
 
     results_dir = Path(results_path)
@@ -391,7 +396,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
     active_tr = int((var_tr > 1e-3).sum())
     active_ev = int((var_ev > 1e-3).sum())
 
-    print(f"Computing HSIC independence metrics...")
+    logger.info("Computing HSIC independence metrics")
     _log_memory_usage("before HSIC")
     hsic_max = subsample_config.get('hsic', None)  # None means no subsampling
     auto_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -400,18 +405,16 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
     hsic_ev = independence_of_features(z_ev, save_path=str(eval_dir), device=auto_device, 
                                       max_samples=hsic_max if hsic_max else z_ev.shape[0])
     
-    # Force garbage collection after memory-intensive HSIC computations
-    import gc
     gc.collect()
     _log_memory_usage("after HSIC cleanup")
 
     # Cluster metrics (unsupervised)
-    print(f"Computing clustering metrics...")
+    logger.info("Computing clustering metrics")
     clus_tr = _cluster_metrics(z_tr.cpu().numpy(), n_clusters=5)
     clus_ev = _cluster_metrics(z_ev.cpu().numpy(), n_clusters=5)
 
     # PCA explained variance (fit on train, evaluate on both splits to avoid data leakage)
-    print(f"Computing PCA analysis...")
+    logger.info("Computing PCA analysis")
     try:
         z_tr_np = z_tr.cpu().numpy()
         z_ev_np = z_ev.cpu().numpy()
@@ -477,7 +480,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                                xytext=(idx_95 + 1 + len(evr)*0.2, 0.7),
                                arrowprops=dict(arrowstyle='->', color='black', alpha=0.7),
                                fontsize=9, ha='center')
-            except:
+            except (IndexError, ValueError):
                 pass
             
             # More meaningful latent space analysis (top-right)
@@ -606,11 +609,8 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         z_ev_np = z_ev.cpu().numpy()
         
         # Load and compute PSD features as reference space
-        print(f"Computing PSD-based geometry metrics...")
-        
-        # Import PSD computation functions
-        import sys
-        sys.path.append('/rds/general/user/lrh24/home/thesis/code')
+        logger.info("Computing PSD-based geometry metrics")
+
         from Results.recompute_geometry_with_psd import (
             load_and_compute_psd_features, align_features_by_sample_id
         )
@@ -620,7 +620,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         eval_sample_ids = getattr(e_latent_features, "sample_ids", None)
         
         if train_sample_ids is None or eval_sample_ids is None:
-            print("  Warning: No sample IDs available, falling back to PCA(2) reference space")
+            logger.warning("No sample IDs available, falling back to PCA(2) reference space")
             # Fallback to original PCA approach
             pca2 = PCA(n_components=2)
             pca2.fit(z_tr_np)
@@ -629,7 +629,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             reference_type = "PCA(2) - fallback"
         else:
             # Determine data path (adjust if needed for your setup)
-            data_path = "/rds/general/user/lrh24/home/thesis/Datasets/tuh-eeg-ab-clean"
+            data_path = os.environ.get("EEG_DATA_PATH", "Datasets/tuh-eeg-ab-clean")
             
             # Compute PSD features for train split
             try:
@@ -641,7 +641,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                 z_tr_aligned, psd_tr_aligned, common_tr_ids = align_features_by_sample_id(
                     z_tr_np, train_sample_ids, psd_tr, psd_tr_ids
                 )
-                print(f"  ✓ Training: aligned {len(common_tr_ids)} samples with PSD features")
+                logger.info("Training: aligned %d samples with PSD features", len(common_tr_ids))
                 
                 # Compute PSD features for eval split  
                 psd_ev, psd_ev_ids = load_and_compute_psd_features(
@@ -652,7 +652,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                 z_ev_aligned, psd_ev_aligned, common_ev_ids = align_features_by_sample_id(
                     z_ev_np, eval_sample_ids, psd_ev, psd_ev_ids
                 )
-                print(f"  ✓ Evaluation: aligned {len(common_ev_ids)} samples with PSD features")
+                logger.info("Evaluation: aligned %d samples with PSD features", len(common_ev_ids))
                 
                 # Use aligned PSD features as reference space
                 z_tr_np, z_tr_ref = z_tr_aligned, psd_tr_aligned
@@ -660,7 +660,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                 reference_type = f"PSD features ({psd_tr_aligned.shape[1]} dims)"
                 
             except Exception as e:
-                print(f"  Warning: PSD computation failed ({e}), falling back to PCA(2)")
+                logger.warning("PSD computation failed (%s), falling back to PCA(2)", e)
                 # Fallback to PCA approach
                 pca2 = PCA(n_components=2)
                 pca2.fit(z_tr_np)
@@ -671,9 +671,9 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         # Use subsampling for large datasets to make geometry calculations feasible
         geom_max_samples = subsample_config.get('geometry', None)
         if geom_max_samples:
-            print(f"Computing geometry metrics (subsampling to {geom_max_samples:,} if needed)")
+            logger.info("Computing geometry metrics (subsampling to %d if needed)", geom_max_samples)
         else:
-            print(f"Computing geometry metrics (using full dataset)")
+            logger.info("Computing geometry metrics (using full dataset)")
             geom_max_samples = max(z_tr_np.shape[0], z_ev_np.shape[0])
         
         # Compute geometry metrics: latent space → reference space
@@ -697,14 +697,16 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         }
         # Save improved scatter plots - skip since we're using PSD reference space
         # The geometry metrics now compare latent space to PSD features (not 2D projections)
-        print(f"  ✓ Geometry computation completed using {reference_type} as reference space")
-        print(f"  Training geometry: T={geom_tr.get('trustworthiness', 0):.3f}, C={geom_tr.get('continuity', 0):.3f}, DC={geom_tr.get('dist_corr', 0):.3f}")
-        print(f"  Evaluation geometry: T={geom_ev.get('trustworthiness', 0):.3f}, C={geom_ev.get('continuity', 0):.3f}, DC={geom_ev.get('dist_corr', 0):.3f}")
+        logger.info("Geometry computation completed using %s as reference space", reference_type)
+        logger.info("Training geometry: T=%.3f, C=%.3f, DC=%.3f",
+                     geom_tr.get('trustworthiness', 0), geom_tr.get('continuity', 0), geom_tr.get('dist_corr', 0))
+        logger.info("Evaluation geometry: T=%.3f, C=%.3f, DC=%.3f",
+                     geom_ev.get('trustworthiness', 0), geom_ev.get('continuity', 0), geom_ev.get('dist_corr', 0))
         
         # Clear reference space arrays to free memory
         try:
             del z_tr_ref, z_ev_ref
-        except:
+        except NameError:
             pass
         
         # Force garbage collection after geometry metrics
@@ -739,8 +741,8 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                     scatter = plt.scatter(x_sorted, y_sorted, c=density_sorted, s=25, alpha=0.8, 
                                         cmap='plasma', edgecolors='white', linewidth=0.1)
                     plt.colorbar(scatter, label='Density', shrink=0.8)
-                except:
-                    plt.scatter(Z2[:, 0], Z2[:, 1], s=25, alpha=0.8, 
+                except Exception:
+                    plt.scatter(Z2[:, 0], Z2[:, 1], s=25, alpha=0.8,
                               color='#F18F01', edgecolors='white', linewidth=0.1)
                 
                 sample_text = f" (sampled {n:,}/{original_n:,})" if original_n > n else ""
@@ -763,7 +765,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             except Exception:
                 pass
 
-        print(f"Computing t-SNE projections...")
+        logger.info("Computing t-SNE projections")
         _tsne_scatter(z_tr_np, os.path.join(train_dir, "tsne_scatter.png"), "Training")
         _tsne_scatter(z_ev_np, os.path.join(eval_dir, "tsne_scatter.png"), "Evaluation")
 
@@ -777,7 +779,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                 # Subsample data before computing pairwise distances to save memory
                 n_samples = Z_hd.shape[0]
                 if n_samples > max_pairs:
-                    print(f"  Shepard: Subsampling to {max_pairs:,} samples for memory efficiency")
+                    logger.info("Shepard: Subsampling to %d samples for memory efficiency", max_pairs)
                     idx = np.random.RandomState(42).choice(n_samples, size=max_pairs, replace=False)
                     Z_hd_sub = Z_hd[idx]
                     Z_2d_sub = Z_2d[idx]
@@ -786,7 +788,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                     Z_2d_sub = Z_2d
                 
                 # Compute pairwise distances on subsampled data
-                print(f"    Computing pairwise distances for {Z_hd_sub.shape[0]:,} samples...")
+                logger.debug("Computing pairwise distances for %d samples", Z_hd_sub.shape[0])
                 Dh = pairwise_distances(Z_hd_sub)
                 Dl = pairwise_distances(Z_2d_sub)
                 
@@ -812,7 +814,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                 try:
                     plt.hexbin(a, b, gridsize=50, cmap='Blues', alpha=0.8, mincnt=1)
                     plt.colorbar(label='Point Density', shrink=0.8)
-                except:
+                except Exception:
                     plt.scatter(a, b, s=3, alpha=0.4, color='#2E86AB')
                 
                 # Add trend line
@@ -854,7 +856,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
             except Exception:
                 pass
 
-        print(f"Computing Shepard plots...")
+        logger.info("Computing Shepard plots")
         _log_memory_usage("before Shepard plots")
         shepard_max = subsample_config.get('shepard', 10000)
         
@@ -865,7 +867,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         z_tr_2d_shepard = pca2_shepard.transform(z_tr_np)
         z_ev_2d_shepard = pca2_shepard.transform(z_ev_np)
         
-        print(f"  Creating Shepard plots (PCA 2D visualization only)...")
+        logger.info("Creating Shepard plots (PCA 2D visualization only)")
         _shepard(z_tr_np, z_tr_2d_shepard, os.path.join(train_dir, "shepard_plot.png"), "Training", shepard_max)
         _shepard(z_ev_np, z_ev_2d_shepard, os.path.join(eval_dir, "shepard_plot.png"), "Evaluation", shepard_max)
         
@@ -1000,10 +1002,10 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
                 plt.tight_layout()
                 plt.savefig(save_path, dpi=300, bbox_inches='tight')
                 plt.close()
-            except:
+            except Exception:
                 pass
     
-    print(f"Creating variance distribution plots...")
+    logger.info("Creating variance distribution plots")
     try:
         _create_variance_plot(var_tr, "Training", 
                             os.path.join(train_dir, "variance_hist.png"), 
@@ -1014,7 +1016,7 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
     except Exception:
         pass
 
-    print(f"Computing mutual information metrics...")
+    logger.info("Computing mutual information metrics")
     # Supervised mutual information I(Z;Y) per available target
     def _compute_mi(Z: np.ndarray, y: np.ndarray, task: str):
         if task in {"gender", "abnormal"}:
@@ -1110,10 +1112,6 @@ def evaluate_latent_features(t_latent_features, e_latent_features, results_path:
         }
         metrics["analysis_recommendations"] = recommendations
     
-    print(f"✅ Latent feature evaluation completed!")
-    print(f"Dataset size: {n_total:,} total samples")
-    if n_total > 20000:
-        print(f"For large datasets, focus on: HSIC heatmap, latent space analysis, variance distributions, and train/eval comparisons")
-        print(f"The new latent space analysis plot shows dimension utilization and generalization patterns")
+    logger.info("Latent feature evaluation completed (%d total samples)", n_total)
     
     return metrics

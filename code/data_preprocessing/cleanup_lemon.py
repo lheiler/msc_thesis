@@ -1,33 +1,28 @@
-"""
-Preprocessing script for MPI LEMON dataset.
-- Handles directory traversal of untarred data.
-- Maps Initial IDs to INDI IDs using a lookup table (name_match.csv).
-- Integrates Age/Sex metadata (Participants_MPILMBB_LEMON.csv).
-- Filters strictly for Eyes Closed (EC) recordings.
-- Includes rigorous QC (AutoReject, Beta/Alpha ratio).
-"""
+"""Preprocessing script for the MPI LEMON EEG dataset.
 
+Handles directory traversal, Initial-to-INDI ID mapping, age/sex metadata
+integration, eyes-closed filtering, and AutoReject/beta-alpha QC.
+"""
+from __future__ import annotations
+
+import logging
 import os
-import glob
 import pickle
+import re
+import warnings
+from typing import Optional
+
+import mne
 import numpy as np
 import pandas as pd
-import mne
-import gc
-from joblib import Parallel, delayed
-from tqdm import tqdm
-import argparse
-import warnings
 from autoreject import AutoReject
+from joblib import Parallel, delayed
 from mne.time_frequency import psd_array_welch
+from tqdm import tqdm
 
-# Import shared cleaning logic
-try:
-    from data_preprocessing.cleanup_real_eeg_tuh import cleanup_real_eeg_tuh
-except ImportError:
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from data_preprocessing.cleanup_real_eeg_tuh import cleanup_real_eeg_tuh
+from data_preprocessing.cleanup_real_eeg_tuh import cleanup_real_eeg_tuh
+
+logger = logging.getLogger(__name__)
 
 # Constants
 CANONICAL_19 = [
@@ -36,6 +31,7 @@ CANONICAL_19 = [
 ]
 
 def _suppress(fn, *args, **kwargs):
+    """Suppress exceptions and return ``None`` on failure."""
     try:
         return fn(*args, **kwargs)
     except Exception:
@@ -43,7 +39,8 @@ def _suppress(fn, *args, **kwargs):
 
 # === QC Helpers ===
 
-def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = 1) -> mne.Epochs | None:
+def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = 1) -> Optional[mne.Epochs]:
+    """Apply AutoReject with uV-scaling fallback."""
     if len(epochs) < 2:
         return None
     try:
@@ -60,7 +57,7 @@ def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = 1) -> mne.Epochs | No
             return None
         return epochs_ar
     except Exception as e:
-        print(f"AutoReject failed: {e}")
+        logger.warning("AutoReject failed: %s", e)
         return None
 
 def _qc_epoch_mask(epochs: mne.Epochs, muscle_ratio_thr: float = 2.0) -> np.ndarray:
@@ -87,57 +84,52 @@ def _epoch_quality_scores(epochs: mne.Epochs) -> np.ndarray:
 
 # === Metadata & ID Mapping Logic ===
 
-def load_id_map(csv_path):
-    """
-    Load Initial_ID -> INDI_ID mapping.
-    Initial_ID,INDI_ID
-    sub-010002,sub-032301
-    """
+def load_id_map(csv_path: str) -> dict[str, str]:
+    """Load Initial_ID -> INDI_ID mapping from CSV."""
     if not os.path.exists(csv_path):
-        print(f"⚠️ ID map file not found: {csv_path}")
+        logger.warning("ID map file not found: %s", csv_path)
         return {}
-    
+
     df = pd.read_csv(csv_path)
-    # Map both initial -> indi AND indi -> indi (to handle mixed filenames)
-    id_map = {}
+    id_map: dict[str, str] = {}
     for _, row in df.iterrows():
         init = str(row['Initial_ID']).strip()
         indi = str(row['INDI_ID']).strip()
         id_map[init] = indi
-        id_map[indi] = indi # Identity mapping
-    
-    print(f"✅ Loaded {len(id_map)} ID mappings")
+        id_map[indi] = indi
+
+    logger.info("Loaded %d ID mappings", len(id_map))
     return id_map
 
-def load_lemon_metadata(csv_path):
-    """
-    Load LEMON metadata CSV (INDI IDs).
-    Returns dict: {indi_id: {'sex': 0/1, 'age': float}}
+def load_lemon_metadata(csv_path: str) -> dict[str, dict[str, float]]:
+    """Load LEMON metadata CSV (INDI IDs).
+
+    Returns:
+        Dict mapping INDI ID to ``{'sex': 0/1, 'age': float}``.
     """
     if not os.path.exists(csv_path):
-        print(f"⚠️ Metadata file not found: {csv_path}")
+        logger.warning("Metadata file not found: %s", csv_path)
         return {}
-        
+
     df = pd.read_csv(csv_path)
-    lookup = {}
-    
+    lookup: dict[str, dict[str, float]] = {}
+
     try:
         col_id = [c for c in df.columns if "ID" in c][0]
-        col_sex = [c for c in df.columns if "Gender" in c][0] 
+        col_sex = [c for c in df.columns if "Gender" in c][0]
         col_age = [c for c in df.columns if "Age" in c][0]
-    except Exception as e:
-        print(f"⚠️ Metadata columns not identified: {e}")
+    except IndexError as e:
+        logger.warning("Metadata columns not identified: %s", e)
         return {}
-    
+
     for _, row in df.iterrows():
         indi_id = row[col_id]
-        # Pipeline: 0=Female, 1=Male. CSV: 1=Female, 2=Male
         try:
             sex = int(row[col_sex]) - 1
-            if sex not in [0, 1]: sex = -1
-        except:
+            if sex not in (0, 1):
+                sex = -1
+        except (TypeError, ValueError):
             sex = -1
-        # Age "20-25" -> 22.5
         try:
             age_str = str(row[col_age])
             if "-" in age_str:
@@ -145,18 +137,16 @@ def load_lemon_metadata(csv_path):
                 age = (low + high) / 2.0
             else:
                 age = float(age_str)
-        except:
+        except (TypeError, ValueError):
             age = 0.0
         lookup[indi_id] = {'sex': sex, 'age': age}
-        
-    print(f"✅ Loaded metadata for {len(lookup)} INDI IDs")
+
+    logger.info("Loaded metadata for %d INDI IDs", len(lookup))
     return lookup
 
-def split_lemon_data(data_path, id_map, train_split=0.8, seed=42):
-    """
-    Filter for EC.set files and split by subject.
-    """
-    print(f"Searching for **/*.vhdr files in {data_path}...")
+def split_lemon_data(data_path: str, id_map: dict[str, str], train_split: float = 0.8, seed: int = 42) -> tuple[list[str], list[str]]:
+    """Filter for EC BrainVision files and split by subject."""
+    logger.info("Searching for **/*.vhdr files in %s", data_path)
     all_files = []
     for root, _, files in os.walk(data_path):
         # We look for RSEEG folder specifically for resting state as per path structure
@@ -180,7 +170,7 @@ def split_lemon_data(data_path, id_map, train_split=0.8, seed=42):
         sub_map[indi_id].append(f)
             
     subjects = sorted(list(sub_map.keys()))
-    print(f"Found {len(subjects)} subjects across {len(all_files)} EC files.")
+    logger.info("Found %d subjects across %d EC files", len(subjects), len(all_files))
           
     rng = np.random.RandomState(seed)
     rng.shuffle(subjects)
@@ -194,12 +184,8 @@ def split_lemon_data(data_path, id_map, train_split=0.8, seed=42):
     
     return train_files, eval_files
 
-def _process_one_file(set_fp, sfreq, epoch_len_s, id_map, metadata):
-    """
-    Load, clean, and epoch a single LEMON .set file.
-    """
-    import warnings
-    # Suppress specific MNE warnings that spam during parallel processing
+def _process_one_file(set_fp: str, sfreq: int, epoch_len_s: float, id_map: dict[str, str], metadata: dict) -> dict:
+    """Load, clean, and epoch a single LEMON BrainVision file."""
     warnings.filterwarnings("ignore", message=".*boundary.*", category=RuntimeWarning)
     warnings.filterwarnings("ignore", message=".*expanding outside the data range.*", category=RuntimeWarning)
     warnings.filterwarnings("ignore", message=".*Data file name in EEG.data.*", category=RuntimeWarning)
@@ -225,7 +211,6 @@ def _process_one_file(set_fp, sfreq, epoch_len_s, id_map, metadata):
         found_mismatch = False
         new_content = vhdr_content
         for key in ['DataFile', 'MarkerFile']:
-            import re
             match = re.search(f'^{key}=(.*)$', vhdr_content, re.MULTILINE)
             if match:
                 ptr_file = match.group(1).strip()
@@ -286,11 +271,11 @@ def _process_one_file(set_fp, sfreq, epoch_len_s, id_map, metadata):
         return {"file": fname, "reason": "success", "epochs": all_epoch_tuples}
 
     except Exception as e:
-        print(f"🟥 [fail] {fname}: {e}")
+        logger.warning("[fail] %s: %s", fname, e)
         return {"file": fname, "reason": f"error: {str(e)}", "epochs": []}
 
-def load_data_lemon(data_path, save_path, metadata_path, id_map_path, sfreq=128, epoch_len_s=10.0, n_jobs=4):
-    """Main entry point."""
+def load_data_lemon(data_path: str, save_path: str, metadata_path: str, id_map_path: str, sfreq: int = 128, epoch_len_s: float = 10.0, n_jobs: int = 4) -> None:
+    """Main entry point for LEMON dataset processing."""
     os.makedirs(save_path, exist_ok=True)
     
     id_map = load_id_map(id_map_path)
@@ -299,7 +284,7 @@ def load_data_lemon(data_path, save_path, metadata_path, id_map_path, sfreq=128,
     
     for split, files in [("train", train_files), ("eval", eval_files)]:
         if not files: continue
-        print(f"\nProcessing {split.upper()} split ({len(files)} files)...")
+        logger.info("Processing %s split (%d files)", split.upper(), len(files))
         results = Parallel(n_jobs=n_jobs, backend="loky")(
             delayed(_process_one_file)(f, sfreq, epoch_len_s, id_map, metadata) for f in tqdm(files)
         )
@@ -317,9 +302,9 @@ def load_data_lemon(data_path, save_path, metadata_path, id_map_path, sfreq=128,
         with open(out_pkl, "wb") as f:
             pickle.dump(all_epochs, f, protocol=pickle.HIGHEST_PROTOCOL)
             
-        print(f"[{split.upper()}] Done. Saved {len(all_epochs)} epochs from {valid_files} files.")
+        logger.info("[%s] Done. Saved %d epochs from %d files", split.upper(), len(all_epochs), valid_files)
         if insufficient:
-            print(f"  Files with <20 epochs: {len(insufficient)}")
+            logger.info("  Files with <20 epochs: %d", len(insufficient))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

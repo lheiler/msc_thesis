@@ -1,19 +1,19 @@
-import argparse
-import pathlib
-import json
-from typing import Tuple, Dict, Any
+"""Amortized inference MLP: maps observed PSD to CTM model parameters."""
+from __future__ import annotations
 
+import logging
+import os
+import pathlib
+from typing import Tuple
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset
-import matplotlib.pyplot as plt
 from tqdm import tqdm
-import mne
 
-import sys
-import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+logger = logging.getLogger(__name__)
 
 from utils.util import (
     PSD_CALCULATION_PARAMS,
@@ -173,17 +173,17 @@ def _normalise(psd):
     else:
         return normalize_psd(psd)
 
-def generate_dataset(n: int) -> Tuple[np.ndarray, np.ndarray]:
+_DATA_DIR = pathlib.Path(__file__).resolve().parent / "data"
+
+
+def generate_dataset(n: int, cache_path: pathlib.Path = _DATA_DIR / "generated_dataset.npz") -> Tuple[np.ndarray, np.ndarray]:
     """Generate (theta, psd) pairs until *n* stable samples are collected."""
-    
-    if os.path.exists("/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/data/generated_dataset.npz"):
-        data = np.load("/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/data/generated_dataset.npz")
-        thetas = data["thetas"]
-        psds = data["psds"]
-        return thetas, psds
-    
-    thetas = []
-    psds = []
+    if cache_path.exists():
+        data = np.load(cache_path)
+        return data["thetas"], data["psds"]
+
+    thetas: list[np.ndarray] = []
+    psds: list[np.ndarray] = []
     while len(thetas) < n:
         batch = sample_prior(n)
         for th in batch:
@@ -195,10 +195,10 @@ def generate_dataset(n: int) -> Tuple[np.ndarray, np.ndarray]:
             psds.append(psd)
             if len(thetas) >= n:
                 break
-    #save the dataset to a file
     st, sp = np.stack(thetas, axis=0), np.stack(psds, axis=0)
-    np.savez("/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/data/generated_dataset.npz", thetas=st, psds=sp)
-    print("saving dataset to /rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/data/generated_dataset.npz")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(cache_path, thetas=st, psds=sp)
+    logger.info("Saved generated dataset to %s", cache_path)
     return st, sp
 
 ###############################################################################
@@ -245,10 +245,10 @@ def train(
     final test-set Mean-Squared-Error (MSE) is reported after training.
     """
 
-    print(f"[INFO] Generating {num_sims} simulations …")
+    logger.info("Generating %d simulations", num_sims)
     theta_np, x_np = generate_dataset(num_sims)
     # Validate input shapes
-    print(f"Loaded training data: theta {theta_np.shape}, psd {x_np.shape}")
+    logger.info("Loaded training data: theta %s, psd %s", theta_np.shape, x_np.shape)
     
     # Input validation: Check for NaN or inf values
     if np.any(np.isnan(x_np)) or np.any(np.isinf(x_np)):
@@ -305,7 +305,7 @@ def train(
     best_val_loss=float('inf')
     epochs_no_improve=0
 
-    print("[INFO] Training feedforward network with PSD reconstruction loss …")
+    logger.info("Training feedforward network with PSD reconstruction loss")
     for epoch in range(1, epochs + 1):
         model.train()
         train_losses = []
@@ -319,7 +319,7 @@ def train(
             
             # Check for NaN loss and skip problematic batches
             if torch.isnan(loss) or torch.isinf(loss):
-                print(f"⚠️  Skipping batch with invalid loss: {loss.item()}")
+                logger.warning("Skipping batch with invalid loss: %s", loss.item())
                 continue
                 
             loss.backward()
@@ -355,26 +355,29 @@ def train(
                     mask_np = (FREQS >= fmin) & (FREQS <= fmax)
                     pred_psd = _normalise(pred_psd_full[:, mask_np])
                     xb_masked = xb[:, mask_np]  # xb is already normalized, don't normalize again
-                plot_psd_comparison(xb_masked, pred_psd, FREQS[mask_np], f"/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/results/psd_comparison_{epoch}.png")
+                results_dir = pathlib.Path(out_dir) / "results"
+                results_dir.mkdir(parents=True, exist_ok=True)
+                plot_psd_comparison(xb_masked, pred_psd, FREQS[mask_np], str(results_dir / f"psd_comparison_{epoch}.png"))
             
         mean_train = float(np.mean(train_losses)) if train_losses else float('inf')
         mean_val = float(np.mean(test_losses)) if test_losses else float('inf')
-        print(f"Epoch {epoch:>3d}/{epochs} – train PSD loss: {mean_train:.4f} – val PSD loss: {mean_val:.4f}")
+        logger.info("Epoch %3d/%d - train PSD loss: %.4f - val PSD loss: %.4f", epoch, epochs, mean_train, mean_val)
 
-        # Save best model based on validation loss and handle early stopping
+        model_save_path = pathlib.Path(out_dir) / "models" / "regressor.pt"
+        model_save_path.parent.mkdir(parents=True, exist_ok=True)
         if mean_val < best_val_loss:
             best_val_loss = mean_val
             epochs_no_improve = 0
-            torch.save({"model_state": model.state_dict(), "freqs": FREQS, "param_names": PARAM_NAMES}, "/rds/general/user/lrh24/home/thesis/code/latent_extraction/ctm_nn/amore/models/regressor.pt")
-            print("[INFO] Saved new best model (by validation loss) to ~/thesis/code/latent_extraction/ctm_nn/amore/models/regressor.pt")
+            torch.save({"model_state": model.state_dict(), "freqs": FREQS, "param_names": PARAM_NAMES}, model_save_path)
+            logger.info("Saved new best model (val_loss=%.4f) to %s", mean_val, model_save_path)
         else:
             epochs_no_improve += 1
         if epochs_no_improve >= patience:
-            print(f"[INFO] Early stopping at epoch {epoch} (no val improvement for {patience} epochs)")
+            logger.info("Early stopping at epoch %d (no val improvement for %d epochs)", epoch, patience)
             break
-        
+
     final_test_loss = float(np.mean(test_losses)) if test_losses else float('nan')
-    print(f"[OK] Training complete – final test PSD loss: {final_test_loss:.4e}")
+    logger.info("Training complete - final test PSD loss: %.4e", final_test_loss)
 
 
 

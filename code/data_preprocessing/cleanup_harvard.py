@@ -1,29 +1,32 @@
-"""
-Cleaned EEG preprocessing pipeline for TUH dataset.
-Refactored for conciseness while preserving all logic.
-"""
+"""EEG preprocessing pipeline for the Harvard EEG dataset."""
+from __future__ import annotations
+
+import gc
+import glob
+import logging
+import os
+import pickle
+import random
+from collections import Counter
+from typing import Callable, Iterable, Optional
 
 import mne
-import os
 import numpy as np
 import pandas as pd
-import pickle
 from autoreject import AutoReject
-from mne.time_frequency import psd_array_welch
-from typing import List, Iterable, Optional
-from tqdm import tqdm
 from joblib import Parallel, delayed
+from mne.time_frequency import psd_array_welch
+from tqdm import tqdm
 from tqdm_joblib import tqdm_joblib
-import glob
-from collections import Counter
-import gc
+
+logger = logging.getLogger(__name__)
 
 # === Constants ===
 EDGE_PAD_S: float = 0.5
 HP_HZ: float = 0.5
 LP_HZ: float = 45.0
 ICA_N_COMPONENTS: float = 0.99
-METADATA_DIR = "/rds/general/user/lrh24/ephemeral/harvard/metadata"
+METADATA_DIR: str = os.environ.get("HARVARD_METADATA_DIR", "metadata")
 
 CANONICAL_19 = [
     'Fp1','Fp2','F7','F3','Fz','F4','F8',
@@ -44,27 +47,27 @@ def _is_cardiac(name: str) -> bool:
     return any(x in name.upper() for x in ('ECG', 'EKG', 'PULSE'))
 
 
-def _suppress(fn, *args, **kwargs):
-    """Suppress exceptions and return None on failure."""
+def _suppress(fn: Callable, *args, **kwargs):
+    """Suppress exceptions and return ``None`` on failure."""
     try:
         return fn(*args, **kwargs)
     except Exception:
         return None
 
 
-def _safe_set_montage(inst, montage='standard_1020'):
-    """Set montage safely, print warning on failure."""
+def _safe_set_montage(inst: mne.io.BaseRaw, montage: str = 'standard_1020') -> None:
+    """Set montage safely, logging a warning on failure."""
     try:
         inst.set_montage(montage, verbose=False)
-    except Exception:
-        print("🛑[canonical] standard_1020 montage not found")
+    except (ValueError, RuntimeError):
+        logger.warning("[canonical] %s montage could not be set", montage)
 
 
 def _fmt_dur(sec: float) -> str:
     """Format seconds with 2 decimals, fallback to str on error."""
     try:
         return f"{sec:.2f}s"
-    except:
+    except (TypeError, ValueError):
         return str(sec)
 
 
@@ -110,7 +113,7 @@ def rename_channel(name: str) -> str:
     return legacy_map.get(name, name)
 
 
-def trim_zero_edges(raw: mne.io.BaseRaw, eps: float = 0.0, min_keep_sec: float = 1.0, verbose=print) -> None:
+def trim_zero_edges(raw: mne.io.BaseRaw, eps: float = 0.0, min_keep_sec: float = 1.0, verbose: Callable = print) -> None:
     """Trim leading/trailing regions where all EEG samples are near zero."""
     picks = mne.pick_types(raw.info, eeg=True, eog=False, ecg=False, emg=False, stim=False, misc=False)
     if not len(picks):
@@ -132,7 +135,7 @@ def trim_zero_edges(raw: mne.io.BaseRaw, eps: float = 0.0, min_keep_sec: float =
         verbose(f"[trim] zero edges to [{_fmt_dur(tmin)}, {_fmt_dur(tmax)}]")
 
 
-def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str]) -> mne.io.BaseRaw:
+def conform_to_canonical(raw: mne.io.BaseRaw, canonical: list[str]) -> mne.io.BaseRaw:
     """Pick and order channels to canonical set; raise if any are missing."""
     missing = [ch for ch in canonical if ch not in raw.ch_names]
     if missing:
@@ -144,7 +147,7 @@ def conform_to_canonical(raw: mne.io.BaseRaw, canonical: List[str]) -> mne.io.Ba
 
 
 # === Artifact Detection ===
-def annotate_artifacts(raw: mne.io.BaseRaw, verbose=print) -> None:
+def annotate_artifacts(raw: mne.io.BaseRaw, verbose: Callable = print) -> None:
     """Annotate artifact segments as BAD_* without altering data."""
     sfreq = raw.info['sfreq']
     orig_time = getattr(raw.annotations, 'orig_time', None)
@@ -265,7 +268,7 @@ def cleanup_real_eeg_tuh(raw: mne.io.BaseRaw, sfreq: float, montage: str = 'stan
         good = stds > 1e-12
         if not np.all(good):
             bad_names = [raw.ch_names[picks_eeg[i]] for i in np.where(~good)[0]]
-            print(f"🟥 [ICA] excluding near-zero-variance channels: {bad_names}")
+            logger.warning("[ICA] excluding near-zero-variance channels: %s", bad_names)
             picks_eeg = picks_eeg[good]
         
         if len(picks_eeg):
@@ -331,7 +334,7 @@ def cleanup_real_eeg_tuh(raw: mne.io.BaseRaw, sfreq: float, montage: str = 'stan
     # Ensure canonical channels
     missing = [ch for ch in CANONICAL_19 if ch not in raw_clean.ch_names]
     if missing:
-        print(f"🟥 [fail] missing canonical channels before pick: {missing}")
+        logger.error("[fail] missing canonical channels before pick: %s", missing)
         raise ValueError("missing canonical channels before pick")
     
     conform_to_canonical(raw_clean, CANONICAL_19)
@@ -352,7 +355,7 @@ def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = -1) -> mne.Epochs | N
     """Apply AutoReject with fallback strategies."""
     n_ep = len(epochs)
     if n_ep < 2:
-        print("🟥 [autoreject] skipping: insufficient epochs (n<2)")
+        logger.warning("[autoreject] skipping: insufficient epochs (n<2)")
         return None
     
     def _try_autoreject(ep_copy):
@@ -364,7 +367,7 @@ def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = -1) -> mne.Epochs | N
         epochs_ar = _try_autoreject(epochs.copy())
         
         if len(epochs_ar) == 0:
-            print("🟠 [autoreject] rejected all epochs; trying with µV→V scaling")
+            logger.info("[autoreject] rejected all epochs; trying with uV->V scaling")
             data_range = epochs.get_data().max() - epochs.get_data().min()
             
             if data_range > 1e-3:  # Likely in µV
@@ -373,19 +376,19 @@ def _apply_autoreject(epochs: mne.Epochs, ar_n_jobs: int = -1) -> mne.Epochs | N
                 epochs_ar = _try_autoreject(epochs_scaled)
                 
                 if len(epochs_ar) > 0:
-                    print(f"[autoreject] µV scaling worked; n_epochs_out={len(epochs_ar)}")
+                    logger.info("[autoreject] uV scaling worked; n_epochs_out=%d", len(epochs_ar))
                     return epochs_ar
                 else:
-                    print("🟥 [autoreject] all epochs rejected; discarding sample")
+                    logger.warning("[autoreject] all epochs rejected; discarding sample")
                     return None
             else:
-                print("🟥 [autoreject] all epochs rejected; discarding sample")
+                logger.warning("[autoreject] all epochs rejected; discarding sample")
                 return None
         else:
             return epochs_ar
-            
+
     except Exception as e:
-        print(f"🟥 [autoreject] failed ({e}); discarding sample")
+        logger.warning("[autoreject] failed (%s); discarding sample", e)
         return None
 
 
@@ -410,7 +413,7 @@ def _qc_epoch_mask(epochs: mne.Epochs, muscle_ratio_thr: float = 2.0) -> np.ndar
     
     mask = ratio_ep < muscle_ratio_thr
     if not mask.any():
-        print("🟥 [qc] no epochs passed beta/alpha ratio threshold")
+        logger.warning("[qc] no epochs passed beta/alpha ratio threshold")
         return mask  # Return all False - don't force keep bad epochs
     
     return mask
@@ -423,18 +426,32 @@ def _epoch_quality_scores(epochs: mne.Epochs) -> np.ndarray:
             return np.asarray(epochs.metadata["ba_ratio"].values, dtype=float)
     except Exception:
         pass
-    
+
+    X = epochs.get_data(copy=True)
+    sf = epochs.info['sfreq']
+    nper = int(max(2 * sf, 1))
+    nover = int(max(1 * sf, 0))
+    psd, freqs = psd_array_welch(
+        X, sf, fmin=1.0, fmax=45.0,
+        n_per_seg=nper, n_overlap=nover, average='mean', verbose=False,
+    )
+    alpha = psd[..., (freqs >= 8.0) & (freqs <= 12.0)].mean(-1)
+    beta = psd[..., (freqs >= 20.0) & (freqs <= 45.0)].mean(-1)
+    ratio = beta / np.maximum(alpha, 1e-12)
+    return ratio.mean(axis=1)
+
+
 # === Metadata & File Processing ===
-def load_metadata_harvard() -> dict:
+def load_metadata_harvard(metadata_dir: str = METADATA_DIR) -> dict:
     """Load and merge Harvard metadata CSVs into a lookup dict."""
     try:
-        meta_files = glob.glob(os.path.join(METADATA_DIR, "*_eeg_metadata_*.csv"))
+        meta_files = glob.glob(os.path.join(metadata_dir, "*_eeg_metadata_*.csv"))
         dfs = []
         for f in meta_files:
             dfs.append(pd.read_csv(f))
         
         if not dfs:
-            print("🟥 [metadata] No metadata CSVs found!")
+            logger.warning("[metadata] No metadata CSVs found")
             return {}
             
         df = pd.concat(dfs, ignore_index=True)
@@ -455,10 +472,10 @@ def load_metadata_harvard() -> dict:
                 
                 lookup[(sub, ses)] = {"age": age, "sex": sex}
                 
-        print(f"✅ [metadata] Loaded {len(lookup)} sessions")
+        logger.info("[metadata] Loaded %d sessions", len(lookup))
         return lookup
     except Exception as e:
-        print(f"🟥 [metadata] Failed to load: {e}")
+        logger.warning("[metadata] Failed to load: %s", e)
         return {}
 
 
@@ -489,7 +506,7 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
     if sex == -1:
         # Fallback to EDF header if possible (unlikely reliable but try)
         # Or just skip if rigorous
-        print(f"🟠 [skip] {fn}: sex unknown (not in metadata)")
+        logger.info("[skip] %s: sex unknown (not in metadata)", fn)
         return {"file": fn, "epochs_saved": 0, "reason": "sex_unknown_in_metadata", "epoch_tuples": []}
         
     # Load and validate
@@ -515,14 +532,14 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
     try:
         clean = cleanup_real_eeg_tuh(raw, sfreq=sfreq)
     except Exception as e:
-        print(f"🟥 [skip] {eeg_path}: {e}")
+        logger.warning("[skip] %s: %s", eeg_path, e)
         return {"file": fn, "epochs_saved": 0, "reason": f"cleanup_failed: {e}", "epoch_tuples": []}
     
     # Epoching + AR + QC
     try:
         ep = _make_fixed_length_epochs(clean, epoch_len_s)
     except Exception as e:
-        print(f"🟠 [skip] {fn}: epoching failed (too short?): {e}")
+        logger.info("[skip] %s: epoching failed (too short?): %s", fn, e)
         # Clean up memory just in case
         del clean
         del raw
@@ -551,9 +568,9 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
             scores = _epoch_quality_scores(ep)
             keep_idx = np.argsort(scores)[:20]
             ep = ep[keep_idx]
-        except:
+        except Exception:
             pass
-    
+
     # Create epoch tuples (raw, g, a, ab, sample_id)
     edf_stem = os.path.splitext(fn)[0]
     epoch_tuples = []
@@ -579,11 +596,11 @@ def _process_one_file(eeg_path: str, data_root: str, sfreq: int, epoch_len_s: fl
 
 
 
-def _process_split(file_list: List[str], data_root: str, save_path: str, sfreq: int, epoch_len_s: float, split_name: str, n_jobs: int, ar_n_jobs: int, metadata: dict):
+def _process_split(file_list: list[str], data_root: str, save_path: str, sfreq: int, epoch_len_s: float, split_name: str, n_jobs: int, ar_n_jobs: int, metadata: dict) -> list[dict]:
     """Process a list of EDF files and save to pickle files."""
     
     if not file_list:
-        print(f"⚠️ [{split_name}] No files to process!")
+        logger.warning("[%s] No files to process", split_name)
         return []
 
     # Process in parallel
@@ -621,7 +638,7 @@ def _process_split(file_list: List[str], data_root: str, save_path: str, sfreq: 
 
     # Save all epochs to single pickle file
     output_file = os.path.join(save_path, f"{split_name}_epochs.pkl")
-    print(f"[{split_name}] Saving {len(all_epoch_tuples)} epochs to {output_file}")
+    logger.info("[%s] Saving %d epochs to %s", split_name, len(all_epoch_tuples), output_file)
     
     with open(output_file, 'wb') as f:
         pickle.dump(all_epoch_tuples, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -631,12 +648,12 @@ def _process_split(file_list: List[str], data_root: str, save_path: str, sfreq: 
     insufficient_files = [r for r in all_results if r["epochs_saved"] < 20]
     
     if insufficient_files:
-        print(f"\n🟠 [{split_name.upper()}] Files with <20 clean epochs:")
+        logger.info("[%s] Files with <20 clean epochs:", split_name.upper())
         for result in insufficient_files:
-            print(f"  - {result['file']}: {result['epochs_saved']} epochs ({result['reason']})")
-        print(f"Total files with <20 epochs: {len(insufficient_files)}/{len(all_results)}")
+            logger.info("  - %s: %d epochs (%s)", result['file'], result['epochs_saved'], result['reason'])
+        logger.info("Total files with <20 epochs: %d/%d", len(insufficient_files), len(all_results))
     else:
-        print(f"\n✅ [{split_name.upper()}] All {len(all_results)} files produced ≥20 clean epochs!")
+        logger.info("[%s] All %d files produced >=20 clean epochs", split_name.upper(), len(all_results))
     
     return all_results
 
@@ -650,14 +667,14 @@ def load_data(data_path, save_path, sfreq=128, epoch_len_s: float = 10.0, n_jobs
     metadata = load_metadata_harvard()
     
     # 2. Discover all EDF files
-    print(f"🔍 Searching for EDF files in {data_path}...")
+    logger.info("Searching for EDF files in %s", data_path)
     all_files = []
     for root, _, files in os.walk(data_path):
         for f in files:
             if f.lower().endswith('.edf'):
                 all_files.append(os.path.join(root, f))
     
-    print(f"found {len(all_files)} files.")
+    logger.info("Found %d files", len(all_files))
     if not all_files:
         return
 
@@ -671,7 +688,6 @@ def load_data(data_path, save_path, sfreq=128, epoch_len_s: float = 10.0, n_jobs
         sub_map.setdefault(sub, []).append(f)
         
     subjects = sorted(list(sub_map.keys()))
-    import random
     random.seed(42)
     random.shuffle(subjects)
     
@@ -682,7 +698,7 @@ def load_data(data_path, save_path, sfreq=128, epoch_len_s: float = 10.0, n_jobs
     train_files = [f for s in train_subs for f in sub_map[s]]
     eval_files = [f for s in eval_subs for f in sub_map[s]]
     
-    print(f"Suggest Split: {len(train_files)} train files, {len(eval_files)} eval files")
+    logger.info("Split: %d train files, %d eval files", len(train_files), len(eval_files))
     
     # Auto-set AR jobs
     if ar_n_jobs is None:
@@ -696,25 +712,14 @@ def load_data(data_path, save_path, sfreq=128, epoch_len_s: float = 10.0, n_jobs
     all_results = train_results + eval_results
     all_insufficient = [r for r in all_results if r["epochs_saved"] < 20]
     
-    print(f"\n{'='*60}")
-    print(f"FINAL SUMMARY:")
-    print(f"Total files processed: {len(all_results)}")
-    print(f"Files with ≥20 epochs: {len(all_results) - len(all_insufficient)}")
-    print(f"Files with <20 epochs: {len(all_insufficient)}")
-    
+    logger.info("FINAL SUMMARY: %d files processed, %d with >=20 epochs, %d with <20",
+                 len(all_results), len(all_results) - len(all_insufficient), len(all_insufficient))
+
     if all_insufficient:
-        print(f"\nALL FILES WITH <20 EPOCHS:")
         for result in all_insufficient:
-            print(f"  - {result['file']}: {result['epochs_saved']} epochs ({result['reason']})")
-    
-    print("[save] Done. Data saved in train_epochs.pkl and eval_epochs.pkl")
-    print("Each entry is a tuple: (raw, g, a, ab, sample_id)")
-    print("  raw: mne.Raw object")
-    print("  g: gender (0=female, 1=male)")  
-    print("  a: age (years)")
-    print("  ab: abnormal label (0=normal, 1=abnormal)")
-    print("  sample_id: unique epoch identifier")
-    print(f"{'='*60}")
+            logger.info("  - %s: %d epochs (%s)", result['file'], result['epochs_saved'], result['reason'])
+
+    logger.info("[save] Done. Data saved in train_epochs.pkl and eval_epochs.pkl")
 
 
 

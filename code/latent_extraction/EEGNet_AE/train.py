@@ -1,23 +1,21 @@
+"""Training script for the EEGNet autoencoder."""
 from __future__ import annotations
 
-import argparse
+import importlib.util
+import logging
 from pathlib import Path
-from typing import Tuple
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
+from scipy.signal import welch
 from torch import nn
 from torch.utils.data import DataLoader, random_split
-from scipy.signal import welch
 
-from mne.io import read_raw_brainvision
-import mne
-import numpy as np
-import importlib.util
-import sys
-import matplotlib.pyplot as plt
-sys.path.insert(0, "/rds/general/user/lrh24/home/msc_thesis/code")
-from utils.util import PSD_CALCULATION_PARAMS
 from data_preprocessing.gen_dataset import TUHFIF60sDataset
+from utils.util import PSD_CALCULATION_PARAMS
+
+logger = logging.getLogger(__name__)
 
 
 def _load_infer_module():
@@ -152,7 +150,7 @@ def train(
         avg_val = total_v / max(1, len(val_loader))
         scheduler.step(avg_val)
 
-        print(f"Epoch {epoch:03d} | train {avg_train:.4f} | val {avg_val:.4f}")
+        logger.info("Epoch %03d | train %.4f | val %.4f", epoch, avg_train, avg_val)
         if avg_val < best_val - 1e-4:
             best_val = avg_val
             torch.save({"model_state": model.state_dict()}, best_path)
@@ -160,10 +158,10 @@ def train(
         else:
             patience += 1
             if patience >= 15:
-                print("Early stopping: no val improvement.")
+                logger.info("Early stopping: no val improvement")
                 break
-            
-        #every 5 epochs save a plot of the psd of the original and reconstructed data
+
+
         if epoch % 5 == 0:
             # Compute mean PSD across batch and channels for plotting
             x_np = x.detach().cpu().numpy()  # (B, C, T)
@@ -183,15 +181,17 @@ def train(
             plt.savefig(f"plots/psd_plot_{epoch}.png")
             plt.close()
 
-    print(f"Saved best model to {best_path}")
+    logger.info("Saved best model to %s", best_path)
     return best_path
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl")
-    p.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
-    out_dir = Path("/rds/general/user/lrh24/home/msc_thesis/code/latent_extraction/EEGNet_AE/")
+def main() -> None:
+    import argparse
+
+    p = argparse.ArgumentParser(description="Train EEGNet autoencoder")
+    p.add_argument("--data_root", type=str, required=True, help="Path to train_epochs.pkl")
+    p.add_argument("--dataset_name", type=str, default="tuh", help="Prefix for saved model")
+    p.add_argument("--out_dir", type=str, default=str(Path(__file__).resolve().parent))
     p.add_argument("--latent_dim", type=int, default=128)
     p.add_argument("--batch_size", type=int, default=256)
     p.add_argument("--lr", type=float, default=5e-3)
@@ -200,11 +200,9 @@ def main():
     p.add_argument("--num_workers", type=int, default=4)
     args = p.parse_args()
 
-    # Pass dataset_name by writing it to train function 
-    # Notice we modified train below to take dataset_name, let's fix that
     train(
         data_root=Path(args.data_root),
-        out_dir=Path(out_dir),
+        out_dir=Path(args.out_dir),
         dataset_name=args.dataset_name,
         latent_dim=args.latent_dim,
         batch_size=args.batch_size,

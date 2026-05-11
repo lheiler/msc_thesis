@@ -1,42 +1,47 @@
-from typing import Dict, Any
+"""Descriptive statistics for latent feature datasets."""
+from __future__ import annotations
+
+from typing import Any, Optional
+
 import numpy as np
+from torch.utils.data import DataLoader
 
 __all__ = ["compute_dataset_stats"]
 
-def compute_dataset_stats(loader, *, age_bins=None) -> Dict[str, Any]:
-    """Return descriptive statistics for a DataLoader.
 
-    Parameters
-    ----------
-    loader : torch.utils.data.DataLoader
-        The dataloader whose dataset elements are
-        (features, gender_code, age_float, abnormal_flag).
-    age_bins : list[int] | None
-        Optional list of bin edges for age histogram. Default:
-        [0,10,20,30,40,50,60,70,80,120].
-    Returns
-    -------
-    dict
-        Nested dict with counts per gender, abnormal ratio, and
-        histogram of ages.
+def compute_dataset_stats(
+    loader: DataLoader,
+    *,
+    age_bins: Optional[list[int]] = None,
+) -> dict[str, Any]:
+    """Compute descriptive statistics for a latent-feature DataLoader.
+
+    Args:
+        loader: DataLoader whose dataset elements are
+            ``(features, gender_code, age_float, abnormal_flag)``.
+        age_bins: Bin edges for the age histogram.
+            Defaults to ``[0, 10, 20, ..., 80, 120]``.
+
+    Returns:
+        Nested dict with sample count, gender/abnormal distributions, and
+        age histogram.
     """
     if age_bins is None:
         age_bins = [0, 10, 20, 30, 40, 50, 60, 70, 80, 120]
 
-    genders = []
-    ages = []
-    abns = []
+    genders_list: list[float] = []
+    ages_list: list[float] = []
+    abns_list: list[float] = []
+
     for _, g, a, ab in loader:
-        # assuming tensors
-        genders.extend(g.detach().cpu().numpy().tolist())
-        ages.extend(a.detach().cpu().numpy().tolist())
-        abns.extend(ab.detach().cpu().numpy().tolist())
+        genders_list.extend(g.detach().cpu().numpy().tolist())
+        ages_list.extend(a.detach().cpu().numpy().tolist())
+        abns_list.extend(ab.detach().cpu().numpy().tolist())
 
-    genders = np.asarray(genders)
-    ages = np.asarray(ages)
-    abns = np.asarray(abns)
+    genders = np.asarray(genders_list)
+    ages = np.asarray(ages_list)
+    abns = np.asarray(abns_list)
 
-    # Detect gender coding scheme: legacy {1,2} or cleaned {0,1}
     gender_values = set(np.unique(genders).tolist())
     if gender_values.issubset({1.0, 2.0}):
         gender_counts = {
@@ -49,14 +54,13 @@ def compute_dataset_stats(loader, *, age_bins=None) -> Dict[str, Any]:
             "male(1)": int((genders == 1).sum()),
         }
     else:
-        # Mixed or unexpected labels; report raw bins
         gender_counts = {
             "label_0": int((genders == 0).sum()),
             "label_1": int((genders == 1).sum()),
             "label_2": int((genders == 2).sum()),
         }
 
-    stats = {
+    stats: dict[str, Any] = {
         "n_samples": int(len(ages)),
         "gender_counts": gender_counts,
         "abnormal_counts": {
@@ -65,10 +69,9 @@ def compute_dataset_stats(loader, *, age_bins=None) -> Dict[str, Any]:
         },
     }
 
-    bin_labels = [f"{age_bins[i]}–{age_bins[i+1]}" for i in range(len(age_bins) - 1)]
-    age_bin_counts = {
+    bin_labels = [f"{age_bins[i]}-{age_bins[i + 1]}" for i in range(len(age_bins) - 1)]
+    stats["age_bin_counts"] = {
         lbl: int(((ages >= age_bins[i]) & (ages < age_bins[i + 1])).sum())
         for i, lbl in enumerate(bin_labels)
     }
-    stats["age_bin_counts"] = age_bin_counts
-    return stats 
+    return stats

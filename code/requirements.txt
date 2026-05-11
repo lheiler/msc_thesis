@@ -2,6 +2,7 @@
 numpy
 scipy
 scikit-learn
+pandas
 
 # Deep learning
 torch
@@ -14,17 +15,24 @@ autoreject
 
 # Optimisation & feature extraction
 cma
-catch22
+pycatch22
+optuna
 
 # Visualisation
 matplotlib
 seaborn
+tabulate
 
-# Hyper-parameter optimisation
-optuna
+# Parallel processing
+joblib
+tqdm
+tqdm-joblib
 
-torcheeg
-
-# Utilities
+# Configuration
 PyYAML
-tqdm 
+
+# Optional (recommended for performance)
+# numba        # JIT compilation for mechanistic model solvers
+# psutil       # Memory monitoring during evaluation
+# torcheeg     # Additional EEG utilities
+# corner       # Corner plots for parameter visualisation

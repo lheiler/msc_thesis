@@ -1,13 +1,19 @@
+"""Generate publication-quality figures from evaluation results."""
+from __future__ import annotations
+
 import json
+import logging
 import os
-import sys
 import re
+import sys
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
+
+logger = logging.getLogger(__name__)
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch
@@ -109,7 +115,7 @@ def _save_figure(fig, name, output_dir):
     path = os.path.join(output_dir, f"{name}.png")
     fig.savefig(path)
     plt.close(fig)
-    print(f"  ✓ Saved {path}")
+    logger.info("Saved %s", path)
 
 def _panel_label(ax, label, x=-0.08, y=1.05):
     ax.text(x, y, label, transform=ax.transAxes, fontsize=12,
@@ -160,7 +166,7 @@ def collect_all_metrics(results_dir: str) -> Dict[str, Dict]:
                     data["raw_txt"] = f.read()
             all_metrics[entry] = data
         except Exception as e:
-            print(f"  Warning: Could not load {entry}: {e}")
+            logger.warning("Could not load %s: %s", entry, e)
     return all_metrics
 
 
@@ -178,7 +184,7 @@ def load_latent_features(results_dir: str, method: str) -> Tuple[np.ndarray, Lis
                 ids.append(row[4])
         return np.array(features), ids
     except Exception as e:
-        print(f"  Error loading {method} features: {e}")
+        logger.warning("Error loading %s features: %s", method, e)
         return np.array([]), []
 
 
@@ -282,7 +288,7 @@ def generate_table1_capacity_efficiency(all_metrics, output_dir):
         f.write("| Model | Total Dimensions | Active Units | Efficiency |\n")
         f.write("|---|---|---|---|\n")
         f.write("\n".join(sorted(rows)))
-    print(f"  ✓ Saved {path}")
+    logger.info("Saved %s", path)
 
 
 def generate_table2_summary_acc(all_metrics, output_dir):
@@ -307,7 +313,7 @@ def generate_table2_summary_acc(all_metrics, output_dir):
         f.write("| Model (Dataset) | Test Accuracy |\n")
         f.write("|---|---|\n")
         f.write("\n".join(sorted(rows)))
-    print(f"  ✓ Saved {path}")
+    logger.info("Saved %s", path)
 
 
 def generate_fig2_probe_delta(all_metrics, output_dir):
@@ -453,7 +459,7 @@ def generate_fig3_bifurcation(output_dir, results_dir):
             os.path.join(results_dir, "lemon-ctm_cma_avg", "temp_latent_features_eval.json"))
         ax_b.set_title("Empirical CTM Latents Overlay")
     except Exception as e:
-        print(f"  Warning: could not load real CTM params for fig3B ({e}); no overlay plotted.")
+        logger.warning("Could not load real CTM params for fig3B (%s)", e)
         tuh_gee = tuh_gsrs = lemon_gee = lemon_gsrs = np.array([])
         ax_b.set_title("Empirical CTM Latents Overlay (data unavailable)")
 
@@ -477,7 +483,7 @@ def generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir):
     their upper-triangular pairwise Euclidean distance matrices.  Values near 1
     mean the two methods agree on which subjects are globally close or far apart.
     """
-    print("  Computing Distance-Geometry Correlation Matrices (2×2 grid)...")
+    logger.info("Computing Distance-Geometry Correlation Matrices(2×2 grid)...")
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
     scale_labels = {"small": "Small (Channel-Averaged)", "medium": "Medium (Per-Channel)"}
     panel_labels = [["A", "B"], ["C", "D"]]
@@ -663,7 +669,7 @@ def generate_tableA1_full_matrix(all_metrics, output_dir):
     with open(path, "w") as out:
         out.write("| Model | Task | Test Accuracy | CV Mean | CV Std |\n|---|---|---|---|---|\n")
         out.write("\n".join(rows))
-    print(f"  ✓ Saved {path}")
+    logger.info("Saved %s", path)
 
 
 def generate_figA1_multidim_efficiency(all_metrics, output_dir):
@@ -719,9 +725,9 @@ def generate_figA1_multidim_efficiency(all_metrics, output_dir):
 # FIGURE A4: GEOMETRIC PRESERVATION HELPERS
 # =====================================================================
 
-_GEO_DATASET_PATHS = {
-    "tuh":   "/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl",
-    "lemon": "/rds/general/user/lrh24/home/msc_thesis/Datasets/lemon/eval_epochs.pkl",
+_GEO_DATASET_PATHS: Dict[str, str] = {
+    "tuh": os.environ.get("TUH_EVAL_EPOCHS", "Datasets/tuh-eeg-ab-clean/eval_epochs.pkl"),
+    "lemon": os.environ.get("LEMON_EVAL_EPOCHS", "Datasets/lemon/eval_epochs.pkl"),
 }
 
 def _distance_correlation(X: np.ndarray, Y: np.ndarray) -> float:
@@ -753,20 +759,20 @@ def _build_psd_reference(ds: str, scale: str, epoch_cache: dict) -> dict:
         mne.set_log_level('WARNING')
         from utils.util import compute_psd_from_raw
     except ImportError as e:
-        print(f"    ⚠ PSD reference import failed: {e}")
+        logger.warning("PSD reference import failed: %s", e)
         return {}
 
     if ds not in epoch_cache:
         path = _GEO_DATASET_PATHS.get(ds)
         if not path or not os.path.exists(path):
-            print(f"    ⚠ No epoch file for '{ds}'")
+            logger.warning("No epoch file for '%s'", ds)
             return {}
-        print(f"    Loading {ds} eval epochs for PSD reference...")
+        logger.info("Loading %s eval epochs for PSD reference", ds)
         try:
             with open(path, 'rb') as f:
                 epoch_cache[ds] = pickle.load(f)
         except Exception as e:
-            print(f"    ⚠ Could not load {ds} epochs: {e}")
+            logger.warning("Could not load %s epochs: %s", ds, e)
             return {}
 
     calc_avg = (scale == 'small')
@@ -778,7 +784,7 @@ def _build_psd_reference(ds: str, scale: str, epoch_cache: dict) -> dict:
             ref[sid] = psd.flatten().astype(np.float32)
         except Exception:
             continue
-    print(f"    PSD reference built: {ds}/{scale} → {len(ref)} epochs")
+    logger.info("PSD reference built: %s/%s -> %d epochs", ds, scale, len(ref))
     return ref
 
 
@@ -798,7 +804,7 @@ def generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir):
       Medium group → per-channel PSD, flattened.
     Subsampled to ≤5 000 samples with seed 42 (report spec).
     """
-    print("  Computing geometric preservation vs PSD reference (report §3.6)...")
+    logger.info("Computing geometric preservation vs PSD reference (report §3.6)...")
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     fig.subplots_adjust(hspace=0.45)
     scale_labels = {"small": "Small (Channel-Averaged)", "medium": "Medium (Per-Channel)"}
@@ -841,7 +847,7 @@ def generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir):
                 # Align Z with PSD by sample_id
                 common = [(i, sid) for i, sid in enumerate(ids_all) if sid in psd_ref]
                 if len(common) < 20:
-                    print(f"    {full_name}: only {len(common)} common IDs, skipping")
+                    logger.info("%s: only %d common IDs, skipping", full_name, len(common))
                     continue
 
                 idx_z = np.array([i for i, _ in common])
@@ -855,7 +861,7 @@ def generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir):
                     sub = rng.choice(len(Z), 5000, replace=False)
                     Z = Z[sub]; X_psd = X_psd[sub]
 
-                print(f"    Geometry: {full_name} (n={len(Z)})...", end=" ", flush=True)
+                logger.info("Geometry: %s (n=%d)", full_name, len(Z))
                 try:
                     # max_samples > actual n → no internal resampling
                     t  = _trustworthiness(X_psd, Z, n_neighbors=10, max_samples=6000)
@@ -864,9 +870,9 @@ def generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir):
                     method_cleans.append(clean)
                     trust_vals.append(t)
                     cont_vals.append(c)
-                    print(f"T={t:.3f} C={c:.3f}")
+                    logger.info("T=%.3f C=%.3f", t, c)
                 except Exception as e:
-                    print(f"error ({e})")
+                    logger.warning("error (%s)", e)
 
             if method_labels:
                 avg   = [(t + c) / 2 for t, c in zip(trust_vals, cont_vals)]
@@ -921,19 +927,19 @@ def generate_figM1_psd_reconstruction(output_dir, results_dir):
         from latent_extraction.cortico_thalamic import _P_omega, _PARAM_KEYS
         from latent_extraction.psd_ae.psd_ae import get_psd_ae_model
     except ImportError as e:
-        print(f"  ⚠ figM1: import failed ({e}), skipping")
+        logger.warning("figM1: import failed (%s), skipping", e)
         return
 
-    dataset_path = '/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/eval_epochs.pkl'
+    dataset_path = _GEO_DATASET_PATHS.get("tuh", "Datasets/tuh-eeg-ab-clean/eval_epochs.pkl")
     ctm_feat_path  = os.path.join(results_dir, 'tuh-ctm_cma_avg',  'temp_latent_features_eval.json')
     psdae_feat_path = os.path.join(results_dir, 'tuh-psd_ae_avg', 'temp_latent_features_eval.json')
 
     try:
-        print("    Loading TUH eval epochs for figM1...")
+        logger.info("Loading TUH eval epochs for figM1")
         with open(dataset_path, 'rb') as f:
             epochs = pickle.load(f)
     except Exception as e:
-        print(f"  ⚠ figM1: could not load epochs ({e}), skipping")
+        logger.warning("figM1: could not load epochs (%s), skipping", e)
         return
 
     id_to_raw = {item[4]: item[0] for item in epochs}
@@ -948,11 +954,11 @@ def generate_figM1_psd_reconstruction(output_dir, results_dir):
 
     common_ids = [eid for eid in ctm_rows if eid in psdae_rows and eid in id_to_raw]
     if not common_ids:
-        print("  ⚠ figM1: no common epoch IDs found, skipping")
+        logger.warning("figM1: no common epoch IDs found, skipping")
         return
 
     # Pick the epoch with the lowest CTM reconstruction loss from the first 200 candidates
-    print(f"    Selecting best representative epoch from {min(200, len(common_ids))} candidates...")
+    logger.info("Selecting best representative epoch from %d candidates", min(200, len(common_ids)))
     best_id, best_loss = common_ids[0], float('inf')
     for eid in common_ids[:200]:
         raw = id_to_raw[eid]
@@ -966,7 +972,7 @@ def generate_figM1_psd_reconstruction(output_dir, results_dir):
                 best_loss, best_id = loss, eid
         except Exception:
             continue
-    print(f"    Representative epoch: {best_id}  (CTM loss={best_loss:.4f})")
+    logger.info("Representative epoch: %s (CTM loss=%.4f)", best_id, best_loss)
 
     raw = id_to_raw[best_id]
     emp_psd, freqs = compute_psd_from_raw(
@@ -1010,11 +1016,11 @@ def generate_figM1_psd_reconstruction(output_dir, results_dir):
 def main():
     results_dir = "/rds/general/user/lrh24/home/msc_thesis/code/Results"
     output_dir = os.path.join(results_dir, "publication_figures")
-    print("Collecting metrics...")
+    logger.info("Collecting metrics")
     all_metrics = collect_all_metrics(results_dir)
-    print(f"Loaded {len(all_metrics)} model evaluations.")
+    logger.info("Loaded %d model evaluations", len(all_metrics))
 
-    print("\nGenerating Main Text Figures & Tables...")
+    logger.info("Generating Main Text Figures & Tables")
 
     generate_table1_capacity_efficiency(all_metrics, output_dir)
     generate_table2_summary_acc(all_metrics, output_dir)
@@ -1023,15 +1029,15 @@ def main():
     generate_fig4_similarity_matrices(all_metrics, output_dir, results_dir)
     generate_fig5_mi_concentration(all_metrics, output_dir)
 
-    print("\nGenerating Methodology Figures...")
+    logger.info("Generating Methodology Figures")
     generate_figM1_psd_reconstruction(output_dir, results_dir)
 
-    print("\nGenerating Appendix Figures & Tables...")
+    logger.info("Generating Appendix Figures & Tables")
     generate_tableA1_full_matrix(all_metrics, output_dir)
     generate_figA1_multidim_efficiency(all_metrics, output_dir)
     generate_figA4_geometric_preservation(all_metrics, output_dir, results_dir)
 
-    print("\nPublication bundle complete!")
+    logger.info("Publication bundle complete")
 
 if __name__ == "__main__":
     main()

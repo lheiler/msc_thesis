@@ -1,39 +1,51 @@
-#create super simple psd auto encoder that gets PSDs from the raw data with the standard preprocessing
+"""PSD Autoencoder for latent feature extraction.
 
+A simple symmetric autoencoder operating on normalised Welch PSD vectors.
+The encoder compresses a frequency-domain representation into a compact
+latent code; the decoder reconstructs the original PSD.
+
+Public API for inference:
+    * ``get_psd_ae_model``      - Load a trained checkpoint.
+    * ``extract_psd_ae_avg``    - Encode the channel-averaged PSD.
+    * ``extract_psd_ae_channel``- Encode per-channel PSDs (concatenated).
+"""
+from __future__ import annotations
+
+import argparse
+import logging
+from pathlib import Path
+from typing import Optional, Union
+
+import matplotlib.pyplot as plt
+import mne
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-import mne
-from pathlib import Path
-from typing import Optional
 from torch.utils.data import DataLoader
-import sys
-import random
-from typing import Union
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-# Add the root and utils directory to the Python path
-root_path = Path(__file__).resolve().parent.parent.parent
-if str(root_path) not in sys.path:
-    sys.path.insert(0, str(root_path))
-utils_path = root_path / "utils"
-if str(utils_path) not in sys.path:
-    sys.path.insert(0, str(utils_path))
+from utils.util import (
+    PSD_CALCULATION_PARAMS,
+    compute_psd_from_array,
+    compute_psd_from_raw,
+    normalize_psd,
+)
 
-from data_preprocessing.gen_dataset import TUHFIF60sDataset
-from util import compute_psd_from_raw, PSD_CALCULATION_PARAMS, compute_psd_from_array, normalize_psd
+logger = logging.getLogger(__name__)
 
 SEED = 42
 
+
 def set_seed(seed: int = SEED) -> None:
+    """Set random seeds for reproducibility."""
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
 
-def get_device() -> str:
+def _get_device() -> str:
+    """Select the best available device string."""
     if torch.cuda.is_available():
         return "cuda"
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -41,13 +53,18 @@ def get_device() -> str:
     return "cpu"
 
 
-def _plot_recon_example(inputs: torch.Tensor, recon: torch.Tensor, freqs: torch.Tensor, *, path: Path) -> None:
-    idx = 0
-    x = inputs[idx].detach().cpu().float().numpy()
-    y = recon[idx].detach().cpu().float().numpy()
+def _plot_recon_example(
+    inputs: torch.Tensor,
+    recon: torch.Tensor,
+    freqs: torch.Tensor,
+    *,
+    path: Path,
+) -> None:
+    """Save a single input vs. reconstruction plot."""
+    x = inputs[0].detach().cpu().float().numpy()
+    y = recon[0].detach().cpu().float().numpy()
     f = freqs.detach().cpu().float().numpy()
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots()
     ax.plot(f, x, label="input")
     ax.plot(f, y, label="recon")
     ax.set_xlabel("Hz")
@@ -56,79 +73,104 @@ def _plot_recon_example(inputs: torch.Tensor, recon: torch.Tensor, freqs: torch.
     fig.savefig(str(path))
     plt.close(fig)
 
+
 class PSDAE(nn.Module):
-    """Simple autoencoder that operates on Power Spectral Density (PSD) features."""
-    
-    def __init__(self, input_dim: int, latent_dim: int = 64):
+    """Symmetric autoencoder operating on PSD feature vectors.
+
+    Args:
+        input_dim: Number of frequency bins.
+        latent_dim: Bottleneck dimensionality.
+    """
+
+    def __init__(self, input_dim: int, latent_dim: int = 64) -> None:
         super().__init__()
-        
         assert input_dim // 4 >= latent_dim, (
-            f"latent_dim={latent_dim} must be <= input_dim//4={input_dim // 4} for the current architecture"
+            f"latent_dim={latent_dim} must be <= input_dim//4={input_dim // 4}"
         )
-        
-        # Encoder: PSD -> latent
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, input_dim // 2),
             nn.ReLU(),
             nn.Linear(input_dim // 2, input_dim // 4),
             nn.ReLU(),
-            nn.Linear(input_dim // 4, latent_dim)
+            nn.Linear(input_dim // 4, latent_dim),
         )
-        
-        # Decoder: latent -> PSD
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, input_dim // 4),
             nn.ReLU(),
             nn.Linear(input_dim // 4, input_dim // 2),
             nn.ReLU(),
-            nn.Linear(input_dim // 2, input_dim)
+            nn.Linear(input_dim // 2, input_dim),
         )
-    
+
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         """Encode PSD to latent representation."""
         return self.encoder(x)
-    
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        """Decode latent representation to PSD."""
-        return self.decoder(z)
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Full autoencoder forward pass."""
-        z = self.encode(x)
-        return self.decode(z)
 
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        """Decode latent representation back to PSD space."""
+        return self.decoder(z)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Full autoencoder pass (encode then decode)."""
+        return self.decode(self.encode(x))
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint resolution
+# ---------------------------------------------------------------------------
 
 def _resolve_latest_checkpoint(dataset_name: str = "tuh") -> Path:
-    """Find the newest PSD-AE checkpoint in the models directory for a specific dataset.
+    """Find the newest PSD-AE checkpoint for a dataset.
+
+    Args:
+        dataset_name: Dataset prefix to search for.
 
     Returns:
-        Path: Path to the newest checkpoint file.
+        Path to the checkpoint file.
+
     Raises:
         RuntimeError: If no checkpoint is found.
     """
     models_dir = Path(__file__).resolve().parent / "models"
-    candidates = sorted(models_dir.glob(f"{dataset_name}_psd_ae_*.pth"), key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = sorted(
+        models_dir.glob(f"{dataset_name}_psd_ae_*.pth"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     if not candidates:
-        # Fallback to general models if dataset specific one isn't found just in case, but warn
-        candidates = sorted(models_dir.glob("psd_ae_*.pth"), key=lambda p: p.stat().st_mtime, reverse=True)
+        candidates = sorted(
+            models_dir.glob("psd_ae_*.pth"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
         if not candidates:
-            raise RuntimeError(f"No PSD-AE checkpoint found in {models_dir}. Train via latent_extraction/psd_ae/psd_ae.py")
-        else:
-            print(f"⚠️ Warning: No dataset specific ({dataset_name}) model found, falling back to: {candidates[0]}")
+            raise RuntimeError(
+                f"No PSD-AE checkpoint found in {models_dir}. "
+                "Train via latent_extraction/psd_ae/psd_ae.py"
+            )
+        logger.warning(
+            "No dataset-specific (%s) model found, falling back to: %s",
+            dataset_name, candidates[0],
+        )
     else:
-        print(f"Using checkpoint {candidates[0]}")
+        logger.info("Using checkpoint %s", candidates[0])
     return candidates[0]
 
 
-def get_psd_ae_model(device: Union[str, torch.device] = "cpu", ckpt_path: Optional[str] = None, dataset_name: str = "tuh") -> PSDAE:
-    """Load PSD-AE model from a checkpoint and put it on device.
+def get_psd_ae_model(
+    device: Union[str, torch.device] = "cpu",
+    ckpt_path: Optional[str] = None,
+    dataset_name: str = "tuh",
+) -> PSDAE:
+    """Load a trained PSD-AE model.
 
     Args:
-        device: Torch device or string.
-        ckpt_path: Optional explicit checkpoint path. If None, use latest in models/.
+        device: Torch device.
+        ckpt_path: Explicit checkpoint path (auto-resolved if ``None``).
+        dataset_name: Dataset prefix for checkpoint resolution.
 
     Returns:
-        PSDAE: Model loaded and set to eval mode on the specified device.
+        PSDAE model in eval mode on the specified device.
     """
     if ckpt_path is None:
         ckpt = _resolve_latest_checkpoint(dataset_name=dataset_name)
@@ -137,15 +179,15 @@ def get_psd_ae_model(device: Union[str, torch.device] = "cpu", ckpt_path: Option
         if not ckpt.exists():
             raise FileNotFoundError(f"PSD-AE checkpoint not found: {ckpt}")
 
-    # Torch 2.6 defaults to weights_only=True which can break older checkpoints
     try:
         payload = torch.load(str(ckpt), map_location="cpu", weights_only=False)
     except TypeError:
-        # Older torch without weights_only kwarg
         payload = torch.load(str(ckpt), map_location="cpu")
+
     if "input_dim" not in payload:
         raise RuntimeError(f"PSD-AE checkpoint missing 'input_dim': {ckpt}")
-    input_dim = int(payload["input_dim"])  # frequency bins
+
+    input_dim = int(payload["input_dim"])
     latent_dim = int(payload.get("latent_dim", 64))
 
     model = PSDAE(input_dim=input_dim, latent_dim=latent_dim)
@@ -155,103 +197,144 @@ def get_psd_ae_model(device: Union[str, torch.device] = "cpu", ckpt_path: Option
     return model
 
 
-@torch.no_grad()
-def extract_psd_ae_avg(raw: mne.io.BaseRaw, *, device: Union[str, torch.device] = "cpu",
-                       model: Optional[PSDAE] = None, ckpt_path: Optional[str] = None) -> torch.Tensor:
-    """Extract a single latent vector by encoding the channel-averaged PSD.
+# ---------------------------------------------------------------------------
+# Inference helpers
+# ---------------------------------------------------------------------------
 
-    Normalization matches training: per-vector zero mean and unit std before encode.
+@torch.no_grad()
+def extract_psd_ae_avg(
+    raw: mne.io.BaseRaw,
+    *,
+    device: Union[str, torch.device] = "cpu",
+    model: Optional[PSDAE] = None,
+    ckpt_path: Optional[str] = None,
+) -> np.ndarray:
+    """Encode the channel-averaged PSD into a latent vector.
+
+    Args:
+        raw: MNE Raw object.
+        device: Torch device.
+        model: Pre-loaded model (loaded from checkpoint if ``None``).
+        ckpt_path: Explicit checkpoint path.
+
+    Returns:
+        Flattened float32 latent array.
     """
     model = model or get_psd_ae_model(device=device, ckpt_path=ckpt_path)
-    # Use unified PSD computation (no normalization here; handled below)
-    psd_avg_np = compute_psd_from_raw(raw, calculate_average=True, normalize=True)  # (F,)
-    psd_avg = torch.from_numpy(psd_avg_np.astype(np.float32)).unsqueeze(0).to(device)  # (1, F)
-    
-
+    psd_avg_np = compute_psd_from_raw(raw, calculate_average=True, normalize=True)
+    psd_avg = torch.from_numpy(psd_avg_np.astype(np.float32)).unsqueeze(0).to(device)
     z = model.encode(psd_avg)
     return z.detach().cpu().numpy().flatten()
 
 
 @torch.no_grad()
-def extract_psd_ae_channel(raw: mne.io.BaseRaw, *, device: Union[str, torch.device] = "cpu",
-                           model: Optional[PSDAE] = None, ckpt_path: Optional[str] = None) -> torch.Tensor:
-    """Extract a single latent vector by encoding each channel PSD then averaging latents.
+def extract_psd_ae_channel(
+    raw: mne.io.BaseRaw,
+    *,
+    device: Union[str, torch.device] = "cpu",
+    model: Optional[PSDAE] = None,
+    ckpt_path: Optional[str] = None,
+) -> np.ndarray:
+    """Encode per-channel PSDs into a concatenated latent vector.
 
-    Each channel vector is normalized independently before encoding to match training.
+    Args:
+        raw: MNE Raw object.
+        device: Torch device.
+        model: Pre-loaded model (loaded from checkpoint if ``None``).
+        ckpt_path: Explicit checkpoint path.
+
+    Returns:
+        Flattened float32 latent array (channels x latent_dim).
     """
     model = model or get_psd_ae_model(device=device, ckpt_path=ckpt_path)
-    # Use unified PSD computation for all channels (C, F)
-    psd_np = compute_psd_from_raw(raw, calculate_average=False, normalize=True)  # (C, F)
-    psd_t = torch.from_numpy(psd_np.astype(np.float32)).to(device)  # (C, F) on device
-    
-    z = model.encode(psd_t).detach().cpu().numpy()  # (C, latent)
-    z = z.flatten() # (C*latent)
-    return z
+    psd_np = compute_psd_from_raw(raw, calculate_average=False, normalize=True)
+    psd_t = torch.from_numpy(psd_np.astype(np.float32)).to(device)
+    z = model.encode(psd_t).detach().cpu().numpy()
+    return z.flatten()
 
-def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 100, patience: int = 5):
+
+# ---------------------------------------------------------------------------
+# Training (standalone script)
+# ---------------------------------------------------------------------------
+
+def train(
+    model: PSDAE,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    device: str,
+    sfreq: float,
+    *,
+    epochs: int = 100,
+    patience: int = 5,
+    save_prefix: str = "tuh",
+    latent_dim: int = 8,
+    input_dim: int = 0,
+) -> None:
+    """Train the PSD-AE with early stopping.
+
+    Args:
+        model: PSDAE instance.
+        train_loader: Training DataLoader (yields ``(B, C, T)`` tensors).
+        val_loader: Validation DataLoader.
+        device: Torch device string.
+        sfreq: Sampling frequency of the input data.
+        epochs: Maximum training epochs.
+        patience: Early stopping patience.
+        save_prefix: Dataset name prefix for checkpoint file.
+        latent_dim: Latent dimensionality (for checkpoint metadata).
+        input_dim: Input frequency bins (for checkpoint metadata).
+    """
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
     criterion = nn.MSELoss()
     model.to(device)
     model.train()
-    # Precompute Welch parameters and frequency bins once
+
     n_fft = int(PSD_CALCULATION_PARAMS["n_fft"])
     n_overlap = int(PSD_CALCULATION_PARAMS["n_overlap"])
     n_per_seg = int(PSD_CALCULATION_PARAMS["n_per_seg"])
     fmin = float(PSD_CALCULATION_PARAMS.get("min_freq", 1.0))
     fmax = float(PSD_CALCULATION_PARAMS.get("max_freq", 45.0))
     seg_len = int(PSD_CALCULATION_PARAMS["segment_length"] * sfreq)
+
     dummy = np.zeros(seg_len, dtype=np.float32)
     _, freqs_np = mne.time_frequency.psd_array_welch(
-        dummy[None, :],
-        sfreq=float(sfreq),
-        n_fft=n_fft,
-        n_overlap=n_overlap,
-        n_per_seg=n_per_seg,
-        average="mean",
-        verbose=False,
-        fmin=fmin,
-        fmax=fmax,
+        dummy[None, :], sfreq=float(sfreq),
+        n_fft=n_fft, n_overlap=n_overlap, n_per_seg=n_per_seg,
+        average="mean", verbose=False, fmin=fmin, fmax=fmax,
     )
     freqs_t = torch.from_numpy(freqs_np.astype(np.float32))
-    best_val_loss: float | None = None
-    best_state: dict[str, torch.Tensor] | None = None
+
+    best_val_loss: Optional[float] = None
+    best_state: Optional[dict[str, torch.Tensor]] = None
     bad_epochs = 0
-    min_delta = 0.0
+
     for epoch in range(epochs):
         total_loss = 0.0
         n_steps = 0
-        for batch in tqdm(train_loader):
-            # batch: (B, C, T) time-domain
+        for batch in tqdm(train_loader, desc=f"Epoch {epoch}"):
             B, C, T = batch.shape
             x_np = batch.detach().cpu().numpy().astype(np.float32)
             x2d = x_np.reshape(B * C, T)
             psd_2d, _ = mne.time_frequency.psd_array_welch(
-                x2d,
-                sfreq=float(sfreq),
-                n_fft=n_fft,
-                n_overlap=n_overlap,
-                n_per_seg=n_per_seg,
-                average="mean",
-                verbose=False,
-                fmin=fmin,
-                fmax=fmax,
-            )  # (B*C, F)
-            # Normalize per vector (log10 + z-score)
-            psd_2d_norm = normalize_psd(psd_2d.astype(np.float32))
-            inputs = torch.from_numpy(psd_2d_norm).to(device)
+                x2d, sfreq=float(sfreq),
+                n_fft=n_fft, n_overlap=n_overlap, n_per_seg=n_per_seg,
+                average="mean", verbose=False, fmin=fmin, fmax=fmax,
+            )
+            inputs = torch.from_numpy(
+                normalize_psd(psd_2d.astype(np.float32))
+            ).to(device)
 
             optimizer.zero_grad()
             recon = model(inputs)
             loss = criterion(recon, inputs)
             loss.backward()
             optimizer.step()
-
             total_loss += float(loss.item())
             n_steps += 1
-        print(f"Epoch {epoch} loss: {total_loss / max(1, n_steps):.6f}")
-        avg_train = total_loss / max(1, n_steps)
 
-        # Evaluate on validation set
+        avg_train = total_loss / max(1, n_steps)
+        logger.info("Epoch %d train loss: %.6f", epoch, avg_train)
+
         model.eval()
         with torch.no_grad():
             val_total = 0.0
@@ -261,36 +344,35 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
                 x_np = batch.detach().cpu().numpy().astype(np.float32)
                 x2d = x_np.reshape(B * C, T)
                 psd_2d, _ = mne.time_frequency.psd_array_welch(
-                    x2d,
-                    sfreq=float(sfreq),
-                    n_fft=n_fft,
-                    n_overlap=n_overlap,
-                    n_per_seg=n_per_seg,
-                    average="mean",
-                    verbose=False,
-                    fmin=fmin,
-                    fmax=fmax,
-                )  # (B*C, F)
-                psd_2d_norm = normalize_psd(psd_2d.astype(np.float32))
-                inputs = torch.from_numpy(psd_2d_norm).to(device)
+                    x2d, sfreq=float(sfreq),
+                    n_fft=n_fft, n_overlap=n_overlap, n_per_seg=n_per_seg,
+                    average="mean", verbose=False, fmin=fmin, fmax=fmax,
+                )
+                inputs = torch.from_numpy(
+                    normalize_psd(psd_2d.astype(np.float32))
+                ).to(device)
                 recon = model(inputs)
-                if val_steps == 1:  # save once per epoch
+                if val_steps == 1:
                     Path("plots").mkdir(exist_ok=True)
-                    _plot_recon_example(inputs.detach().cpu(), recon.detach().cpu(), freqs_t.detach().cpu(), path=Path("plots/val_recon_example.png"))
+                    _plot_recon_example(
+                        inputs.detach().cpu(), recon.detach().cpu(),
+                        freqs_t.detach().cpu(),
+                        path=Path("plots/val_recon_example.png"),
+                    )
                 val_total += float(criterion(recon, inputs).item())
                 val_steps += 1
             val_loss = val_total / max(1, val_steps)
-            print(f"Epoch {epoch} val loss: {val_loss:.6f}")
-            
+            logger.info("Epoch %d val loss: %.6f", epoch, val_loss)
 
-            # Early stopping logic
-            if best_val_loss is None or val_loss < best_val_loss - min_delta:
+            if best_val_loss is None or val_loss < best_val_loss:
                 best_val_loss = val_loss
                 bad_epochs = 0
-                best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-                 # Save model
+                best_state = {
+                    k: v.detach().cpu().clone()
+                    for k, v in model.state_dict().items()
+                }
                 Path("models").mkdir(parents=True, exist_ok=True)
-                save_path = Path(f"models/{args.dataset_name}_psd_ae_{latent_dim}.pth")
+                save_path = Path(f"models/{save_prefix}_psd_ae_{latent_dim}.pth")
                 torch.save({
                     "state_dict": model.state_dict(),
                     "freqs": torch.from_numpy(freqs_np.astype(np.float32)),
@@ -300,57 +382,68 @@ def train(model, train_loader, val_loader, device, sfreq: float, epochs: int = 1
             else:
                 bad_epochs += 1
                 if bad_epochs >= patience:
-                    print(f"Early stopping at epoch {epoch} with best val loss {best_val_loss:.6f}")
+                    logger.info(
+                        "Early stopping at epoch %d (best val=%.6f)",
+                        epoch, best_val_loss,
+                    )
                     break
-            
+
         model.train()
-        # If we broke from early stopping inside validation, exit outer loop as well
         if bad_epochs >= patience:
             break
 
-    # Restore best model parameters if available
     if best_state is not None:
         model.load_state_dict(best_state)
-    
-        
 
-import argparse
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path as _Path
+
+    root_path = _Path(__file__).resolve().parent.parent.parent
+    if str(root_path) not in sys.path:
+        sys.path.insert(0, str(root_path))
+
+    from data_preprocessing.gen_dataset import TUHFIF60sDataset
+    from torch.utils.data import random_split
+
     parser = argparse.ArgumentParser(description="Train PSD-AE model")
-    parser.add_argument("--data_root", type=str, default="/rds/general/user/lrh24/home/msc_thesis/Datasets/tuh-eeg-ab-clean/train_epochs.pkl", help="Path to train_epochs.pkl")
-    parser.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name used as a prefix for the saved model")
+    parser.add_argument("--data_root", type=str, required=True, help="Path to train_epochs.pkl")
+    parser.add_argument("--dataset_name", type=str, default="tuh", help="Dataset name prefix")
     args = parser.parse_args()
 
     set_seed()
-    device = get_device()
-    print("[INFO] Starting PSD-AE training run")
-    # Load dataset (time-domain segments)
-    latent_dim = 8
-    batch_size = 64    
-    dataset = TUHFIF60sDataset(args.data_root)
-    print(f"Loaded {len(dataset)} files")
+    device = _get_device()
+    logger.info("Starting PSD-AE training run")
 
-    # Determine input_dim from actual PSD frequency bins used (respects fmin/fmax)
+    _latent_dim = 8
+    _batch_size = 64
+    dataset = TUHFIF60sDataset(args.data_root)
+    logger.info("Loaded %d files", len(dataset))
+
     seg_len = int(PSD_CALCULATION_PARAMS["segment_length"] * dataset.sfreq)
     dummy = np.zeros(seg_len, dtype=np.float32)
     _, freqs_np = compute_psd_from_array(dummy, sfreq=dataset.sfreq, return_freqs=True, normalize=False)
-    input_dim = int(freqs_np.shape[0])
-   
-    # Create model for per-channel PSD vectors
-    model = PSDAE(input_dim=input_dim, latent_dim=latent_dim).to(device)
+    _input_dim = int(freqs_np.shape[0])
 
-    from torch.utils.data import random_split
+    _model = PSDAE(input_dim=_input_dim, latent_dim=_latent_dim).to(device)
+
     n = len(dataset)
     n_val = max(1, int(0.1 * n))
     train_ds, val_ds = random_split(
-        dataset, [n - n_val, n_val], generator=torch.Generator().manual_seed(SEED)
+        dataset, [n - n_val, n_val], generator=torch.Generator().manual_seed(SEED),
     )
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=(device == "cuda"))
-    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=(device == "cuda"))
+    train_loader = DataLoader(train_ds, batch_size=_batch_size, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_ds, batch_size=_batch_size, shuffle=False, num_workers=4)
 
-    print(f"num train samples={len(train_ds)} num val samples={len(val_ds)}")
+    logger.info("train=%d val=%d", len(train_ds), len(val_ds))
 
-    train(model, train_loader, val_loader, device=device, sfreq=dataset.sfreq)
-    print("[INFO] Training finished")
-    
+    train(
+        _model, train_loader, val_loader, device=device, sfreq=dataset.sfreq,
+        save_prefix=args.dataset_name, latent_dim=_latent_dim, input_dim=_input_dim,
+    )
+    logger.info("Training finished")
